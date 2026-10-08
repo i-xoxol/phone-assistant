@@ -60,6 +60,8 @@ missed text when reopened.
 
 Reverse proxies must allow long-lived responses and disable buffering for SSE.
 See [deployment](deployment.md) for a proxy example.
+Cloudflare Quick Tunnels do not support SSE; use ngrok or a named Cloudflare
+Tunnel for this page. [Provider limitation](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
 
 ## Direct hangup
 

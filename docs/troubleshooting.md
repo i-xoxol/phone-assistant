@@ -92,6 +92,8 @@ proxy buffering, allow long-lived reads, and avoid sleeping/suspending the
 server. A background mobile tab may pause; reopening it reconnects and replays
 missed text. Transcript generation and network latency still exist even when
 the server pushes every delta immediately.
+Cloudflare Quick Tunnels do not support SSE. For the monitor, switch to ngrok
+or a named Cloudflare Tunnel and update `PUBLIC_BASE_URL` with no calls active.
 
 Run `python -m scripts.check_live_page` on the host to test authentication and
 public SSE without outputting transcript text. A successful heartbeat proves

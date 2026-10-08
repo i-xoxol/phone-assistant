@@ -123,17 +123,23 @@ In terminal A:
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
 ```
 
-In terminal B, choose one tunnel:
+In terminal B, use ngrok for the complete local prototype:
 
 ```bash
 ngrok http 8000
 ```
 
-or:
+For an audio-only connectivity experiment you can also use a temporary
+Cloudflare Quick Tunnel:
 
 ```bash
 cloudflared tunnel --url http://127.0.0.1:8000
 ```
+
+**Cloudflare Quick Tunnels do not support SSE**, so they cannot provide the live
+transcript monitor. Use ngrok or a named Cloudflare Tunnel for the complete
+application. [Cloudflare limitations](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
+The [deployment guide](deployment.md#persistent-tunnel) includes named-tunnel setup.
 
 Use the HTTPS origin printed by the tunnel, with no trailing route, as
 `PUBLIC_BASE_URL`. Restart terminal A after changing `.env`. Keep both processes

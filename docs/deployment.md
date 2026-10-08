@@ -62,17 +62,40 @@ restrict it with your network/firewall. Do not copy another operator's LAN IP.
 
 ## Persistent tunnel
 
-Quick tunnels are useful for initial testing, but a stable hostname prevents
+Quick tunnels can test audio connectivity, but Cloudflare Quick Tunnels do not
+support SSE and cannot serve this live monitor. Use ngrok or a named Cloudflare
+Tunnel for the complete application. [Quick Tunnel limitations](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
+A stable hostname also prevents
 broken Twilio callbacks, OAuth resource URLs, and browser origins after restart.
 Use a named Cloudflare Tunnel or a reserved ngrok domain under your account.
 
-Example Cloudflare ingress fragment:
+For a locally managed Cloudflare Tunnel, install `cloudflared`, authenticate
+your account, create a tunnel, and route your own DNS hostname:
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create phone-assistant
+cloudflared tunnel route dns phone-assistant phone.example.com
+```
+
+The create command reports a tunnel UUID and stores a credential JSON locally.
+Use those **local** values in `$HOME/.cloudflared/config.yml`; never commit that
+file or credential JSON. Example configuration:
 
 ```yaml
+tunnel: YOUR-TUNNEL-UUID
+credentials-file: /home/YOUR-USER/.cloudflared/YOUR-TUNNEL-UUID.json
 ingress:
   - hostname: phone.example.com
     service: http://127.0.0.1:8000
   - service: http_status:404
+```
+
+Then run it in a separate terminal, or install a persistent tunnel service using
+Cloudflare's guide:
+
+```bash
+cloudflared tunnel --config "$HOME/.cloudflared/config.yml" run phone-assistant
 ```
 
 Replace the hostname and configure the tunnel with your own account credentials.
