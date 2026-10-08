@@ -1,0 +1,13 @@
+{
+  "phone_number": "+12025550101",
+  "recipient": "Example service desk",
+  "objective": "Ask whether my existing request is ready and what pickup times are available. Do not change it.",
+  "context": "The request is under Alex. This is a fictional example; replace with approved facts.",
+  "constraints": [
+    "Do not authorize charges or paid work",
+    "Do not provide payment information",
+    "If a decision is needed, say you need to check with me first"
+  ],
+  "max_duration_minutes": 3,
+  "ivr_mode": true
+}

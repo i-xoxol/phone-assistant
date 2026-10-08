@@ -1,0 +1,25 @@
+name: Bug report
+description: Report a reproducible problem using fictional or redacted data.
+body:
+  - type: markdown
+    attributes:
+      value: 'Do not paste credentials, pairing codes, real phone numbers, call transcripts, or private deployment URLs. Use Security Advisories for vulnerabilities.'
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Explain expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use mocks and fictional data where possible.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, package versions, MCP/voice-tool settings, and safe error codes.

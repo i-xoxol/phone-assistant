@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "phone_assistant": {
+      "type": "http",
+      "url": "https://phone.example.com/mcp",
+      "enabled": true,
+      "default_tools_approval_mode": "approve",
+      "tools": {
+        "place_call": {
+          "approval_mode": "prompt"
+        },
+        "press_digits": {
+          "approval_mode": "prompt"
+        },
+        "hangup_call": {
+          "approval_mode": "prompt"
+        },
+        "send_call_update": {
+          "approval_mode": "prompt"
+        },
+        "subscribe_call_events": {
+          "approval_mode": "prompt"
+        }
+      },
+      "startup_timeout_sec": 30,
+      "tool_timeout_sec": 60
+    }
+  }
+}

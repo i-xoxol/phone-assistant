@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="520" viewBox="0 0 1400 520" role="img" aria-labelledby="title desc">
+  <title id="title">Phone Assistant</title>
+  <desc id="desc">Real calls, live conversation, human control. A self-hosted Twilio and GPT-Live service with MCP, a private monitor, and SQLite.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#102e31"/><stop offset="1" stop-color="#163b3c"/></linearGradient>
+    <linearGradient id="line"><stop stop-color="#88d6b5"/><stop offset="1" stop-color="#69bcb4"/></linearGradient>
+  </defs>
+  <rect width="1400" height="520" rx="28" fill="url(#bg)"/>
+  <circle cx="1230" cy="65" r="210" fill="#8bd6b2" opacity=".035"/>
+  <circle cx="1230" cy="65" r="150" fill="none" stroke="#8bd6b2" opacity=".08"/>
+  <g font-family="Segoe UI,Arial,sans-serif">
+    <text x="72" y="83" font-size="15" font-weight="700" letter-spacing="4" fill="#99cab7">BUILT TO MAKE THE CALL</text>
+    <text x="67" y="177" font-size="76" font-weight="700" letter-spacing="-3" fill="#fafcf6">Phone Assistant</text>
+    <text x="72" y="229" font-size="27" fill="#d6e5df">Real calls. Live conversation. Human control.</text>
+    <text x="72" y="289" font-size="20" fill="#a0bdb6">Your agent places the call. You follow the conversation.</text>
+    <text x="72" y="321" font-size="20" fill="#a0bdb6">A small service you can understand, run, and own.</text>
+    <g transform="translate(72 373)" font-size="14" font-weight="600" fill="#dcebe3">
+      <rect width="100" height="39" rx="19" fill="#244b48"/><text x="27" y="25">TWILIO</text>
+      <rect x="112" width="115" height="39" rx="19" fill="#244b48"/><text x="135" y="25">GPT-LIVE</text>
+      <rect x="239" width="76" height="39" rx="19" fill="#244b48"/><text x="261" y="25">MCP</text>
+      <rect x="327" width="130" height="39" rx="19" fill="#244b48"/><text x="349" y="25">SELF-HOSTED</text>
+    </g>
+    <text x="72" y="474" font-size="13" letter-spacing="1" fill="#719c92">PYTHON + FASTAPI + SQLITE</text>
+  </g>
+  <g transform="translate(895 82)">
+    <rect width="423" height="348" rx="22" fill="#203f3d" stroke="#47716a"/>
+    <circle cx="30" cy="31" r="5" fill="#8ed7ae"/>
+    <text x="46" y="37" font-family="Segoe UI,Arial,sans-serif" font-size="13" fill="#c4dfd0">CONVERSATION CONNECTED</text>
+    <g stroke="url(#line)" stroke-width="6" stroke-linecap="round" transform="translate(31 109)">
+      <path d="M0 0v24 M18-12v48 M36-30v84 M54-8v40 M72-45v114 M90-24v72 M108-5v34 M126-33v90 M144-17v58 M162-40v104 M180-12v48 M198-4v32 M216-29v82 M234-45v114 M252-13v50 M270-24v72 M288-8v40 M306-35v94 M324-16v56 M342 0v24"/>
+    </g>
+    <rect x="26" y="243" width="371" height="74" rx="12" fill="#173430"/>
+    <g font-family="Segoe UI,Arial,sans-serif">
+      <text x="43" y="269" font-size="12" font-weight="700" letter-spacing="1" fill="#8dd1af">YOU STAY IN CONTROL</text>
+      <text x="43" y="295" font-size="16" fill="#dfede4">Live captions · updates · direct hangup</text>
+    </g>
+  </g>
+</svg>

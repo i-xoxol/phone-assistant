@@ -1,0 +1,17 @@
+[Unit]
+Description=Phone Assistant - Twilio, GPT-Live, and MCP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/apps/phone-assistant
+ExecStart=%h/apps/phone-assistant/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log --timeout-graceful-shutdown 10
+TimeoutStopSec=20
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,25 @@
+{
+  "name": "phone-assistant",
+  "version": "0.1.0",
+  "description": "Self-hosted Twilio and GPT-Live calls with MCP and a live monitor.",
+  "author": {
+    "name": "Igor Khokhlov"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Phone Assistant",
+    "shortDescription": "Call, follow live transcripts, and stay in control.",
+    "longDescription": "Connect to your own private deployment. Place outbound calls, navigate phone menus, send live context, and hang up.",
+    "developerName": "Igor Khokhlov",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Interactive"
+    ],
+    "defaultPrompt": [
+      "Call on my behalf and report what was said."
+    ]
+  }
+}

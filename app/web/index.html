@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="csrf-token" content="{{csrf}}"><title>Phone Assistant · Call monitor</title>
+<link rel="stylesheet" href="/live/style.css"><script src="/live/app.js" defer></script></head>
+<body><main class="monitor">
+<header><div><p class="eyebrow">PHONE ASSISTANT</p><h1>Call monitor</h1></div>
+<div class="header-actions"><button id="pairMobile" class="quiet">Pair mobile</button><button id="logout" class="quiet">Sign out</button></div></header>
+<section id="pairing" class="pairing" hidden><strong>Open this same site on your mobile, then enter the code below.</strong>
+<p>Enter this code within 15 minutes. It works once.</p><code id="pairCode"></code>
+<p><button id="closePairing" class="quiet">Close</button></p></section>
+<div id="connection" class="connection" role="status"><span class="dot"></span><span id="connectionText">Connecting to event stream…</span></div>
+<section class="call-card"><label for="calls">YOUR CALLS</label><select id="calls"><option value="">No calls yet</option></select>
+<div class="call-meta"><span id="status" class="badge">—</span><span id="duration">0:00</span></div>
+<p id="objective" class="objective">Select a call to view its conversation.</p></section>
+<section class="conversation"><div class="section-title"><h2>Conversation</h2><label class="follow"><input id="follow" type="checkbox" checked> Follow live</label></div>
+<p class="caption-note">Text arrives as GPT-Live transcribes it. Captions may trail speech or contain errors.</p>
+<div id="transcript" aria-label="Call transcript"><p class="empty">Waiting for conversation…</p></div></section>
+<footer class="controls"><p id="actionState" role="status">Hang up sends a direct command to the phone service.</p>
+<button id="hangup" class="hangup" disabled>Hang up call</button></footer>
+</main></body></html>

@@ -1,0 +1,11 @@
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+twilio==9.11.2
+openai[realtime]==3.22.1
+pydantic-settings==2.15.0
+python-multipart==0.0.32
+mcp==2.2.0
+standardwebhooks==1.0.0
+httpx==0.28.1
+httpx2==2.13.1
+python-dotenv==1.2.3
