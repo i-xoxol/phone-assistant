@@ -98,7 +98,7 @@ def test_presented_caller_id_reaches_voice_and_backend_without_owner_number(serv
     record = manager.voice_record(manager.db.by_twilio_sid(SID)['call_id'])
     caller = record['incoming_context']['caller']
     expected = presented if presented.startswith('+') else ''
-    assert caller == {'number': expected, 'available': bool(expected),
+    assert {k:caller[k] for k in ('number','available','source','identity_verified')} == {'number': expected, 'available': bool(expected),
                       'source': 'twilio_caller_id', 'identity_verified': False}
     config = session_config(manager.settings, record)
     for prompt in (config['instructions'], config['delegation']['responses']['instructions']):
@@ -296,8 +296,7 @@ def test_signed_incoming_media_uses_live_and_retains_caller_text(service,monkeyp
         ws.send_json({'event':'stop','streamSid':'MZ_INCOMING'})
         assert ws.receive_json()['event']=='clear'
     assert connection.config['delegation']['type']=='responses'
-    caller = {'number': '+12025550101', 'available': True,
-              'source': 'twilio_caller_id', 'identity_verified': False}
+    caller = manager.incoming_context(manager.db.get(cid))['caller']
     for prompt in (connection.config['instructions'],
                    connection.config['delegation']['responses']['instructions']):
         assert 'Current-call metadata: ' + json.dumps({'caller': caller}) in prompt

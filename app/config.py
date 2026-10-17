@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     call_history_enabled: bool = False
     call_history_days: int = Field(default=90,ge=1,le=365)
     inbound_answer_delay_seconds: int = Field(default=0,ge=0,le=30)
+    caller_id_trust_saved_contacts: bool = False
+    owner_speech_enabled: bool = False
+    owner_speech_model: str = 'gpt-realtime-2.1-mini'
+    owner_speech_voice: str = 'cedar'
 
     @field_validator('webhook_url')
     @classmethod

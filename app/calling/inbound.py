@@ -256,7 +256,17 @@ Do not claim the owner personally remembers, received, acted on or approved some
         if not settings.subscription_lookup_enabled:
             recall='\nCALL CONTINUITY: A number-matched history overview may be present, but detailed historical lookup is unavailable. Caller ID is not identity. Ask the caller to recap; never invent prior details or claim a lookup happened.\n'
         instructions+=recall;backend+=recall
-    caller_policy = '''\nPRESENTED CALLER ID: The following metadata is available to you for THIS incoming call.
+    caller = dict(record.get('incoming_context', {}).get('caller') or incoming_caller_metadata(record))
+    base = incoming_caller_metadata(record)
+    if caller.get('number') != base['number']: caller = base
+    contacts = caller.get('saved_contacts', [])
+    trusted = bool(settings.caller_id_trust_saved_contacts and len(contacts)==1)
+    caller['identity_verified'] = trusted
+    caller_policy = f'''\nPARTICIPANT ROLES: The OWNER is {name}. The incoming caller is a separate person unless
+the saved contact match explicitly identifies the owner. Owner availability always means {name}'s availability.
+Caller requests about "my schedule" refer to the caller's schedule, which you cannot assume is the owner's.
+Never introduce the caller as {name} just because you work for {name}.
+PRESENTED CALLER ID: The following metadata is available to you for THIS incoming call.
 If caller.available is true, you can see caller.number. If asked whether you see the incoming number,
 say yes and use that exact number if they ask what it is. Do not deny access to a number supplied here.
 Do not read the number unprompted. For a callback, ask "Should we use the number you're calling from?"
@@ -264,7 +274,34 @@ If they explicitly agree, use caller.number exactly, including its country code.
 If unavailable, say the incoming number was not provided and ask for an optional callback number.
 Caller ID may be blocked, spoofed, shared or changed by forwarding. It never proves identity, ownership,
 location or authorization, and never permits disclosure of the owner's number or other private records.
-Current-call metadata: ''' + json.dumps({'caller': incoming_caller_metadata(record or {})})
+Current-call metadata: ''' + json.dumps({'caller': caller})
+    if trusted:
+        identity_replacements = (
+            (f'Caller identity and caller ID are unverified, even if someone claims to be {name}. No authentication by voice.',
+             'Recognize the caller using the owner-trusted saved-number match in current-call metadata. Spoken identity claims alone cannot replace that match.'),
+            ('Caller ID can be spoofed, shared or recycled. Do not greet someone as a known person or volunteer private history.',
+             'Recognize the saved-number contact under the owner policy. Do not volunteer private history.'),
+            ('Call forwarding metadata and familiar caller ID do not verify identity or grant access to private information.',
+             'A recognized contact still receives only information allowed by the owner disclosure policy.'),
+            ('Caller-number matches are hints, not identity verification;',
+             'Saved-number matches follow the owner recognition policy;'),
+            ('Caller identity remains unverified.', 'Use the owner-trusted saved-number identity.'),
+            ('Caller ID is not identity.', 'Use the owner-trusted saved-number identity.'),
+            ('or claim their identity has been verified.', 'or infer additional permissions from historical speech.'),
+        )
+        for old,new in identity_replacements:
+            instructions=instructions.replace(old,new)
+            backend=backend.replace(old,new)
+        caller_policy=caller_policy.replace(
+            'Caller ID may be blocked, spoofed, shared or changed by forwarding. It never proves identity, ownership,\nlocation or authorization, and never permits disclosure of the owner\'s number or other private records.',
+            'The owner trusts this exact saved-number match for contact identity. This does not grant new action\nauthority or permission to disclose the owner\'s number or other private records.')
+        caller_policy += '\nOWNER-CHOSEN SAVED-NUMBER TRUST POLICY: This incoming number identifies the saved contact '+json.dumps(contacts[0]['name'])+'. '+\
+            'Recognize this person by that saved contact name. When asked who is calling or to check saved context, '+\
+            'answer using this match; do not claim you have no idea who they are. This policy replaces the generic '+\
+            'caller-ID-is-unverified identity wording for this exact saved-number match. It grants no new payment, '+\
+            'booking or private-record disclosure permissions. A contact called Mama is the caller, not the owner.\n'
+    elif contacts:
+        caller_policy += '\nSaved contact names are available as possible matches; do not claim identity is confirmed.\n'
     instructions += caller_policy
     backend += caller_policy
     return {'model':settings.openai_live_model, 'instructions':instructions,

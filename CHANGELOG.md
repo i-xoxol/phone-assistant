@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- On-demand natural OpenAI private speech with subscription Luna, owner-leg request handling and single-use announcements.
+- Prevent raw historical speech from being selected as coaching; revalidate source facts through audio delivery.
+- Optional trusted saved-number recognition with explicit owner/caller roles.
+
 - Pass presented incoming caller ID to both voice and tool-backend context, including message-only calls.
 - Let callers confirm using that number for callbacks; preserve unavailable-number handling and identity/disclosure limits.
 

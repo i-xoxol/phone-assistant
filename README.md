@@ -19,6 +19,8 @@ Owner agents can manage [office and mobile-reach hours](docs/operating-hours.md)
 Optional [callback memory and delayed pickup](docs/call-memory.md) help continue earlier conversations.
 Optional [observed handoffs](docs/voice-and-owner-contact.md) keep human-call
 transcription on, with a keypad choice of private Luna coaching or no coaching.
+Optional [natural private voice replies](docs/private-voice-coaching.md) let the owner
+ask Luna for current information during a handoff, with on-demand OpenAI speech.
 
 <p align="center">
   <a href="docs/getting-started.md">Set it up</a> ·

@@ -126,7 +126,7 @@ async def handle_owner_media(ws,tid,side):
                             m.db.human_caption(row['call_id'],'human-'+stream+'-'+item,speaker,
                                 caption['start'],offset+int((time.monotonic()-clock)*1000),caption['text'])
                         if kind.endswith('.completed'):
-                            m.observer.transcript_changed(tid)
+                            m.observer.transcript_changed(tid,speaker,caption['text'],'human-'+stream+'-'+item)
                 async def feed():
                     turns=AudioTurns()
                     while True:

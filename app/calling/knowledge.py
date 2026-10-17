@@ -66,6 +66,13 @@ class CallKnowledge:
                 CREATE INDEX IF NOT EXISTS concierge_facts_expiry ON concierge_facts(active,expires_at);
             ''')
 
+    def matching_contacts(self, number):
+        if not re.fullmatch(r'\+[1-9][0-9]{7,14}', number or ''):
+            return []
+        with self.db.connect() as conn:
+            return [dict(r) for r in conn.execute(
+                'SELECT name FROM concierge_contacts WHERE phone_number=? ORDER BY name LIMIT 3', (number,))]
+
     def contact(self, body: ContactUpdate):
         with self.db.connect() as conn:
             conn.execute('BEGIN IMMEDIATE')

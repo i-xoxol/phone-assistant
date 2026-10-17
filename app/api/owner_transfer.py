@@ -1,9 +1,26 @@
 from uuid import UUID
 from fastapi import APIRouter,HTTPException,Request,Response,WebSocket
 from app.api.twilio_webhooks import validated_form
+from twilio.request_validator import RequestValidator
 
 router=APIRouter(prefix='/twilio/owner-transfer')
 media_router=APIRouter(prefix='/twilio/owner-media')
+
+
+@router.get('/{transfer_id}/audio/{whisper_id}.wav')
+async def private_speech(transfer_id:UUID,whisper_id:UUID,request:Request):
+    m=request.app.state.manager
+    url=m.settings.public_url(request.url.path)
+    if request.url.query: url+='?'+request.url.query
+    validator=RequestValidator(m.settings.twilio_auth_token.get_secret_value())
+    if not validator.validate(url,{},request.headers.get('x-twilio-signature','')):
+        raise HTTPException(403,'Twilio signature required')
+    try:
+        audio=m.observer.audio_for(str(transfer_id),str(whisper_id))
+    except KeyError:
+        raise HTTPException(404,'Private speech unavailable') from None
+    return Response(audio,media_type='audio/wav',headers={'Cache-Control':'private, no-store',
+        'X-Content-Type-Options':'nosniff'})
 
 
 @media_router.websocket('/{transfer_id}/{side}')

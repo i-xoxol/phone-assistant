@@ -1,5 +1,8 @@
 # Voice selection and reaching the owner
 
+For natural private notes after accepting a transfer, see
+[private voice coaching](private-voice-coaching.md).
+
 The private monitor and MCP can change the default GPT-Live voice. A complex
 call can also make one screened attempt to connect the owner personally.
 

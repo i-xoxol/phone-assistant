@@ -60,6 +60,12 @@ class CallManager:
         context=self.context.for_call(record)
         if record.get('direction') == 'inbound':
             context['caller'] = incoming_caller_metadata(record)
+            matches = self.knowledge.matching_contacts(context['caller']['number'])
+            context['caller']['saved_contacts'] = matches
+            context['caller']['identity_verified'] = bool(len(matches)==1 and self.settings.caller_id_trust_saved_contacts)
+            context['caller']['identity_basis'] = ('owner_trusted_saved_number' if context['caller']['identity_verified']
+                                                   else 'presented_number')
+            context['owner'] = {'name': self.settings.caller_name, 'role': 'owner, not the incoming caller'}
         if self.settings.call_history_enabled:
             context['call_history']=self.memory.overview(record)
         return context
