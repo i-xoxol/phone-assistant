@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     inbound_mode: Literal['messages', 'concierge'] = 'messages'
     supervisor_wait_seconds: int = Field(default=45, ge=10, le=120)
     inbound_booking_allowed: bool = False
+    subscription_lookup_enabled: bool = False
+    subscription_lookup_timeout_seconds: int = Field(default=20, ge=5, le=40)
 
     @field_validator('webhook_url')
     @classmethod

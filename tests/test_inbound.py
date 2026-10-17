@@ -259,7 +259,8 @@ def test_signed_incoming_media_uses_live_and_retains_caller_text(service,monkeyp
         ws.send_json({'event':'stop','streamSid':'MZ_INCOMING'})
         assert ws.receive_json()['event']=='clear'
     assert connection.config['delegation']['type']=='responses'
-    assert 'Greet the caller' in connection.greeting['content']
+    assert connection.config['input'][0]['role']=='developer'
+    assert 'Greet the caller' in connection.config['input'][0]['content'][0]['text']
     result=manager.db.list_messages()['messages'][0]
     assert result['capture_method']=='transcript_fallback' and result['body']=='Hello.'
     assert not gateway.calls

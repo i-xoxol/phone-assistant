@@ -40,7 +40,7 @@ async def get_call_status(call_id: UUID, request: Request, refresh: bool = False
 @router.get('/{call_id}/result')
 def get_call_result(call_id: UUID, request: Request):
     try:
-        return request.app.state.manager.db.get(str(call_id))
+        return request.app.state.manager.result(str(call_id))
     except KeyError:
         raise HTTPException(404, 'Call not found') from None
 

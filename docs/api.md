@@ -1,5 +1,11 @@
 # API and tool reference
 
+Curated lookup endpoints also require the owner bearer token:
+`GET /concierge/knowledge?query=...`, `PUT /concierge/contacts`,
+`PUT /concierge/facts`, `POST /concierge/facts/{fact_id}/retire`.
+Their bodies mirror the directory MCP tools in [subscription lookup](subscription-lookup.md).
+`GET /calls/{call_id}/result` and MCP `get_call_result` include `lookup_requests`.
+
 [← README](../README.md) · [MCP connection](mcp.md) · [Webhooks](webhooks.md)
 
 Examples use fictional numbers and UUIDs. Replace them with an explicitly

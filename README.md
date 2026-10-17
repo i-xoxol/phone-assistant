@@ -50,6 +50,7 @@ recordings, account credentials, or access to the author's deployment.
 | **Read the result later** | SQLite preserves call state, transcript fragments, context updates, keypad history, and diagnostic events. |
 | **Answer incoming calls** | GPT-Live takes a confirmed message for a private inbox, with Rocky/MCP access. |
 | **Ask a supervisor for help** | An incoming concierge requests verified information over signed events; a connected agent replies into the call. |
+| **Use saved context and quick lookups** | Fresh free windows and anticipated notes work locally; optional subscription-backed GPT-6 Luna selects approved background facts. [Setup and boundaries →](docs/subscription-lookup.md) |
 
 > **Scope:** a small, single-owner service. Each person runs their own instance
 > with their own Twilio and OpenAI accounts. This is an MVP, not a hosted calling
@@ -67,6 +68,9 @@ flowchart LR
     Bridge <-->|G.711 μ-law / 8 kHz| Live[OpenAI GPT-Live]
     Live <-->|Optional delegation| Backend[Responses backend]
     Backend -->|Allowed function requests| Bridge
+    Bridge -->|Bounded background lookup| Luna[GPT-6 Luna / private Codex subscription]
+    DB -->|Selected phone-safe facts| Luna
+    Luna -->|Evidence IDs only| App
     App --> DB[(SQLite)]
     Bridge --> DB
     DB -->|SSE captions| Monitor[Private mobile monitor]
@@ -190,7 +194,7 @@ For ChatGPT, add your `/mcp` URL as a custom MCP plugin and select **OAuth**.
 Complete the owner approval page with the pairing code, install the plugin, and
 enable it in the conversation. Account/workspace availability varies.
 
-[Connection instructions and all nineteen tools →](docs/mcp.md)
+[Connection instructions and all twenty-three tools →](docs/mcp.md)
 
 ## Incoming calls and concierge mode
 

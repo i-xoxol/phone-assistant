@@ -100,6 +100,11 @@ class VoiceTools:
             if json.loads(item['arguments']) != {} or manager.db.get(self.bridge.call_id)['inbound_mode'] != 'concierge':
                 raise ValueError('Context lookup is unavailable')
             args = None
+        elif name == 'request_quick_lookup' and inbound:
+            from app.calling.lookup import LookupQuestion
+            args = LookupQuestion.model_validate_json(item['arguments'])
+            if manager.db.get(self.bridge.call_id)['inbound_mode'] != 'concierge':
+                raise ValueError('Lookup unavailable in message-only mode')
         elif name == 'press_digits' and not inbound:
             args = KeypadArguments.model_validate_json(item['arguments'])
         elif name == 'end_call':
@@ -118,7 +123,9 @@ class VoiceTools:
         if (manager.bridges.get(self.bridge.call_id) is not self.bridge or self.bridge.closing
                 or self.bridge.call_id in manager.stopping):
             raise ValueError('Voice session is no longer current')
-        if name == 'request_supervisor':
+        if name == 'request_quick_lookup':
+            result = await manager.lookup.request(self.bridge.call_id, args.question)
+        elif name == 'request_supervisor':
             result = await manager.request_supervisor(self.bridge.call_id, args.question)
         elif name == 'save_message':
             message = manager.db.save_message(self.bridge.call_id, args.message,

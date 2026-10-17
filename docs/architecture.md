@@ -176,6 +176,8 @@ Twilio also receives a provider-enforced connected-call duration limit, at most
 | `concierge_profile` | Owner-maintained incoming role and phone-safe facts |
 | `concierge_availability`, `concierge_free_slots` | Observation/expiry metadata and normalized free windows |
 | `expected_calls` | Expiring anticipated-call notes with optional unverified caller-number hints |
+| `concierge_contacts`, `concierge_facts` | Small curated directory and expiring facts approved for unverified callers |
+| `concierge_lookups` | Bounded lookup state, selected evidence IDs and sanitized delivery/failure diagnostics |
 
 OAuth clients/grants are stored in a separate database. SQLite WAL supports
 short concurrent reads and writes. Call state callbacks use sequence numbers
@@ -192,7 +194,12 @@ Incoming voice starts at `/twilio/incoming`, with account/number/direction and
 signature binding. It records the existing provider call, caps duration with
 `Calls.update`, and returns the same media bridge without dialing again.
 An incoming-specific prompt exposes `save_message`/`end_call`, plus
-`request_supervisor` in concierge mode. It never includes private outbound briefs.
+`request_supervisor` and `get_call_context` in concierge mode. An optional
+`request_quick_lookup` invokes a private GPT-6 Luna Codex worker with selected
+phone-safe evidence and executable capabilities disabled. It returns evidence
+IDs only; the application revalidates and injects exact stored facts into the
+same live session. [Subscription lookup details](subscription-lookup.md).
+It never includes private outbound briefs.
 Signed line-wide events deliver requests to a subscribed owner client. Trusted
 replies use the existing idempotent Live update channel. A 45-second default
 deadline falls back to message-taking; the service does not run Rocky itself.

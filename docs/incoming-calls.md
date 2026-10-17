@@ -95,7 +95,7 @@ Saving means durable storage, not that the owner read it or received a notificat
 ## 4. Connect the supervising agent
 
 Refresh/rescan the private MCP plugin after deployment. The server exposes
-nineteen tools, including saved context and availability (see concierge-context.md). Discover these native MCP Events for future calls:
+twenty-three tools, including saved context, availability and the curated directory (see concierge-context.md and subscription-lookup.md). Discover these native MCP Events for future calls:
 
 | Event | Arguments | Purpose |
 |---|---|---|

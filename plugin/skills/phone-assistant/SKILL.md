@@ -86,3 +86,20 @@ Only three matching notes enter the live snapshot; keep them concise and current
 Use `retire_expected_call` to stop disclosure without deleting the private record.
 Context changes notify ongoing incoming sessions to refresh; verify resulting
 speech rather than equating notification with understanding.
+
+Use `search_call_knowledge`, `set_call_contact`, `set_call_fact` and `retire_call_fact`
+to maintain a small curated directory. Store only owner-verified facts explicitly
+approved for disclosure to unverified callers, even facts associated with a contact.
+Never bulk-import an address book, private calendar, sensitive identifiers or secrets.
+Optional phone numbers are private routing metadata, excluded from the lookup model;
+name/number matching does not authenticate a caller. Facts expire within ninety days,
+are limited to 250 UTF-8 bytes each, and require approved_for_callers=true. Reuse
+contact/fact IDs for updates/retries, and retire obsolete facts. Dynamic free windows
+remain in set_inbound_availability, not long-lived facts.
+
+When enabled by the owner, a private GPT-6 Luna Codex worker selects exact approved
+facts while the voice conversation continues. It consumes Codex subscription allowance;
+voice and Responses delegation still use API billing. This worker cannot book, run
+your plugins or access your private files. No match/failure means supervisor help or
+a saved message. Inspect get_call_result.lookup_requests for evidence IDs, result
+and delivery state. A returned fact is not a booking or expanded authorization.

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-10-16
+
+- Optional GPT-6 Luna quick lookup through a private ChatGPT-signed-in Codex CLI.
+- Owner-curated contacts and expiring phone-safe facts, with four MCP tools and authenticated REST.
+- Evidence-ID selection only: server injects exact current stored facts, never model-authored commitments.
+- Disabled executable capabilities, strict deadlines, concurrency/usage caps and no API-key fallback.
+- Durable lookup diagnostics; retired/changed/expired facts and late answers are withheld.
+- Incoming greeting seeded at session start and explicit voice delegation rules.
+- Availability values fetched through the fresh local reader before being offered.
+
 ## 0.3.0 — 2026-10-16
 
 - Persistent agent-updatable incoming role, phone-safe context and anticipated-call notes.

@@ -307,22 +307,13 @@ class MediaBridge:
         primary_error = None
         try:
             record = self.manager.db.get(self.call_id)
-            incoming_greeting = (
-                "Ask what they need help with. Follow the supervised concierge policy: request verified "
-                "supervisor help for appointment questions, and offer message-taking if unavailable."
-                if record.get('inbound_mode') == 'concierge' else
-                "Explain that you can take a message, and ask what they would like to pass along. "
-                "Follow the incoming message-taking policy and save only after readback confirmation.")
-            instruction = (f"Greet the caller now as {self.manager.settings.caller_name}'s personal assistant. "
-                           + incoming_greeting
-                           if self.inbound else
-                           ('Continue the existing call after keypad navigation. Do not repeat your introduction. '
+            if not self.inbound:
+                instruction = ('Continue the existing call after keypad navigation. Do not repeat your introduction. '
                            'Listen for a human; stay silent during menus and hold music.' if record['transcript'] else
                            ('Listen first. Stay silent during automated menus; introduce yourself when a human answers.'
-                            if record.get('ivr_mode') else greeting_instruction(self.manager.settings))))
-            await self.connection.session.instructions.append(
-                content=instruction, delegation_id=None,
-                event_id='initial_greeting')
+                            if record.get('ivr_mode') else greeting_instruction(self.manager.settings)))
+                await self.connection.session.instructions.append(
+                    content=instruction, delegation_id=None, event_id='initial_greeting')
             done, _ = await asyncio.wait([receiver, sender, ending, updates], timeout=minutes * 60,
                                          return_when=asyncio.FIRST_COMPLETED)
             for task in done:

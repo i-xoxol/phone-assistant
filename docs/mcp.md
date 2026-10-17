@@ -6,6 +6,10 @@ The server uses the official MCP Python SDK and **Streamable HTTP** at `/mcp`.
 It shares the FastAPI process and call manager. There is no separate stdio
 process in this release.
 
+The server currently exposes 23 owner tools. The four curated-directory tools
+are documented in [subscription lookup](subscription-lookup.md). Enabling that
+worker adds a voice-internal reader, not a public agent execution tool.
+
 ## Enable and pair
 
 1. Complete the first-call setup and verify the public HTTPS origin.

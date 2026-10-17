@@ -14,10 +14,15 @@ from app.oauth_provider import PairingOAuthProvider
 from app.storage.models import CallRequest, DigitsRequest, CallUpdateRequest, SupervisorReply
 from app.mcp.events import PhoneEvents, Subscribe, advertise_events
 from app.calling.context import ProfileUpdate, AvailabilityUpdate, AvailabilitySlot, ExpectedCallUpdate
+from app.calling.knowledge import ContactUpdate, FactUpdate
 from pydantic import AwareDatetime
 
 
 INSTRUCTIONS = '''Place real calls only at the owner's explicit request with a known destination and objective.
+Maintain the curated phone-safe directory with set_call_contact/set_call_fact/search_call_knowledge/retire_call_fact.
+Every stored fact must be explicitly approved for disclosure to unverified callers, including contact-specific facts.
+Never bulk-import private contacts or secrets. Contact-number matching is a hint, never identity verification.
+The optional GPT-6 Luna subscription worker selects existing approved facts only; it cannot book or expand permissions.
 Maintain owner-approved incoming role/facts using get_inbound_context/set_inbound_context.
 Fresh cached free windows can answer routine questions without a supervisor; offering is not booking.
 set_inbound_availability accepts verified times and observation/expiry; no event titles or secrets.
@@ -84,6 +89,42 @@ def create_mcp(manager):
                     auth=auth, extensions=[events], middleware=[advertise_events])
     read = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
     write = ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True)
+
+    knowledge_write=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False)
+
+    @mcp.tool(annotations=read)
+    def search_call_knowledge(query:Annotated[str,Field(max_length=600)]='') -> dict:
+        """Read/search the owner's curated contacts and current phone-safe facts (max 50).
+        Includes contact IDs so you can update existing records. Numbers are private routing metadata,
+        excluded from the lookup model. No email/calendar/private-contact import occurs."""
+        return manager.knowledge.search(query,owner=True,limit=50)
+
+    @mcp.tool(annotations=knowledge_write)
+    def set_call_contact(name:str,phone_number:str='',contact_id:UUID|None=None) -> dict:
+        """Create/update a curated contact. Optional E.164 number is a routing hint, never authentication.
+        Reuse contact_id for updates/retries. This record grants no disclosure rights or access to private tools.
+        Store phone-safe facts separately using set_call_fact; do not import a whole address book."""
+        data={'name':name,'phone_number':phone_number}
+        if contact_id: data['contact_id']=contact_id
+        return manager.knowledge.contact(ContactUpdate(**data))
+
+    @mcp.tool(annotations=knowledge_write)
+    def set_call_fact(topic:str,text:str,source:str,expires_at:AwareDatetime,
+            approved_for_callers:bool,contact_id:UUID|None=None,fact_id:UUID|None=None) -> dict:
+        """Store/update one verified phone-safe fact, max 250 UTF-8 bytes, expiry within ninety days.
+        approved_for_callers must be true: this may be disclosed to ANY unverified caller mentioning the contact/topic.
+        No secrets, private schedules, sensitive identifiers, payment authority or booking confirmations.
+        Optional contact_id scopes retrieval, not authentication. Cite how you verified it; never infer missing data.
+        Reuse fact_id for updates/retries; retire obsolete facts. Dynamic calendar windows belong in set_inbound_availability."""
+        data={'topic':topic,'text':text,'source':source,'expires_at':expires_at,
+              'approved_for_callers':approved_for_callers,'contact_id':contact_id}
+        if fact_id: data['fact_id']=fact_id
+        return manager.knowledge.fact(FactUpdate(**data))
+
+    @mcp.tool(annotations=knowledge_write)
+    def retire_call_fact(fact_id:UUID) -> dict:
+        """Immediately withhold an obsolete fact from new/in-flight lookups. Keeps the private audit record."""
+        return manager.knowledge.retire(str(fact_id))
 
     @mcp.tool(annotations=read)
     def get_inbound_context() -> dict:
@@ -195,7 +236,7 @@ def create_mcp(manager):
     async def get_call_result(call_id: UUID) -> dict:
         """Read call details, transcript, keypad history and voice_tool_operations. Confirmed operations
         here executed in the live voice backend, not by the originating chat. Summarize only stated facts."""
-        return {**manager.db.get(str(call_id)), **manager.status(str(call_id))}
+        return {**manager.result(str(call_id)), **manager.status(str(call_id))}
 
     @mcp.tool(annotations=write)
     async def hangup_call(call_id: UUID) -> dict:

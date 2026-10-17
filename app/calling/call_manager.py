@@ -8,6 +8,8 @@ from app.storage.database import Database
 from app.storage.models import CallRequest, DigitsRequest, CallUpdateRequest, SupervisorReply, TERMINAL
 from app.events import EventHub
 from app.calling.context import ConciergeContext
+from app.calling.knowledge import CallKnowledge
+from app.calling.lookup import LookupService
 
 
 def normalize_status(status: str) -> str:
@@ -26,6 +28,11 @@ class CallManager:
         self.stopping = set()
         self.supervisor_tasks = {}
         self.context = ConciergeContext(database)
+        self.knowledge = CallKnowledge(database)
+        self.lookup = LookupService(self)
+
+    def result(self, call_id):
+        return {**self.db.get(call_id),'lookup_requests':self.lookup.list_for_call(call_id)}
 
     def voice_record(self,call_id):
         record=self.db.get(call_id)
@@ -103,6 +110,7 @@ class CallManager:
                 'note':'Reply injection is not proof the caller heard it. Verify transcript; never repeat a booking on a delivery retry.'}
 
     async def stop_supervision(self):
+        await self.lookup.stop()
         tasks = list(self.supervisor_tasks.values())
         for task in tasks:
             task.cancel()

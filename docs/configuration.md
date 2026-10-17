@@ -73,6 +73,12 @@ context; it is not a private note invisible to the voice agent.
 
 ## Secret handling
 
+The optional [GPT-6 Luna subscription lookup](subscription-lookup.md) uses
+`SUBSCRIPTION_LOOKUP_ENABLED=false` by default and a twenty-second
+`SUBSCRIPTION_LOOKUP_TIMEOUT_SECONDS` (allowed 5–40). It requires a private
+ChatGPT-signed-in Codex CLI on the service host. It never changes the voice or
+Responses backend billing and never falls back to an API key.
+
 Use the ignored `.env` during local development. On a Linux server set `.env`
 and the `data` directory to owner-only permissions. On Windows keep the checkout
 and runtime data under your account and avoid shared/synced secret stores.
