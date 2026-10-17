@@ -130,7 +130,9 @@ async def handle_owner_media(ws,tid,side):
                 async def feed():
                     turns=AudioTurns()
                     while True:
-                        message=await ws.receive_json()
+                        try: message=await ws.receive_json()
+                        except WebSocketDisconnect:
+                            await turns.commit(connection);return
                         if message.get('streamSid')!=stream: raise ValueError('Stream SID mismatch')
                         if message.get('event')=='stop':
                             await turns.commit(connection);return
@@ -145,9 +147,13 @@ async def handle_owner_media(ws,tid,side):
                 try:
                     done,_=await asyncio.wait((receiver,feeder),timeout=remaining_seconds(record),return_when=asyncio.FIRST_COMPLETED)
                     for task in done: task.result()
+                    if receiver in done and m.observer.current(m.transfer.get(tid)):
+                        raise RuntimeError('Transcription closed before telephone stream')
                     if feeder in done and not receiver.done():
                         # Let the final committed utterance arrive after the telephone closes.
-                        await asyncio.sleep(1)
+                        await asyncio.sleep(3)
+                    if m.observer.current(m.transfer.get(tid)):
+                        m.observer.stream_state(tid,side,'degraded')
                 finally:
                     receiver.cancel();feeder.cancel()
                     await asyncio.gather(receiver,feeder,return_exceptions=True)

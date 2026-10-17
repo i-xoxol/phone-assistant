@@ -287,14 +287,21 @@ class TransferObserver:
                 JOIN owner_transfers t USING(transfer_id) WHERE t.call_id=? ORDER BY w.created_at''',(cid,))]
 
     def call_ended(self,cid):
-        for key,task in list(self.streams.items()):
-            if key[0]==cid: task.cancel()
+        streams=[task for key,task in self.streams.items() if key[0]==cid]
+        if streams:
+            self.task(self.finish_captions(streams))
         row=self.m.transfer.for_call(cid)
         if row and row['transfer_id'] in self.coaches: self.coaches[row['transfer_id']].cancel()
         if row and row['strategy']=='conference' and row['child_sid']:
             try: asyncio.get_running_loop()
             except RuntimeError: return
             self.task(self.close_owner(row['child_sid']))
+
+    async def finish_captions(self,tasks):
+        # Allow final audio commits to produce their last caption after hangup.
+        await asyncio.sleep(4)
+        for task in tasks:
+            if not task.done(): task.cancel()
 
     async def close_owner(self,sid):
         try: await asyncio.wait_for(self.m.gateway.hangup(sid),8)
