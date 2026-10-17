@@ -32,8 +32,12 @@ access even if outbound `LIVE_TOOLS_ENABLED=false`.
 
 Restart with no active calls. There is one incoming conversation at a time,
 a connected-call cap of 1–15 minutes (default five), and an hourly admission
-limit (default ten). Twilio receives the duration limit before audio connects;
-failure to establish it closes the call. Limits reduce accidental usage, but
+limit (default ten). Once the signed media start confirms the call was answered,
+the app sets Twilio's duration limit before connecting GPT-Live. It must not
+modify a still-ringing call from the initial webhook (Twilio rejects that with
+21220). Status callbacks remain configured on the owned phone number; updating
+them per call would require a redirect URL. Failure to establish the cap closes
+the call and records safe numeric provider diagnostics. Limits reduce accidental usage, but
 are not a carrier-level spending cap. Set account budgets/alerts separately.
 
 ## 2. Route your owned Twilio number

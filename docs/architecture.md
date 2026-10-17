@@ -191,8 +191,9 @@ voice stream may still produce Twilio `completed`. Read `error_message`,
 ## Module map
 
 Incoming voice starts at `/twilio/incoming`, with account/number/direction and
-signature binding. It records the existing provider call, caps duration with
-`Calls.update`, and returns the same media bridge without dialing again.
+signature binding. It records the existing provider call and returns the media
+bridge without dialing again. After the signed media start confirms the call
+was answered, it caps duration with `Calls.update` before connecting GPT-Live.
 An incoming-specific prompt exposes `save_message`/`end_call`, plus
 `request_supervisor` and `get_call_context` in concierge mode. An optional
 `request_quick_lookup` invokes a private GPT-6 Luna Codex worker with selected

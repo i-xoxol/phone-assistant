@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 — 2026-10-16
+
+- Fix incoming calls being rejected before GPT-Live could start: apply the duration cap after the signed media start, when Twilio is in progress.
+- Preserve number-level status callbacks rather than attempting a per-call callback update without a redirect URL.
+- Record safe numeric Twilio failure codes and test call-state ordering, provider request fields and fail-closed setup.
+
 ## 0.4.0 — 2026-10-16
 
 - Optional GPT-6 Luna quick lookup through a private ChatGPT-signed-in Codex CLI.

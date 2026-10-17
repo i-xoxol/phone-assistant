@@ -8,6 +8,7 @@ from contextlib import suppress
 from fastapi import WebSocket, WebSocketDisconnect
 from openai import AsyncOpenAI
 from twilio.request_validator import RequestValidator
+from twilio.base.exceptions import TwilioRestException
 
 from app.calling.prompts import greeting_instruction, session_config
 from app.logging_config import log_event
@@ -31,6 +32,11 @@ def failure_details(exc):
     close = getattr(exc, 'rcvd', None) or getattr(exc, 'sent', None)
     if isinstance(getattr(close, 'code', None), int):
         details['close_code'] = close.code
+    provider = exc if isinstance(exc, TwilioRestException) else exc.__cause__
+    if isinstance(provider, TwilioRestException):
+        # Numeric codes help diagnose setup without logging URLs, caller data or tokens.
+        if isinstance(provider.code, int): details['twilio_error_code'] = provider.code
+        if isinstance(provider.status, int): details['twilio_http_status'] = provider.status
     return details
 
 
@@ -392,6 +398,12 @@ async def handle_media(websocket: WebSocket, call_id: str):
                 if message['event'] != 'connected':
                     raise ValueError('Expected Twilio start')
         manager.transition(call_id, 'in_progress')
+        if record.get('direction') == 'inbound':
+            try:
+                await asyncio.wait_for(manager.gateway.prepare_inbound(
+                    record['twilio_call_sid'], record['max_duration_minutes']), 5)
+            except Exception as exc:
+                raise BridgeFailure('incoming_duration_limit_failed') from exc
         async with live_client(settings) as client:
             async with client.live.connect() as connection:
                 record = manager.voice_record(call_id)

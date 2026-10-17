@@ -1,10 +1,21 @@
 from types import SimpleNamespace
+import asyncio
 from unittest.mock import Mock
 
 import pytest
 
 from app.config import Settings
+from app.calling.twilio_client import TwilioGateway
 from scripts.configure_inbound import configure
+
+
+def test_connected_inbound_cap_updates_only_duration_without_redirect_or_callback():
+    gateway=TwilioGateway(Settings(_env_file=None))
+    api=Mock()
+    gateway.client=lambda:api
+    asyncio.run(gateway.prepare_inbound('CA_TEST',5))
+    api.calls.assert_called_once_with('CA_TEST')
+    api.calls.return_value.update.assert_called_once_with(time_limit=300)
 
 
 def setup():

@@ -39,11 +39,11 @@ class TwilioGateway:
         return await asyncio.to_thread(self.client().calls(sid).fetch)
 
     async def prepare_inbound(self, sid: str, minutes: int):
-        # Changes the existing incoming call only; never dials or redirects it.
+        # Only call AFTER the signed media start proves Twilio answered.
+        # Number-level configuration already supplies the status callback.
+        # Changing a per-call callback requires Url and would redirect the call.
         return await asyncio.to_thread(self.client().calls(sid).update,
-            time_limit=minutes*60,
-            status_callback=self.settings.public_url('/twilio/incoming/status'),
-            status_callback_method='POST')
+            time_limit=minutes*60)
 
     async def press_digits(self, sid: str, call_id: str, digits: str):
         return await asyncio.to_thread(self.client().calls(sid).update,

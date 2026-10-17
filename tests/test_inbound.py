@@ -45,7 +45,7 @@ def test_signed_incoming_is_deduplicated_and_never_dials(service):
     assert record['max_duration_minutes']==5
     assert '/twilio/media/'+record['call_id'] in incoming(client,manager).text
     assert len(manager.db.recent_calls())==1 and not gateway.calls
-    assert gateway.incoming_preparations==[(SID,5),(SID,5)]
+    assert gateway.incoming_preparations==[]  # Still ringing; REST update must wait for media start.
     assert len([e for e in manager.db.events_after(0) if e['type']=='call.incoming'])==1
 
 
@@ -88,14 +88,25 @@ def test_private_or_bad_caller_id_grants_no_authority(service):
     assert {t['name'] for t in config['delegation']['responses']['tools']}=={'save_message','end_call'}
 
 
-def test_setup_failure_does_not_start_unbounded_voice(service):
+def test_setup_failure_does_not_start_unbounded_voice(service,monkeypatch):
     client,manager,gateway=service
-    async def fail(*args): raise RuntimeError('provider-secret-must-not-leak')
-    gateway.prepare_inbound=fail
     response=incoming(client,manager)
-    assert '<Hangup' in response.text and '<Connect' not in response.text
+    assert '<Connect' in response.text  # Answer first, then enforce the duration cap.
     record=manager.db.by_twilio_sid(SID)
+    from twilio.base.exceptions import TwilioRestException
+    async def fail(*args): raise TwilioRestException(400,'private-provider-url',msg='provider-secret',code=21220)
+    gateway.prepare_inbound=fail
+    def no_live(*args): raise AssertionError('Live must not start before duration cap')
+    monkeypatch.setattr('app.calling.live_session.live_client',no_live)
+    path='/twilio/media/'+record['call_id']
+    with client.websocket_connect(path,headers=stream_headers(path)) as ws:
+        ws.send_json({'event':'start','start':{'accountSid':'AC123','callSid':SID,'streamSid':'MZ_INBOUND',
+            'mediaFormat':{'encoding':'audio/x-mulaw','sampleRate':8000,'channels':1}}})
+        from starlette.websockets import WebSocketDisconnect
+        with pytest.raises(WebSocketDisconnect): ws.receive_json()
+    record=manager.db.get(record['call_id'])
     assert record['status']=='failed' and 'provider-secret' not in json.dumps(record)
+    assert record['voice_events'][-1]['twilio_error_code']==21220
 
 
 def test_messages_persist_correct_and_read_without_duplicate(service):
@@ -246,7 +257,11 @@ def test_signed_incoming_media_uses_live_and_retains_caller_text(service,monkeyp
     incoming(client,manager)
     cid=manager.db.by_twilio_sid(SID)['call_id']
     connection=FakeConnection()
-    monkeypatch.setattr('app.calling.live_session.live_client',lambda _:FakeClient(connection))
+    def connected_client(_):
+        assert manager.db.get(cid)['status']=='in_progress'
+        assert gateway.incoming_preparations==[(SID,5)]
+        return FakeClient(connection)
+    monkeypatch.setattr('app.calling.live_session.live_client',connected_client)
     with client.websocket_connect('/twilio/media/'+cid,headers=stream_headers('/twilio/media/'+cid,'wss')) as ws:
         ws.send_json({'event':'connected'})
         ws.send_json({'event':'start','streamSid':'MZ_INCOMING','start':{

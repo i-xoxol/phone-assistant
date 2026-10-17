@@ -46,16 +46,9 @@ async def incoming(request: Request):
         response = VoiceResponse()
         response.hangup()
         return Response(str(response), media_type='application/xml')
-    try:
-        await manager.gateway.prepare_inbound(sid, record['max_duration_minutes'])
-    except Exception as exc:
-        manager.db.voice_error(cid, 'Incoming duration limit could not be confirmed',
-                              {'reason':'incoming_setup_failed', 'error_type':type(exc).__name__})
-        manager.transition(cid, 'failed')
-        response = VoiceResponse()
-        response.say('Sorry, I cannot take a message right now. Please try again later.')
-        response.hangup()
-        return Response(str(response), media_type='application/xml')
+    # Twilio is still ringing while it fetches these instructions. Calls.update
+    # rejects that state (21220). Establish the stream first; handle_media then
+    # sets the provider duration cap before connecting any paid Live session.
     log_event('incoming_call_accepted', call_id=cid)
     return Response(stream_twiml(settings, cid), media_type='application/xml')
 
