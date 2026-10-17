@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Restore immediate incoming greetings after caller personalization, including a real-provider silent-caller check in English and Ukrainian.
 - Prepare caller context with Luna during pre-answer ringing, without extending the pickup delay.
 - Persist per-contact greeting languages and personalize known callers while preserving owner/caller roles.
 

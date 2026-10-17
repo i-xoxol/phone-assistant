@@ -1,5 +1,6 @@
 import asyncio
 import json
+import pytest
 from datetime import timedelta
 
 from app.calling.context import utcnow
@@ -7,6 +8,22 @@ from app.calling.knowledge import ContactUpdate,FactUpdate
 from app.calling.lookup import Selection
 from app.calling.prompts import session_config
 from tests.test_calls import service
+
+
+@pytest.mark.parametrize('variant',['unknown','closed','resume'])
+def test_every_incoming_opening_starts_without_caller_speech(service,variant):
+    _,m,_=service
+    cid=m.db.create_inbound('CA_STARTUP','+12025550102',5,10,'messages')
+    record=m.voice_record(cid)
+    if variant=='closed': record['closed_announcement']='Office is closed.'
+    if variant=='resume': record['transcript']=[{'speaker':'callee','text':'Hello'}]
+    config=session_config(m.settings,record)
+    opening=config['input'][0]['content'][0]['text']
+    assert opening.startswith('Begin speaking immediately when this session starts')
+    assert 'Do not wait for caller speech' in opening
+    assert 'before waiting for the caller' in config['instructions']
+    if variant=='closed': assert 'Do not repeat it' in opening
+    if variant=='resume': assert 'without a new introduction' in opening
 
 
 def setup(m):
@@ -37,6 +54,8 @@ def test_luna_prepares_context_before_media_and_never_changes_pickup_delay(servi
     assert 'Speak Ukrainian from the very first word' in opening
     assert "owner's family, not yours" in opening
     assert 'Mama' in opening and m.settings.caller_name in opening
+    assert opening.startswith('Begin speaking immediately when this session starts')
+    assert 'Do not wait for caller speech' in opening
     assert 'Prepared background for this caller' in config['instructions']
     assert len(m.lookup.list_for_call(cid))==1
     assert m.settings.inbound_answer_delay_seconds==8 and not g.calls
@@ -54,6 +73,7 @@ def test_preparation_timeout_still_greets_known_caller_in_preferred_language(ser
     assert m.lookup.list_for_call(cid)[0]['error_code']=='timeout'
     opening=session_config(m.settings,m.voice_record(cid))['input'][0]['content'][0]['text']
     assert 'Speak Ukrainian from the very first word' in opening
+    assert 'even if the caller is silent' in opening
 
 
 def test_contact_language_updates_preserve_unmentioned_preference_and_other_callers(service):

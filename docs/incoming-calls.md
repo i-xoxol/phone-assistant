@@ -188,6 +188,16 @@ Caller ID never verifies identity or authorizes access to private information.
 
 ## Acceptance test
 
+Run `python -m scripts.check_silent_greeting` from the project directory with
+your `.env` to verify the assistant speaks first while the caller stays silent.
+This uses the actual voice API with synthetic contacts and no telephone gateway.
+It checks speech audio rather than only inspecting the prompt. The startup
+opening explicitly requests immediate speech on every incoming path, including
+personalized greetings, closed-hours message-taking and returning from handoff.
+After resuming a call, it continues without repeating the introduction.
+Startup speech remains model-driven; this check is an acceptance test, not a
+guarantee of future model behavior.
+
 Run `python -m scripts.check_inbound_voice` on the service host to exercise
 actual Live/Responses tools and reply injection with simulated caller,
 supervisor and phone. It incurs API usage, never dials, and does not establish

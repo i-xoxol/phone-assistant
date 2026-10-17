@@ -65,6 +65,7 @@ These use your own configured account and may incur OpenAI usage:
 | `python -m scripts.check_live_page` | Public browser login and SSE heartbeat; temporary session revoked |
 | `python -m scripts.check_mcp` | Public OAuth MCP catalog and saved retrieval; temporary diagnostic grant revoked |
 | `python -m scripts.check_inbound_voice` | Actual Live concierge/message functions and reply acknowledgment; simulated caller, supervisor and telephone |
+| `python -m scripts.check_silent_greeting` | Four real Live sessions fed only silence; checks greeting speech audio in English and Ukrainian with synthetic contacts; never dials |
 
 Run checks **on the service host** when they need to use its database and
 pairing state. `check_mcp` reads the latest call if one exists but avoids printing

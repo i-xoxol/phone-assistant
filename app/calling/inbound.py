@@ -319,6 +319,10 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
     if prepared:
         instructions+='\nPrepared background for this caller: '+json.dumps(prepared,ensure_ascii=False)+\
             '\nHistorical material is internal recall only; never recite it in a greeting. Ask the caller what they need.'
+    # Apply after personalization/closed-hours/resume branches so none can drop
+    # the proactive opening. Incoming callers commonly wait for us to speak.
+    opening='Begin speaking immediately when this session starts, even if the caller is silent. Do not wait for caller speech. '+opening+' Then pause and listen.'
+    instructions+='\nFIRST TURN: Deliver the startup opening immediately, before waiting for the caller to speak. Do not delegate the greeting or wait for background lookup results. After the opening, listen and allow normal interruptions.'
     return {'model':settings.openai_live_model, 'instructions':instructions,
         'input':[{'type':'message','role':'developer','content':[{'type':'input_text','text':opening}]}],
         'audio':{'format':{'type':'audio/pcmu', 'rate':8000}, 'output':{'voice':record.get('voice_name') or settings.openai_voice}},
