@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from app.config import Settings
 from app.api.calls import router as calls_router
 from app.api.messages import router as messages_router, supervisor_router
+from app.api.concierge import router as concierge_router
 from app.api.twilio_webhooks import router as twilio_router
 from app.calling.call_manager import CallManager
 from app.calling.twilio_client import TwilioGateway
@@ -41,6 +42,7 @@ def create_app(settings: Settings | None = None, *, gateway=None) -> FastAPI:
     app.include_router(calls_router)
     app.include_router(messages_router)
     app.include_router(supervisor_router)
+    app.include_router(concierge_router)
     app.include_router(twilio_router)
     app.include_router(live_router)
 

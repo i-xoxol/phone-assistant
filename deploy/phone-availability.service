@@ -1,0 +1,14 @@
+[Unit]
+Description=Refresh Phone Assistant routine availability (read only)
+After=network-online.target phone-agent.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/apps/phone-assistant
+# Customize the existing credential path. Do not put tokens or client secrets in the unit.
+ExecStart=%h/apps/phone-assistant/.venv/bin/python -m scripts.sync_google_availability --token-file %h/private/google_token.json
+TimeoutStartSec=120
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+

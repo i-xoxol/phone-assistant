@@ -104,6 +104,11 @@ allowing arbitrary Host headers.
 | `mark_message_read` | Marks one message read; safe to repeat |
 | `list_call_requests` | Lists pending, unexpired concierge requests across incoming calls |
 | `respond_to_call_request` | Returns verified information or an authorized booking result into the live call |
+| `get_inbound_context` | Reads phone-safe role/facts, availability freshness and anticipated-call notes |
+| `set_inbound_context` | Updates the default role and phone-safe facts |
+| `set_inbound_availability` | Replaces verified free windows with observation time and expiry |
+| `expect_incoming_call` | Adds/updates an expiring phone-safe anticipated-call note |
+| `retire_expected_call` | Stops exposing an anticipated-call note |
 
 Tool annotations identify read-only versus side-effecting actions. Client
 confirmation settings remain important: authentication proves client access,

@@ -7,6 +7,7 @@ from app.logging_config import log_event
 from app.storage.database import Database
 from app.storage.models import CallRequest, DigitsRequest, CallUpdateRequest, SupervisorReply, TERMINAL
 from app.events import EventHub
+from app.calling.context import ConciergeContext
 
 
 def normalize_status(status: str) -> str:
@@ -24,6 +25,25 @@ class CallManager:
         self.tool_tasks = set()
         self.stopping = set()
         self.supervisor_tasks = {}
+        self.context = ConciergeContext(database)
+
+    def voice_record(self,call_id):
+        record=self.db.get(call_id)
+        if record.get('direction')=='inbound':
+            record['incoming_context']=self.context.for_call(record)
+        return record
+
+    async def context_changed(self):
+        """Notify live incoming sessions to fetch the latest safe context, without a restart."""
+        for cid,bridge in list(self.bridges.items()):
+            if not bridge.inbound or bridge.closing or bridge.end_requested.is_set():
+                continue
+            try:
+                await self.send_call_update(cid,CallUpdateRequest(mode='instructions',update_id=uuid4(),
+                    content='Owner-maintained call context changed. Before relying on availability or anticipated-call details, '
+                            'delegate to get_call_context for the current snapshot. Existing authorization limits still apply.'))
+            except ValueError:
+                log_event('context_refresh_not_injected',call_id=cid)
 
     async def request_supervisor(self, call_id: str, question: str) -> dict:
         if call_id in self.stopping:
@@ -40,7 +60,8 @@ class CallManager:
             'live_supervisor_available':available,
             'instruction': ('Request saved for the verified supervisor connection. Keep listening; do not invent an answer. '
                 'Reply arrives as an owner update. If delayed, take a message.' if available else
-                'No active live supervisor subscription. Do not promise a live lookup or booking. Take a message for follow-up.')}
+                'No active live supervisor subscription. Do not promise a live lookup or booking. '
+                'Fresh owner-approved cached facts may answer routine questions; otherwise take a message for follow-up.')}
 
     async def wait_for_supervisor(self, request_id: str):
         request = self.db.supervisor_request(request_id)

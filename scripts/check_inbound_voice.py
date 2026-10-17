@@ -13,6 +13,7 @@ from app.calling.live_session import MediaBridge, live_client, start_session
 from app.calling.prompts import session_config
 from app.storage.database import Database
 from app.storage.models import SupervisorReply
+from app.calling.context import ProfileUpdate
 
 
 class NoTelephone:
@@ -34,16 +35,24 @@ async def check():
     with tempfile.TemporaryDirectory() as directory:
         manager=CallManager(settings,Database(Path(directory)/'check.sqlite3'),NoTelephone())
         manager.mcp_events=SimpleNamespace(ready_for=lambda _:True)  # simulated supervisor only
+        manager.context.set_profile(ProfileUpdate(role='Test concierge',context='Phone-safe synthetic test context.'))
         cid=manager.db.create_inbound('CA_LOCAL_CHECK','+12025550101',5,10,'concierge')
         manager.transition(cid,'in_progress')
         async with live_client(settings) as client:
             async with client.live.connect() as connection:
-                await start_session(connection,session_config(settings,manager.db.get(cid)))
+                await start_session(connection,session_config(settings,manager.voice_record(cid)))
                 print(json.dumps({'incoming_live_session_started':True}),flush=True)
                 playback=SimulatedPlayback()
                 bridge=MediaBridge(playback,connection,manager,cid,'MZ_LOCAL_CHECK')
                 playback.bridge=bridge
                 manager.attach_bridge(cid,bridge)
+                context_reads=[]
+                operation=bridge.tools.operation
+                async def observed_operation(item):
+                    result=await operation(item)
+                    if item['name']=='get_call_context': context_reads.append(True)
+                    return result
+                bridge.tools.operation=observed_operation
                 receiver=asyncio.create_task(bridge.receive_live())
                 updates=asyncio.create_task(bridge.pump_updates())
                 async def silence():
@@ -64,8 +73,12 @@ async def check():
                         'content':[{'type':'input_text','text':text}]})
                     await connection.response.create()
                 try:
-                    await input_text('Simulated incoming caller Casey asks what time is approved for an appointment. '
-                        'Please call request_supervisor to ask for verified availability. No booking or money is authorized.')
+                    await input_text('Simulated incoming caller Casey asks about availability. First use get_call_context '
+                        'to check current local context. No booking, money, or supervisor request yet.')
+                    await wait_for(lambda:bool(context_reads))
+                    print(json.dumps({'actual_live_context_reader':True}),flush=True)
+                    await input_text('Now the simulated caller asks for appointment information missing from the local context. '
+                        'Please call request_supervisor to ask for verified assistance. No booking or money is authorized.')
                     await wait_for(lambda:bool(manager.db.list_supervisor_requests(call_id=cid)))
                     print(json.dumps({'actual_supervisor_request_received':True}),flush=True)
                     request=manager.db.list_supervisor_requests(call_id=cid)[0]
@@ -80,7 +93,8 @@ async def check():
                     if manager.tool_tasks:
                         await asyncio.gather(*manager.tool_tasks)
                     print(json.dumps({'actual_live_request_tool':True,'simulated_supervisor_reply_acknowledged':True,
-                        'actual_live_message_tool':True,'no_phone_dialed':True,'real_rocky_subscription_tested':False}),flush=True)
+                        'actual_live_message_tool':True,'actual_live_context_reader':True,
+                        'no_phone_dialed':True,'real_rocky_subscription_tested':False}),flush=True)
                 finally:
                     bridge.closing=True
                     feeder.cancel()

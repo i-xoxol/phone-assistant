@@ -1,6 +1,6 @@
 {
   "name": "phone-assistant",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Self-hosted Twilio and GPT-Live calls with MCP and a live monitor.",
   "author": {
     "name": "Igor Khokhlov"

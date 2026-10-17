@@ -1,0 +1,11 @@
+[Unit]
+Description=Keep phone-safe calendar availability fresh
+
+[Timer]
+OnBootSec=90
+OnUnitInactiveSec=5min
+AccuracySec=10s
+Unit=phone-availability.service
+
+[Install]
+WantedBy=timers.target

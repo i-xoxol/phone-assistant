@@ -190,7 +190,7 @@ For ChatGPT, add your `/mcp` URL as a custom MCP plugin and select **OAuth**.
 Complete the owner approval page with the pairing code, install the plugin, and
 enable it in the conversation. Account/workspace availability varies.
 
-[Connection instructions and all fourteen tools →](docs/mcp.md)
+[Connection instructions and all nineteen tools →](docs/mcp.md)
 
 ## Incoming calls and concierge mode
 
@@ -205,6 +205,13 @@ installing the plugin alone does not keep an agent listening. Missing or delayed
 help falls back to taking a message. Booking confirmation is disabled by default
 and requires explicit owner authorization plus supervisor verification.
 [Incoming setup, routing, permissions and acceptance tests →](docs/incoming-calls.md)
+
+Rocky can also maintain a saved role, phone-safe facts and anticipated-call notes.
+An optional calendar job refreshes free windows every five minutes; fresh local
+context lets the voice assistant answer routine questions while Rocky is offline
+or checking something else. Friends' later-hour options can remain a supervisor
+decision or be explicitly approved for an anticipated call.
+[Saved context and automatic availability →](docs/concierge-context.md)
 
 ## Your phone as a live control panel
 

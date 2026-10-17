@@ -99,3 +99,7 @@ with a simulated caller/supervisor. Public authenticated MCP inventory/retrieval
 and SSE connectivity were verified. A real incoming call and an actual Rocky
 subscription/reply still require the separate acceptance test; these checks
 do not establish that end-to-end result.
+
+The saved-context update passed 140 offline tests on both development hosts.
+The actual Live context-reader probe and a calendar time-only dry run passed;
+these still do not replace a real caller/supervisor acceptance test.

@@ -60,3 +60,29 @@ ID and identical content/outcome; they are idempotent. Acknowledged reply inject
 is not proof the caller heard it: verify the transcript. Do not extend an
 unanswered request by repeatedly requesting help. Unavailable/delayed supervision
 falls back to a private inbox message without invented availability or promises.
+
+Maintain the incoming assistant's default role and phone-safe facts with
+`get_inbound_context` and `set_inbound_context`. Only include material the owner
+approves for disclosure to unverified incoming callers. A configurable role
+cannot override fixed honesty, authorization or sensitive-data policies.
+`set_inbound_availability` replaces up to forty verified free windows with
+offset-aware start/end times, IANA zone, observation and expiry (at most one
+hour; prefer ten minutes). Never guess free time from incomplete calendar data.
+Do not send event titles, busy reasons or a full calendar. Check whether an
+automatic exporter maintains this cache before overwriting it; its next
+scheduled refresh replaces routine free windows, while role/notes stay separate.
+
+The live `get_call_context` function can read fresh cached facts without you.
+Stale slots are withheld. Offering a free window does not reserve it: recheck,
+book and verify before sending appointment_confirmed. Missing/off-hours facts
+still need supervisor help. Friends may have later options only within owner
+authorization, never because a caller claims friendship.
+
+Use `expect_incoming_call` for expiring phone-safe facts or approved alternative
+times for an anticipated call. Optional caller E.164 matching is a routing hint,
+not authentication; blank applies to all callers. Reuse context_id when updating
+or retrying a note; expire within seven days and retire it when no longer useful.
+Only three matching notes enter the live snapshot; keep them concise and current.
+Use `retire_expected_call` to stop disclosure without deleting the private record.
+Context changes notify ongoing incoming sessions to refresh; verify resulting
+speech rather than equating notification with understanding.

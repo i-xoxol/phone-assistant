@@ -78,7 +78,7 @@ async function loadCall(id) {
 async function handleEvent(event) {
   lastSeen=Date.now(); connection('Live event stream connected',true);
   const data=JSON.parse(event.data);
-  if (data.type.startsWith('call.supervisor_')) {
+  if (data.type.startsWith('call.supervisor_') || data.type==='call.context_update') {
     const snapshot=await api('/live/bootstrap'); renderRequests(snapshot);
   }
   if (data.type.startsWith('message.')) {
@@ -86,7 +86,7 @@ async function handleEvent(event) {
     if (data.type==='message.received' || data.type==='message.updated') $('inbox').open=true;
   }
   if (data.type==='call.created') {
-    const snapshot=await api('/live/bootstrap'); calls=snapshot.calls;
+    const snapshot=await api('/live/bootstrap'); calls=snapshot.calls; renderRequests(snapshot);
     if (!call || terminal.has(call.status)) { selected=data.call_id; await loadCall(selected); }
     showList();
   }
@@ -154,7 +154,11 @@ function renderRequests(data) {
   $('supervisorPanel').hidden=!data.concierge?.enabled || data.concierge.mode!=='concierge';
   $('supervisorState').textContent=data.concierge?.live_supervisor?
     'Verified live supervisor subscription is active. Replies still require actual client processing.':
-    'No active live supervisor subscription. Calls can take messages; automatic Rocky supervision is not connected.';
+    'No active live supervisor subscription. Fresh saved context can answer routine questions; other requests become messages. Automatic Rocky supervision is not connected.';
+  const context=data.concierge;
+  $('contextState').textContent=(context?.role?context.role+' · ':'')+(context?.availability_fresh?
+    context.availability_windows+' cached free windows · expires '+new Date(context.availability_expires_at).toLocaleTimeString():
+    'No fresh cached availability. A supervisor is needed for time options.');
   $('requests').replaceChildren();
   for (const request of data.requests || []) {
     const item=document.createElement('article'); item.className='message-card';

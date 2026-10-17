@@ -42,7 +42,8 @@ async def check():
                     names = [t.name for t in (await session.list_tools()).tools]
                     assert set(names) == {'place_call','get_call_status','get_call_result','hangup_call','press_digits',
                         'subscribe_call_events','get_call_event_subscriptions','unsubscribe_call_events','send_call_update',
-                        'list_messages','get_message','mark_message_read','list_call_requests','respond_to_call_request'}
+                        'list_messages','get_message','mark_message_read','list_call_requests','respond_to_call_request',
+                        'get_inbound_context','set_inbound_context','set_inbound_availability','expect_incoming_call','retire_expected_call'}
                     db = Database(settings.database_path)
                     with db.connect() as conn:
                         row = conn.execute('SELECT call_id FROM calls ORDER BY created_at DESC LIMIT 1').fetchone()

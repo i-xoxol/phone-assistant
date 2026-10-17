@@ -173,6 +173,9 @@ Twilio also receives a provider-enforced connected-call duration limit, at most
 | `mcp_event_subscriptions` | OAuth-owned subscriptions, secrets, cursors, expiry, counters |
 | `messages` | One confirmed incoming message per call, or labelled raw transcript fallback; read state |
 | `supervisor_requests` | Incoming concierge questions, deadlines, idempotent trusted replies and delivery state |
+| `concierge_profile` | Owner-maintained incoming role and phone-safe facts |
+| `concierge_availability`, `concierge_free_slots` | Observation/expiry metadata and normalized free windows |
+| `expected_calls` | Expiring anticipated-call notes with optional unverified caller-number hints |
 
 OAuth clients/grants are stored in a separate database. SQLite WAL supports
 short concurrent reads and writes. Call state callbacks use sequence numbers

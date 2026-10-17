@@ -9,3 +9,4 @@ standardwebhooks==1.0.0
 httpx==0.28.1
 httpx2==2.13.1
 python-dotenv==1.2.3
+tzdata==2026.5

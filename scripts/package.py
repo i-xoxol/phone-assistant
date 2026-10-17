@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FOLDERS = ('app', 'scripts', 'tests', 'deploy', 'docs', 'examples', 'plugin')
 FILES = ('requirements.txt', 'requirements-dev.txt', 'README.md', '.env.example',
          '.gitignore', '.gitattributes', '.editorconfig', 'run.py', 'LICENSE', 'SECURITY.md', 'CONTRIBUTING.md', 'CHANGELOG.md')
-ALLOWED_SUFFIXES = {'.py', '.ps1', '.md', '.json', '.html', '.css', '.js', '.svg', '.service'}
+ALLOWED_SUFFIXES = {'.py', '.ps1', '.md', '.json', '.html', '.css', '.js', '.svg', '.service', '.timer'}
 
 
 def source_files():

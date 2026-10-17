@@ -229,7 +229,7 @@ def test_concierge_never_gets_calendar_tools_or_unapproved_booking(service):
     incoming(client,manager)
     record=manager.db.by_twilio_sid(SID)
     config=session_config(manager.settings,record)
-    assert {t['name'] for t in config['delegation']['responses']['tools']}=={'request_supervisor','save_message','end_call'}
+    assert {t['name'] for t in config['delegation']['responses']['tools']}=={'get_call_context','request_supervisor','save_message','end_call'}
     assert 'No standing booking authorization' in config['instructions']
     async def exercise():
         req=await manager.request_supervisor(record['call_id'],'Can an appointment be confirmed?')

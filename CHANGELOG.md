@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 — 2026-10-16
+
+- Persistent agent-updatable incoming role, phone-safe context and anticipated-call notes.
+- Freshness-bounded free windows and a read-only live context tool that works without Rocky.
+- Five additional owner MCP tools and authenticated REST context endpoints.
+- Optional automatic Google calendar availability refresh, using existing event-read permissions.
+- In-memory credential refresh, time-only event fields, DST/all-day handling and stale-mirror gating.
+- Useful clarification while awaiting supervisor help; bookings still require verified supervisor completion.
+
 ## 0.2.0 — 2026-10-16
 
 - Incoming GPT-Live calls with a private message inbox and Rocky/MCP access.

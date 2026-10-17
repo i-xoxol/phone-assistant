@@ -403,7 +403,7 @@ async def handle_media(websocket: WebSocket, call_id: str):
         manager.transition(call_id, 'in_progress')
         async with live_client(settings) as client:
             async with client.live.connect() as connection:
-                record = manager.db.get(call_id)
+                record = manager.voice_record(call_id)
                 started = await start_session(connection, session_config(settings, record))
                 manager.db.restore_updates(call_id, record['call_updates'])
                 manager.db.update(call_id, openai_session_id=started['session']['id'], voice_finalized=0)

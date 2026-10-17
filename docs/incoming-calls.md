@@ -27,7 +27,7 @@ INBOUND_BOOKING_ALLOWED=false
 
 Use `INBOUND_MODE=messages` for message-taking only. Incoming mode always uses
 Live's Responses delegation for `save_message` and `end_call`; concierge mode
-adds `request_supervisor`. It therefore needs both Live and Responses write
+adds `request_supervisor` and `get_call_context`. It therefore needs both Live and Responses write
 access even if outbound `LIVE_TOOLS_ENABLED=false`.
 
 Restart with no active calls. There is one incoming conversation at a time,
@@ -95,7 +95,7 @@ Saving means durable storage, not that the owner read it or received a notificat
 ## 4. Connect the supervising agent
 
 Refresh/rescan the private MCP plugin after deployment. The server exposes
-fourteen tools. Discover these native MCP Events for future calls:
+nineteen tools, including saved context and availability (see concierge-context.md). Discover these native MCP Events for future calls:
 
 | Event | Arguments | Purpose |
 |---|---|---|

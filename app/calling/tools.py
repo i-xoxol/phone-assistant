@@ -96,12 +96,22 @@ class VoiceTools:
             args = SupervisorArguments.model_validate_json(item['arguments'])
             if manager.db.get(self.bridge.call_id)['inbound_mode'] != 'concierge':
                 raise ValueError('Supervisor unavailable in message-only mode')
+        elif name == 'get_call_context' and inbound:
+            if json.loads(item['arguments']) != {} or manager.db.get(self.bridge.call_id)['inbound_mode'] != 'concierge':
+                raise ValueError('Context lookup is unavailable')
+            args = None
         elif name == 'press_digits' and not inbound:
             args = KeypadArguments.model_validate_json(item['arguments'])
         elif name == 'end_call':
             args = EndArguments.model_validate_json(item['arguments'])
         else:
             raise ValueError('Tool unavailable')
+        if name == 'get_call_context':
+            if (manager.bridges.get(self.bridge.call_id) is not self.bridge or self.bridge.closing
+                    or self.bridge.call_id in manager.stopping):
+                raise ValueError('Voice session is no longer current')
+            # Read-only refreshes must not exhaust the side-effect operation budget.
+            return manager.context.for_call(manager.db.get(self.bridge.call_id))
         # Atomic claim survives duplicate events and media-session reconnects.
         if not manager.db.claim_tool(self.bridge.call_id, item['call_id'], name):
             return {'status': 'already_requested', 'instruction': 'Do not repeat. Check the recorded keypad/call status.'}

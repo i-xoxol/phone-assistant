@@ -104,12 +104,18 @@ def bootstrap(request: Request, call_id: UUID | None = None):
     db = request.app.state.manager.db
     # Read head first. Any concurrent arrivals are replayed; source IDs deduplicate.
     cursor = db.event_head()
+    saved=request.app.state.manager.context.snapshot()
+    availability=saved['availability']
     try:
         return {'cursor': cursor, 'calls': db.recent_calls(), 'call': db.get(str(call_id)) if call_id else None,
                 'inbox':db.list_messages(limit=20),
                 'requests':db.list_supervisor_requests(call_id=str(call_id) if call_id else None),
                 'concierge':{'enabled':request.app.state.settings.inbound_enabled,
                     'mode':request.app.state.settings.inbound_mode,
+                    'role':saved['profile']['role'],
+                    'availability_fresh':bool(availability and availability['fresh']),
+                    'availability_windows':len(availability['slots']) if availability else 0,
+                    'availability_expires_at':availability['expires_at'] if availability else None,
                     'live_supervisor':bool(getattr(request.app.state.manager, 'mcp_events', None) and
                         request.app.state.manager.mcp_events.ready_for('call.supervisor_requested'))}}
     except KeyError:
