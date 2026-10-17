@@ -1,5 +1,6 @@
 """Small owner-curated directory. Every fact is approved for unverified callers."""
 import re
+from typing import Literal
 from datetime import timedelta
 from uuid import UUID, uuid4
 
@@ -14,6 +15,8 @@ class ContactUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     phone_number: str = Field(default='', pattern=r'^(?:|\+[1-9][0-9]{7,14})$')
     preferred_language: str | None = Field(default=None,pattern=r'^(?:|[a-z]{2,3}(?:-[A-Z]{2})?)$',max_length=12)
+    preferred_name: str | None = Field(default=None,max_length=120)
+    conversation_style: Literal['familiar','formal'] | None = None
 
 
 class FactUpdate(BaseModel):
@@ -68,6 +71,11 @@ class CallKnowledge:
                 CREATE TABLE IF NOT EXISTS concierge_contact_preferences (
                     contact_id TEXT PRIMARY KEY REFERENCES concierge_contacts(contact_id),
                     preferred_language TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS concierge_contact_styles (
+                    contact_id TEXT PRIMARY KEY REFERENCES concierge_contacts(contact_id),
+                    preferred_name TEXT NOT NULL DEFAULT '',
+                    conversation_style TEXT NOT NULL DEFAULT 'formal'
+                        CHECK(conversation_style IN ('familiar','formal')));
             ''')
 
     def matching_contacts(self, number):
@@ -75,8 +83,10 @@ class CallKnowledge:
             return []
         with self.db.connect() as conn:
             return [dict(r) for r in conn.execute(
-                '''SELECT c.name,COALESCE(p.preferred_language,'') AS preferred_language
+                '''SELECT c.name,COALESCE(p.preferred_language,'') AS preferred_language,
+                COALESCE(s.preferred_name,'') AS preferred_name,COALESCE(s.conversation_style,'formal') AS conversation_style
                 FROM concierge_contacts c LEFT JOIN concierge_contact_preferences p USING(contact_id)
+                LEFT JOIN concierge_contact_styles s USING(contact_id)
                 WHERE c.phone_number=? ORDER BY c.name LIMIT 3''', (number,))]
 
     def contact(self, body: ContactUpdate):
@@ -93,6 +103,14 @@ class CallKnowledge:
                 conn.execute('INSERT INTO concierge_contact_preferences VALUES (?,?) ON CONFLICT(contact_id) '
                     'DO UPDATE SET preferred_language=excluded.preferred_language',
                     (str(body.contact_id),body.preferred_language))
+            if body.preferred_name is not None or body.conversation_style is not None:
+                conn.execute('INSERT OR IGNORE INTO concierge_contact_styles(contact_id) VALUES (?)',(str(body.contact_id),))
+                if body.preferred_name is not None:
+                    conn.execute('UPDATE concierge_contact_styles SET preferred_name=? WHERE contact_id=?',
+                        (body.preferred_name.strip(),str(body.contact_id)))
+                if body.conversation_style is not None:
+                    conn.execute('UPDATE concierge_contact_styles SET conversation_style=? WHERE contact_id=?',
+                        (body.conversation_style,str(body.contact_id)))
         return {'contact_id': str(body.contact_id), 'status': 'saved'}
 
     def fact(self, body: FactUpdate):
@@ -124,8 +142,10 @@ class CallKnowledge:
         with self.db.connect() as conn:
             rows=conn.execute('SELECT f.*,c.name AS contact_name,c.phone_number FROM concierge_facts f '
                 'LEFT JOIN concierge_contacts c USING(contact_id) WHERE f.active=1 ORDER BY f.updated_at DESC LIMIT 500').fetchall()
-            contacts=[dict(r) for r in conn.execute('''SELECT c.*,COALESCE(p.preferred_language,'') AS preferred_language
+            contacts=[dict(r) for r in conn.execute('''SELECT c.*,COALESCE(p.preferred_language,'') AS preferred_language,
+                COALESCE(s.preferred_name,'') AS preferred_name,COALESCE(s.conversation_style,'formal') AS conversation_style
                 FROM concierge_contacts c LEFT JOIN concierge_contact_preferences p USING(contact_id)
+                LEFT JOIN concierge_contact_styles s USING(contact_id)
                 ORDER BY c.name LIMIT 200''')] if owner else []
         terms=words(query)
         ranked=[]

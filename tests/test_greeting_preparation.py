@@ -30,7 +30,7 @@ def setup(m):
     m.settings.caller_id_trust_saved_contacts=True
     m.settings.subscription_lookup_enabled=True
     m.settings.inbound_answer_delay_seconds=8
-    contact=ContactUpdate(name='Mama',phone_number='+12025550101',preferred_language='uk')
+    contact=ContactUpdate(name='Mama',phone_number='+12025550101',preferred_language='uk',conversation_style='familiar')
     m.knowledge.contact(contact)
     cid=m.db.create_inbound('CA_PREFLIGHT','+12025550101',5,10,'concierge')
     return cid,contact
@@ -115,3 +115,58 @@ def test_mcp_can_set_and_retrieve_contact_language(service):
         contacts=json.loads(result.content[0].text)['contacts']
         assert contacts[0]['preferred_language']=='uk'
     asyncio.run(run())
+
+
+def test_spoken_name_and_style_persist_through_mcp_and_language_updates(service):
+    from app.mcp.server import create_mcp
+    _,m,_=service
+    m.settings.oauth_database_path=m.db.path.parent/'oauth.sqlite3'
+    m.settings.caller_id_trust_saved_contacts=True
+    server,_=create_mcp(m)
+    async def run():
+        result=await server.call_tool('set_call_contact',{'name':'Anne Example','phone_number':'+12025550101',
+            'preferred_name':'Annie','conversation_style':'familiar'})
+        assert not result.is_error
+        cid=json.loads(result.content[0].text)['contact_id']
+        # An ordinary language update must preserve the nickname and style.
+        result=await server.call_tool('set_call_contact',{'contact_id':cid,'name':'Anne Example',
+            'phone_number':'+12025550101','preferred_language':'en'})
+        assert not result.is_error
+        contact=m.knowledge.search(owner=True)['contacts'][0]
+        assert contact['preferred_name']=='Annie' and contact['conversation_style']=='familiar'
+        call=m.db.create_inbound('CA_NICKNAME','+12025550101',5,10,'concierge')
+        config=session_config(m.settings,m.voice_record(call))
+        opening=config['input'][0]['content'][0]['text']
+        assert '"Annie"' in opening and 'warmly and informally' in opening
+        assert 'Begin speaking immediately' in opening
+        assert 'office of' not in opening
+        for prompt in (config['instructions'],config['delegation']['responses']['instructions']):
+            assert 'CONVERSATION STYLE: Familiar' in prompt
+            assert 'whole conversation warm, relaxed and informal' in prompt
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('saved,trust',[(False,True),(True,True),(True,False)])
+def test_unknown_and_business_callers_use_configured_formal_office(service,saved,trust):
+    from app.calling.hours import HoursSettings
+    _,m,_=service
+    m.settings.caller_id_trust_saved_contacts=trust
+    m.hours.set(HoursSettings(office_name='the office of Dr. Alex'))
+    if saved:
+        m.knowledge.contact(ContactUpdate(name='Example Clinic',phone_number='+12025550101',
+            conversation_style='formal' if trust else 'familiar',preferred_name='Clinic'))
+    cid=m.db.create_inbound('CA_FORMAL','+12025550101',5,10,'messages')
+    config=session_config(m.settings,m.voice_record(cid))
+    assert 'CONVERSATION STYLE: Formal' in config['instructions']
+    assert "Hello, you've reached the office of Dr. Alex" in config['input'][0]['content'][0]['text']
+
+
+def test_changing_style_and_clearing_nickname_survives_reopen(service):
+    from app.calling.knowledge import CallKnowledge
+    _,m,_=service
+    contact=ContactUpdate(name='Example Friend',phone_number='+12025550101',preferred_name='Sam',conversation_style='familiar')
+    m.knowledge.contact(contact)
+    m.knowledge.contact(ContactUpdate(contact_id=contact.contact_id,name=contact.name,
+        phone_number=contact.phone_number,preferred_name='',conversation_style='formal'))
+    found=CallKnowledge(m.db).matching_contacts(contact.phone_number)[0]
+    assert found['preferred_name']=='' and found['conversation_style']=='formal'

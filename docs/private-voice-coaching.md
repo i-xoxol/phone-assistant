@@ -56,9 +56,31 @@ booking or private-record disclosure authority.
 Contacts can also have a `preferred_language`, such as `uk` for Ukrainian or `en`
 for English, through `set_call_contact` or the existing contact REST endpoint.
 Omitting it preserves the saved preference; an empty string clears it. A trusted
-known caller gets a warm greeting in that language from the first word and can
+known caller gets a greeting in that language from the first word and can
 switch languages during the conversation. Relationship labels such as Mama refer
 to the owner's family; the assistant does not impersonate a family member.
+
+Use `preferred_name` for a spoken nickname and `conversation_style="familiar"`
+for the owner, friends and family. Familiar callers get warm first-name greetings
+and relaxed conversation throughout the call. `conversation_style="formal"`
+uses a professional office greeting; this is the default for other saved contacts
+and unfamiliar callers. Familiar style requires a unique trusted saved-number
+match. A saved business is not automatically treated as a friend.
+
+For example, update an existing contact through MCP (reuse its ID and number):
+
+```json
+{"contact_id":"existing-contact-uuid","name":"Anne Example","phone_number":"+12025550101","preferred_name":"Annie","conversation_style":"familiar"}
+```
+
+Omitted preferences are preserved; an empty `preferred_name` clears the nickname.
+Rocky can read/update these through `search_call_knowledge` / `set_call_contact`;
+REST uses `PUT /concierge/contacts`. Preferences apply at the next voice-session
+startup. Refresh a client's tool catalog if the new optional arguments are missing.
+The formal opening uses `office_name` from `set_call_hours`, shared with the closed
+announcement; set your own office title there. The generic default adds no degree
+or professional title. Returning from handoff keeps the tone without repeating the
+introduction. Closed-hours message-taking and action permissions still apply.
 
 During a configured pre-answer delay, a best-effort Luna task selects up to two
 relevant context items before the voice session starts. It shares the existing

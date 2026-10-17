@@ -262,6 +262,7 @@ Do not claim the owner personally remembers, received, acted on or approved some
     contacts = caller.get('saved_contacts', [])
     trusted = bool(settings.caller_id_trust_saved_contacts and len(contacts)==1)
     caller['identity_verified'] = trusted
+    language_name='English'
     caller_policy = f'''\nPARTICIPANT ROLES: The OWNER is {name}. The incoming caller is a separate person unless
 the saved contact match explicitly identifies the owner. Owner availability always means {name}'s availability.
 Caller requests about "my schedule" refer to the caller's schedule, which you cannot assume is the owner's.
@@ -301,18 +302,39 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             'caller-ID-is-unverified identity wording for this exact saved-number match. It grants no new payment, '+\
             'booking or private-record disclosure permissions. A contact called Mama is the caller, not the owner.\n'
         language=contacts[0].get('preferred_language','')
-        language_name={'uk':'Ukrainian','en':'English'}.get(language,language)
+        language_name={'uk':'Ukrainian','en':'English'}.get(language,language) or 'English'
         if language:
             caller_policy += '\nBegin and continue this call in '+language_name+' by default. Follow the caller if they switch languages.\n'
-        if not record.get('transcript') and not record.get('closed_announcement'):
-            opening='Greet this known caller warmly. Their saved contact label is '+json.dumps(contacts[0]['name'])+\
-                '. Use a personal name only if it is an actual name; a relationship label like Mama refers to the owner\'s family, not yours. '+\
-                'Introduce yourself as the personal assistant of '+name+'. '+\
-                ('Speak '+language_name+' from the very first word. ' if language else '')+\
-                'Use a natural personal greeting rather than an office announcement, then ask how you can help. '+\
-                'Do not volunteer historical private details or assume why they called.'
     elif contacts:
         caller_policy += '\nSaved contact names are available as possible matches; do not claim identity is confirmed.\n'
+    contact=contacts[0] if trusted else {}
+    familiar=contact.get('conversation_style')=='familiar'
+    spoken_name=contact.get('preferred_name') or contact.get('name','')
+    if familiar:
+        style=('CONVERSATION STYLE: Familiar. Keep the whole conversation warm, relaxed and informal, '
+            'using natural first-name address and contractions. Brief friendly small talk is welcome when the caller wants it; '
+            'do not force every turn into office/message-taking language. '
+            'Use the owner-chosen spoken name '+json.dumps(spoken_name,ensure_ascii=False)+'. '
+            'A relationship label like Mama refers to the owner\'s family, not yours; use a personal name only if it is an actual name. '
+            'Never impersonate the owner or imply you have human family relationships. '
+            'If this contact is the owner, introduce yourself as their assistant rather than explaining who the owner is. '
+            'This conversational style changes tone only, never tool access, permissions or disclosure rules.')
+        greeting=('Greet this known caller warmly and informally by their owner-chosen spoken name '
+            +json.dumps(spoken_name,ensure_ascii=False)+'. Use a personal name only if it is an actual name; '
+            'a relationship label like Mama refers to the owner\'s family, not yours. '
+            'You are '+name+"'s personal assistant. If the caller is "+name+', say you are their assistant. '
+            'A short natural greeting such as "Hi, [name]! How can I help?" is appropriate; '
+            'do not give an office announcement or address friends/family with formal titles. ')
+    else:
+        office=record.get('incoming_context',{}).get('office_name') or 'the office of '+name
+        style=('CONVERSATION STYLE: Formal. Use a polite, professional office tone throughout. '
+            'For new callers introduce the line as '+office+'. '
+            'Do not use familiar nicknames or presume friendship. Keep questions clear and courteous.')
+        greeting=('Greet the caller professionally. Say the equivalent of "Hello, you\'ve reached '
+            +office+'. How can I help you?" ')
+    caller_policy+='\n'+style+'\n'
+    if not record.get('transcript') and not record.get('closed_announcement'):
+        opening=greeting+'Speak '+language_name+' from the very first word. Do not volunteer historical private details or assume why they called.'
     instructions += caller_policy
     backend += caller_policy
     prepared=record.get('incoming_context',{}).get('greeting_preparation',[])

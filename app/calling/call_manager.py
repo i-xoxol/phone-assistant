@@ -68,6 +68,8 @@ class CallManager:
             context['caller']['identity_basis'] = ('owner_trusted_saved_number' if context['caller']['identity_verified']
                                                    else 'presented_number')
             context['owner'] = {'name': self.settings.caller_name, 'role': 'owner, not the incoming caller'}
+            office=self.hours.policy().office_name
+            context['office_name']=office if office!='The office' else 'the office of '+self.settings.caller_name
             context['greeting_preparation'] = self.greetings.snapshot(record)
         if self.settings.call_history_enabled:
             context['call_history']=self.memory.overview(record)

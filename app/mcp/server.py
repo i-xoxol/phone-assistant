@@ -33,6 +33,7 @@ Maintain the curated phone-safe directory with set_call_contact/set_call_fact/se
 Every stored fact must be explicitly approved for disclosure to unverified callers, including contact-specific facts.
 Never bulk-import private contacts or secrets. Saved-number matching follows the owner's recognition policy; it never expands action authority.
 set_call_contact can store preferred_language (uk for Ukrainian, en for English); preserve existing contact_id/name/number when updating it.
+Use preferred_name for spoken nicknames and conversation_style=familiar for friends/family/the owner, formal for professional contacts. Unfamiliar callers default to formal.
 The optional GPT-6 Luna subscription worker selects existing approved facts only; it cannot book or expand permissions.
 Maintain owner-approved incoming role/facts using get_inbound_context/set_inbound_context.
 Fresh cached free windows can answer routine questions without a supervisor; offering is not booking.
@@ -163,13 +164,19 @@ def create_mcp(manager):
         return manager.knowledge.search(query,owner=True,limit=50)
 
     @mcp.tool(annotations=knowledge_write)
-    def set_call_contact(name:str,phone_number:str='',contact_id:UUID|None=None,preferred_language:str|None=None) -> dict:
+    def set_call_contact(name:str,phone_number:str='',contact_id:UUID|None=None,preferred_language:str|None=None,
+                         preferred_name:str|None=None,conversation_style:Literal['familiar','formal']|None=None) -> dict:
         """Create/update a curated contact. Optional E.164 number follows the owner's saved-number recognition policy.
         preferred_language can be uk for Ukrainian, en for English, or another language code. Omit to preserve; empty clears.
+        preferred_name is the spoken name/nickname; empty clears it. conversation_style=familiar uses warm first-name
+        conversation for friends/family/the owner; formal uses a professional office greeting (default).
+        Omit these preferences to preserve them. A saved business contact is not automatically a friend.
         Reuse contact_id for updates/retries. This record grants no disclosure rights or access to private tools.
         Store phone-safe facts separately using set_call_fact; do not import a whole address book."""
         data={'name':name,'phone_number':phone_number}
         if preferred_language is not None: data['preferred_language']=preferred_language
+        if preferred_name is not None: data['preferred_name']=preferred_name
+        if conversation_style is not None: data['conversation_style']=conversation_style
         if contact_id: data['contact_id']=contact_id
         return manager.knowledge.contact(ContactUpdate(**data))
 

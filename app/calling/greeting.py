@@ -23,6 +23,8 @@ class GreetingPreparation:
         matches=m.knowledge.matching_contacts(record['phone_number'])
         if len(matches)==1 and m.settings.caller_id_trust_saved_contacts:
             text='Known caller: '+matches[0]['name']+'. Preferred language: '+(matches[0]['preferred_language'] or 'not set')+'.'
+            text+=' Spoken name: '+(matches[0].get('preferred_name') or matches[0]['name'])+\
+                '. Conversation style: '+matches[0].get('conversation_style','formal')+'.'
             result.append({'fact_id':'identity-'+hashlib.sha256(text.encode()).hexdigest(),
                 'text':text,'expires_at':(utcnow()+timedelta(hours=1)).isoformat(),'kind':'caller_identity'})
         for note in m.context.for_call(record).get('expected_calls',[]) if record['inbound_mode']=='concierge' else []:

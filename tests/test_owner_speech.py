@@ -137,7 +137,8 @@ def test_trusted_saved_number_identifies_caller_without_confusing_owner(service)
     m.knowledge.contact(ContactUpdate(name='Mama',phone_number='+12025550101'))
     incoming(client,m)
     record=m.voice_record(m.db.by_twilio_sid(SID)['call_id'])
-    assert record['incoming_context']['caller']['saved_contacts']==[{'name':'Mama','preferred_language':''}]
+    assert record['incoming_context']['caller']['saved_contacts']==[{'name':'Mama','preferred_language':'',
+        'preferred_name':'','conversation_style':'formal'}]
     assert record['incoming_context']['caller']['identity_verified'] is True
     config=session_config(m.settings,record)
     for prompt in (config['instructions'],config['delegation']['responses']['instructions']):

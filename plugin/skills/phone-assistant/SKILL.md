@@ -104,6 +104,11 @@ name/number matching does not authenticate a caller. Facts expire within ninety 
 are limited to 250 UTF-8 bytes each, and require approved_for_callers=true. Reuse
 contact/fact IDs for updates/retries, and retire obsolete facts. Dynamic free windows
 remain in set_inbound_availability, not long-lived facts.
+Contacts support preferred_language, preferred_name (spoken nickname) and
+conversation_style (familiar for owner/friends/family, formal for professional contacts).
+Preserve existing ID/name/number on updates. Omitted preferences are preserved.
+Do not classify every saved business contact as a friend. These settings refine
+tone at voice-session startup and grant no additional action authority.
 
 When enabled by the owner, a private GPT-6 Luna Codex worker selects exact approved
 facts while the voice conversation continues. It consumes Codex subscription allowance;
