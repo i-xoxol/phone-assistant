@@ -108,7 +108,7 @@ class VoiceTools:
         elif name == 'request_quick_lookup' and inbound:
             from app.calling.lookup import LookupQuestion
             args = LookupQuestion.model_validate_json(item['arguments'])
-            if manager.db.get(self.bridge.call_id)['inbound_mode'] != 'concierge':
+            if manager.db.get(self.bridge.call_id)['inbound_mode'] != 'concierge' and not manager.settings.call_history_enabled:
                 raise ValueError('Lookup unavailable in message-only mode')
         elif name == 'press_digits' and not inbound:
             args = KeypadArguments.model_validate_json(item['arguments'])
@@ -121,7 +121,7 @@ class VoiceTools:
                     or self.bridge.call_id in manager.stopping):
                 raise ValueError('Voice session is no longer current')
             # Read-only refreshes must not exhaust the side-effect operation budget.
-            return manager.context.for_call(manager.db.get(self.bridge.call_id))
+            return manager.incoming_context(manager.db.get(self.bridge.call_id))
         # Atomic claim survives duplicate events and media-session reconnects.
         if not manager.db.claim_tool(self.bridge.call_id, item['call_id'], name):
             return {'status': 'already_requested', 'instruction': 'Do not repeat. Check the recorded keypad/call status.'}

@@ -425,6 +425,8 @@ async def handle_media(websocket: WebSocket, call_id: str):
                 manager.attach_bridge(call_id, bridge)
                 manager.connecting.discard(call_id)
                 claimed=False
+                if record.get('direction')=='inbound':
+                    await manager.lookup.prefetch_history(call_id)
                 from app.calling.transfer import remaining_seconds
                 await bridge.run(remaining_seconds(record)/60)
     except WebSocketDisconnect as exc:

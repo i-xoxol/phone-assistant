@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     owner_transfer_ring_seconds: int = Field(default=20,ge=10,le=30)
     owner_observation_enabled: bool = False
     openai_transcription_model: str = 'gpt-live-transcribe'
+    call_history_enabled: bool = False
+    call_history_days: int = Field(default=90,ge=1,le=365)
+    inbound_answer_delay_seconds: int = Field(default=0,ge=0,le=30)
 
     @field_validator('webhook_url')
     @classmethod

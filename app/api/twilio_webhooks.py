@@ -14,6 +14,15 @@ from app.storage.models import E164, TERMINAL
 router = APIRouter(prefix='/twilio')
 
 
+def incoming_response(settings,xml):
+    import xml.etree.ElementTree as ET
+    if settings.inbound_answer_delay_seconds:
+        root=ET.fromstring(xml)
+        root.insert(0,ET.Element('Pause',{'length':str(settings.inbound_answer_delay_seconds)}))
+        xml=ET.tostring(root,encoding='unicode')
+    return Response(xml,media_type='application/xml')
+
+
 def declined_incoming():
     response = VoiceResponse()
     response.reject(reason='busy')
@@ -58,19 +67,19 @@ async def incoming(request: Request):
         response.say(manager.hours.closed_announcement())
         response.hangup()
         log_event('incoming_office_closed',call_id=cid)
-        return Response(str(response),media_type='application/xml')
+        return incoming_response(settings,str(response))
     if closed:
         import xml.etree.ElementTree as ET
         response=VoiceResponse();response.say(manager.hours.closed_announcement())
         root=ET.fromstring(str(response))
         root.extend(list(ET.fromstring(stream_twiml(settings,cid))))
         log_event('incoming_office_closed_messages',call_id=cid)
-        return Response(ET.tostring(root,encoding='unicode'),media_type='application/xml')
+        return incoming_response(settings,ET.tostring(root,encoding='unicode'))
     # Twilio is still ringing while it fetches these instructions. Calls.update
     # rejects that state (21220). Establish the stream first; handle_media then
     # sets the provider duration cap before connecting any paid Live session.
     log_event('incoming_call_accepted', call_id=cid)
-    return Response(stream_twiml(settings, cid), media_type='application/xml')
+    return incoming_response(settings,stream_twiml(settings,cid))
 
 
 @router.post('/incoming/status')

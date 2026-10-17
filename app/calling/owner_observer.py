@@ -207,6 +207,7 @@ class TransferObserver:
         # Only already-curated phone-safe information; no private calendar credentials.
         facts=self.m.knowledge.search('',caller_number=record['phone_number'])['facts']
         result=[{'fact_id':f['fact_id'],'text':f['text'],'expires_at':f['expires_at']} for f in facts]
+        result.extend(self.m.memory.candidates(record))
         context=self.m.context.for_call(record)
         profile=context.get('profile',{})
         if profile.get('context') and len(profile['context'])<=240:

@@ -1,5 +1,10 @@
 # Quick background lookups with GPT-6 Luna
 
+Optional [callback memory](call-memory.md) also lets Luna select exact excerpts
+from number-matched prior incoming/outgoing calls. These are historical claims,
+not approved current facts; they enter internal context with separate disclosure
+and authorization rules. Unrelated numbers' calls are excluded.
+
 The incoming concierge has three ways to obtain information:
 
 | Need | Path | Authority |

@@ -34,6 +34,8 @@ class CallManager:
         from app.calling.hours import OperatingHours
         self.hours=OperatingHours(database)
         self.knowledge = CallKnowledge(database)
+        from app.calling.memory import CallMemory
+        self.memory=CallMemory(self)
         self.lookup = LookupService(self)
         self.voices = VoicePreferences(database,settings)
         self.transfer = OwnerTransfer(self)
@@ -49,10 +51,16 @@ class CallManager:
         record['voice_name']=self.voices.pin(record)
         record['owner_transfer']=self.transfer.for_call(call_id)
         if record.get('direction')=='inbound':
-            record['incoming_context']=self.context.for_call(record)
+            record['incoming_context']=self.incoming_context(record)
             if record['inbound_mode']=='messages' and not self.hours.state()['office_open']:
                 record['closed_announcement']=self.hours.closed_announcement()
         return record
+
+    def incoming_context(self,record):
+        context=self.context.for_call(record)
+        if self.settings.call_history_enabled:
+            context['call_history']=self.memory.overview(record)
+        return context
 
     async def context_changed(self):
         """Notify live incoming sessions to fetch the latest safe context, without a restart."""

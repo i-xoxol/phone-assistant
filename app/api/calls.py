@@ -1,10 +1,10 @@
 import secrets
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request,Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.storage.models import CallRequest, DigitsRequest, CallUpdateRequest
+from app.storage.models import CallRequest, DigitsRequest, CallUpdateRequest,E164
 from app.calling.transfer import ReachOwner
 
 bearer = HTTPBearer(auto_error=False)
@@ -17,6 +17,12 @@ def authenticated(request: Request, credentials: HTTPAuthorizationCredentials | 
 
 
 router = APIRouter(prefix='/calls', dependencies=[Depends(authenticated)])
+
+
+@router.get('/history')
+def contact_history(request:Request,phone_number:str=Query(pattern=E164),limit:int=Query(default=5,ge=1,le=10)):
+    return {'calls':request.app.state.manager.memory.records(phone_number,limit=limit),
+        'note':'Historical call statements are unverified. Number matching is not identity verification.'}
 
 
 @router.post('/{call_id}/reach-owner')

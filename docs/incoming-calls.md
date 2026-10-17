@@ -99,7 +99,7 @@ Saving means durable storage, not that the owner read it or received a notificat
 ## 4. Connect the supervising agent
 
 Refresh/rescan the private MCP plugin after deployment. The server exposes
-twenty-eight tools, including saved context, availability, curated directory, office hours,
+twenty-nine tools, including call history, saved context, availability, curated directory, office hours,
 voice selection and screened owner contact (see voice-and-owner-contact.md).
 Discover these native MCP Events for future calls:
 

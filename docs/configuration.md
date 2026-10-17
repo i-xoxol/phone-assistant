@@ -85,6 +85,11 @@ coaching. Choice 3 keeps Luna off. See the provider costs and test instructions
 in the owner-contact guide. [Office hours](operating-hours.md) are stored in
 SQLite and managed by owner MCP tools or `/hours`, rather than environment variables.
 
+[Callback memory](call-memory.md) uses `CALL_HISTORY_ENABLED` (default false),
+`CALL_HISTORY_DAYS` (default 90, range 1–365), and the existing subscription worker.
+`INBOUND_ANSWER_DELAY_SECONDS` (default 0, range 0–30) delays pickup before answering;
+18 seconds approximates three US ring cycles. It never delays stream reconnection.
+
 The optional [GPT-6 Luna subscription lookup](subscription-lookup.md) uses
 `SUBSCRIPTION_LOOKUP_ENABLED=false` by default and a twenty-second
 `SUBSCRIPTION_LOOKUP_TIMEOUT_SECONDS` (allowed 5–40). It requires a private

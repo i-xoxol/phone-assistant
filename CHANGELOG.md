@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 — 2026-10-16
+
+- Exact-number history recall across prior incoming/outgoing calls, including unanswered attempts and confirmed messages.
+- Automatic bounded subscription Luna recall, historical-context injection, and an owner MCP/REST history reader.
+- Identity/disclosure limits, sensitive-detail filtering, source freshness checks and no inherited permissions from old speech.
+- Configurable pre-answer TwiML pause to approximate a chosen number of rings, including closed-hours responses.
+
 ## 0.6.0 — 2026-10-16
 
 - Optional conference handoff with 1 for private subscription Luna coaching, 3 for transcription only, and 2 to decline.
