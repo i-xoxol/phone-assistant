@@ -177,8 +177,14 @@ busy/no-answer forwarding with your personal carrier, using that Twilio number
 as the destination. Codes, charges and voicemail interactions depend on the
 carrier; this app does not change your mobile carrier settings. Do not forward
 Twilio back to the same personal number and create a loop. You may disable
-forwarding without changing the service. Forwarded caller ID can be absent
-or transformed, so the assistant asks for optional callback information.
+forwarding without changing the service. The voice and its tool backend receive
+the presented incoming caller-ID number at session startup, including in
+message-only mode; concierge `get_call_context` also returns it. The assistant
+can acknowledge the number and read it when asked. It asks whether to use that
+number for callbacks and saves it only after the caller explicitly agrees.
+Forwarded caller ID can be absent or transformed; unavailable/invalid numbers
+remain unavailable and the caller may provide an optional preferred callback.
+Caller ID never verifies identity or authorizes access to private information.
 
 ## Acceptance test
 

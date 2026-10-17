@@ -88,6 +88,28 @@ def test_private_or_bad_caller_id_grants_no_authority(service):
     assert {t['name'] for t in config['delegation']['responses']['tools']}=={'save_message','end_call'}
 
 
+@pytest.mark.parametrize('mode', ['messages', 'concierge'])
+@pytest.mark.parametrize('presented', ['+12025550101', 'anonymous', '', 'private', '555'])
+def test_presented_caller_id_reaches_voice_and_backend_without_owner_number(service, mode, presented):
+    client, manager, _ = service
+    manager.settings.inbound_mode = mode
+    manager.settings.callback_number = '+12025550109'
+    incoming(client, manager, From=presented)
+    record = manager.voice_record(manager.db.by_twilio_sid(SID)['call_id'])
+    caller = record['incoming_context']['caller']
+    expected = presented if presented.startswith('+') else ''
+    assert caller == {'number': expected, 'available': bool(expected),
+                      'source': 'twilio_caller_id', 'identity_verified': False}
+    config = session_config(manager.settings, record)
+    for prompt in (config['instructions'], config['delegation']['responses']['instructions']):
+        assert 'Current-call metadata: ' + json.dumps({'caller': caller}) in prompt
+        assert 'explicitly agree' in prompt
+        assert manager.settings.callback_number not in prompt
+    # Caller-ID availability alone must never populate a saved callback number.
+    saved = manager.db.save_message(record['call_id'], 'Please get in touch.')
+    assert saved['callback_number'] == ''
+
+
 def test_setup_failure_does_not_start_unbounded_voice(service,monkeypatch):
     client,manager,gateway=service
     response=incoming(client,manager)
@@ -274,6 +296,11 @@ def test_signed_incoming_media_uses_live_and_retains_caller_text(service,monkeyp
         ws.send_json({'event':'stop','streamSid':'MZ_INCOMING'})
         assert ws.receive_json()['event']=='clear'
     assert connection.config['delegation']['type']=='responses'
+    caller = {'number': '+12025550101', 'available': True,
+              'source': 'twilio_caller_id', 'identity_verified': False}
+    for prompt in (connection.config['instructions'],
+                   connection.config['delegation']['responses']['instructions']):
+        assert 'Current-call metadata: ' + json.dumps({'caller': caller}) in prompt
     assert connection.config['input'][0]['role']=='developer'
     assert 'Greet the caller' in connection.config['input'][0]['content'][0]['text']
     result=manager.db.list_messages()['messages'][0]

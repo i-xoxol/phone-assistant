@@ -7,7 +7,7 @@ from app.logging_config import log_event
 from app.storage.database import Database
 from app.storage.models import CallRequest, DigitsRequest, CallUpdateRequest, SupervisorReply, TERMINAL
 from app.events import EventHub
-from app.calling.context import ConciergeContext
+from app.calling.context import ConciergeContext, incoming_caller_metadata
 from app.calling.knowledge import CallKnowledge
 from app.calling.lookup import LookupService
 from app.calling.voices import VoicePreferences
@@ -58,6 +58,8 @@ class CallManager:
 
     def incoming_context(self,record):
         context=self.context.for_call(record)
+        if record.get('direction') == 'inbound':
+            context['caller'] = incoming_caller_metadata(record)
         if self.settings.call_history_enabled:
             context['call_history']=self.memory.overview(record)
         return context

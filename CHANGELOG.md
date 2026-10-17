@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Pass presented incoming caller ID to both voice and tool-backend context, including message-only calls.
+- Let callers confirm using that number for callbacks; preserve unavailable-number handling and identity/disclosure limits.
+
 ## 0.7.0 — 2026-10-16
 
 - Exact-number history recall across prior incoming/outgoing calls, including unanswered attempts and confirmed messages.

@@ -1,9 +1,20 @@
 """Owner-maintained, phone-safe context. No provider credentials or calendar writes."""
 from datetime import datetime, timedelta, timezone
+import re
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.storage.models import E164
+
+
+def incoming_caller_metadata(record):
+    """Presented caller ID, never proof of identity or a confirmed callback."""
+    value = record.get('phone_number', '') if record.get('direction') == 'inbound' else ''
+    number = value if isinstance(value, str) and re.fullmatch(E164, value) else ''
+    return {'number': number, 'available': bool(number), 'source': 'twilio_caller_id',
+            'identity_verified': False}
 
 
 def utcnow():

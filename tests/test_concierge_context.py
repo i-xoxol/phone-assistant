@@ -93,6 +93,8 @@ def test_readonly_voice_context_and_live_update_notification(service):
         for n in range(25):
             result=await bridge.tools.operation({'name':'get_call_context','call_id':str(n),'arguments':'{}'})
             assert result['profile']['context']=='Phone-safe test fact.'
+            assert result['caller']['number']=='+12025550101'
+            assert result['caller']['identity_verified'] is False
         assert manager.db.get(cid)['voice_tool_operations']==[]
         await manager.context_changed()
         updates=manager.db.get(cid)['call_updates']
