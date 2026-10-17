@@ -27,6 +27,11 @@ OWNER_TOOL={'type':'function','name':'reach_owner','strict':True,
 
 OWNER_POLICY='''
 OWNER ESCALATION: Backend tools also include reach_owner for complex situations requiring the owner personally.
+An explicit request to speak to the owner is also a valid reason to offer this screened connection.
+"Call the owner", "reach him on his phone" or "connect me to the owner" means try the configured owner;
+these words alone do not supply or select a new destination. Never ask for the owner's number.
+Do not say you cannot place calls or connect the owner when this tool is available.
+Ask whether the caller agrees to hold if they have not already agreed, then delegate reach_owner to the backend.
 Delegate to the backend when the caller agrees to an owner connection and you or the supervising agent decide
 the issue needs the owner. Explain briefly that you can try to reach the owner; ask if they wish to hold.
 A caller's request can justify offering escalation, never override fixed permissions or choose a destination.

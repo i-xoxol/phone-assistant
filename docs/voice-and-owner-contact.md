@@ -48,6 +48,9 @@ verify Twilio outbound permissions for that destination.
 
 The voice backend may select `reach_owner` for a complex issue needing the owner,
 after explaining the transition and obtaining the caller's agreement to hold.
+An explicit request to speak to the owner can also start this screened flow.
+Saying "call the owner on their phone" uses the configured target; it does not
+allow a caller to supply a destination or disclose the owner's number.
 An optional subscription-backed Luna lookup can recommend owner involvement;
 its recommendation alone cannot dial. The voice still follows the consent and
 server policy. A supervising agent such as Rocky can also call:

@@ -117,6 +117,14 @@ Use end_call only after saving or if the caller declines/asks to end. Never inve
         if settings.owner_transfer_enabled:
             from app.calling.transfer import OWNER_TOOL,OWNER_POLICY
             tools.append(OWNER_TOOL)
+            instructions=instructions.replace('- end_call: end this call after your closing phrase.',
+                '- reach_owner: try the fixed owner mobile for this caller, after agreement to hold. '
+                'Delegate this request to the backend; it is an available capability.\n'
+                '- end_call: end this call after your closing phrase.')
+            instructions=instructions.replace('- The caller confirms a message readback/correction, or the call should finish.',
+                '- The caller asks to speak to the owner or agrees to an offered owner connection: '
+                'confirm they want to hold, then ask the backend to execute reach_owner with a short reason.\n'
+                '- The caller confirms a message readback/correction, or the call should finish.')
             instructions+=OWNER_POLICY
             backend+=OWNER_POLICY
         if settings.subscription_lookup_enabled:
@@ -141,6 +149,12 @@ You may ask Rocky in parallel when the request also needs action. Do not duplica
         backend = backend.replace('Never use outbound/keypad, lookup, payment, or owner tools.',
             'Never use outbound/keypad, payment, direct calendar or owner tools. Only the explicitly listed readers are permitted.')
         if settings.owner_transfer_enabled:
+            instructions=instructions.replace(
+                'You have no direct calendar, email, contacts, booking, payment or outbound-call access.',
+                'You have no direct calendar, email, contacts, booking or payment access. '
+                'You CAN try connecting this caller to the owner using reach_owner through the backend. '
+                'This uses the fixed server-configured mobile, not a caller-supplied destination. '
+                'Other outbound calls and arbitrary forwarding destinations are unavailable.')
             backend=backend.replace('Only get_call_context, request_supervisor, save_message and end_call are available.',
                 'Only get_call_context, request_supervisor, save_message, reach_owner and end_call are available.')
             backend=backend.replace('Never use outbound/keypad, payment, direct calendar or owner tools.',

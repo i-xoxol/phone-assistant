@@ -63,6 +63,22 @@ def test_voice_preferences_persist_owner_only_and_pin_existing_calls(service):
     asyncio.run(voice_cannot_change_default())
 
 
+def test_incoming_owner_contact_is_explicitly_delegated_without_outbound_denial(service):
+    client,m,g=service
+    cid,bridge=setup(client,m,g)
+    config=session_config(m.settings,m.voice_record(cid))
+    instructions=config['instructions']
+    assert '- reach_owner:' in instructions
+    assert 'ask the backend to execute reach_owner' in instructions
+    assert 'payment or outbound-call access' not in instructions
+    assert 'not a caller-supplied destination' in instructions
+    assert 'Never ask for the owner\'s number' in instructions
+    m.settings.owner_transfer_enabled=False
+    disabled=session_config(m.settings,m.voice_record(cid))
+    assert '- reach_owner:' not in disabled['instructions']
+    assert all(t['name']!='reach_owner' for t in disabled['delegation']['responses']['tools'])
+
+
 def test_screened_handoff_accepts_once_without_leaking_destination(service):
     client,m,g=service
     cid,bridge=setup(client,m,g)

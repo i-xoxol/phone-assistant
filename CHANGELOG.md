@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 — 2026-10-16
+
+- Fix incoming GPT-Live refusing a request to reach the configured owner as if it were an arbitrary outbound call.
+- Advertise screened owner contact in the voice delegation list and explicitly distinguish the fixed target from caller-supplied numbers.
+- Add prompt regression coverage and a natural caller-phrasing provider check.
+
 ## 0.5.0 — 2026-10-16
 
 - Persistent GPT-Live voice selection through MCP, REST and the paired mobile monitor; active calls keep their voice.

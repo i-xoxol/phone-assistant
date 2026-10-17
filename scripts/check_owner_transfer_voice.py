@@ -57,9 +57,6 @@ async def check(wav=None):
         async with live_client(settings) as client:
             async with client.live.connect() as connection:
                 config=session_config(settings,m.voice_record(cid))
-                if not chunks:
-                    config['input'].append({'type':'message','role':'user','content':[{'type':'input_text',
-                        'text':'This issue needs the owner personally. Please try reaching them now and connect me. Yes, I agree to hold while you try.'}]})
                 await start_session(connection,config)
                 print(json.dumps({'meridian_session_started':True}),flush=True)
                 playback=SimulatedPlayback()
@@ -79,6 +76,10 @@ async def check(wav=None):
                         await asyncio.sleep(.02)
                 feeder=asyncio.create_task(feed())
                 try:
+                    if not chunks:
+                        await connection.response.item.create(item={'type':'message','role':'user','content':[{'type':'input_text',
+                            'text':"It is me testing from my wife's phone. Can you call, try to reach the owner to test the functionality? Call him on his phone number. Yes, I agree to hold while you try."}]})
+                        await connection.response.create()
                     async with asyncio.timeout(50):
                         while not gateway.redirected:
                             if receiver.done(): receiver.result();raise RuntimeError('Voice closed before owner tool')
