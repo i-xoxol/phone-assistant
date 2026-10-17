@@ -38,6 +38,16 @@ validation is not a lookup proving a number exists or belongs to a person.
 | `OPENAI_BACKEND_MODEL` | `gpt-6-luna` | Used when voice tools are enabled; billed separately from Live |
 | `WEBHOOK_URL` | Empty | Optional operator-owned generic HTTPS receiver for new call events |
 | `WEBHOOK_SECRET` | Empty | Separate random HMAC secret; required when `WEBHOOK_URL` is set |
+| `INBOUND_ENABLED` | `false` | Enables signed incoming voice admission; configure the owned number separately |
+| `INBOUND_MODE` | `messages` | `messages` or `concierge`; concierge can request a trusted supervisor |
+| `INBOUND_MAX_DURATION_MINUTES` | `5` | Provider-enforced incoming duration, 1–15 minutes |
+| `INBOUND_MAX_CALLS_PER_HOUR` | `10` | Incoming admission limit, 1–100; one incoming conversation at a time |
+| `SUPERVISOR_WAIT_SECONDS` | `45` | Request deadline, 10–120 seconds; then message-taking fallback |
+| `INBOUND_BOOKING_ALLOWED` | `false` | Snapshot owner standing authorization for ordinary appointments; still requires verified supervisor action |
+
+Incoming modes always need Responses delegation, independently of the outbound
+`LIVE_TOOLS_ENABLED` flag. `CALLBACK_NUMBER` is not disclosed to incoming callers.
+See [incoming calls](incoming-calls.md) before enabling Twilio routing or booking.
 
 `MCP_WEBHOOK_SECRET` is **not** a main-service setting. It is used by the example
 Standard Webhooks receiver in `scripts/mcp_webhook_receiver.py`. Native MCP event

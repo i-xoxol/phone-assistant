@@ -52,3 +52,17 @@ class CallUpdateRequest(BaseModel):
         if not value or len(value.encode('utf-8')) > 400:
             raise ValueError('Send a short update of 1–400 UTF-8 bytes')
         return value
+
+
+class SupervisorReply(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    response: str = Field(min_length=1, max_length=300)
+    outcome: Literal['information', 'appointment_confirmed', 'needs_owner', 'declined'] = 'information'
+
+    @field_validator('response')
+    @classmethod
+    def concise_response(cls, value):
+        value = value.strip()
+        if not value or len(value.encode('utf-8')) > 300:
+            raise ValueError('Supervisor replies must fit 1–300 UTF-8 bytes')
+        return value

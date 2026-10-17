@@ -42,7 +42,7 @@ async def receive(request: Request):
         return {'challenge': challenge}
     event_id = value.get('eventId')
     if (not isinstance(event_id, str) or request.headers.get('webhook-id') != event_id
-            or value.get('name') not in ('transcript.delta', 'call.status')):
+            or value.get('name') not in ('transcript.delta', 'call.status', 'call.incoming', 'call.supervisor_requested', 'message.received')):
         raise HTTPException(400, 'Invalid application event')
     path = Path('data/received-mcp-events.sqlite3')
     path.parent.mkdir(exist_ok=True)

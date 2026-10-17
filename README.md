@@ -48,6 +48,8 @@ recordings, account credentials, or access to the author's deployment.
 | **Stop the call** | Use MCP, REST, or the monitor's direct hangup button. The assistant can also initiate its farewell and disconnect. |
 | **Receive events** | Subscribe a verified HTTPS webhook to a call's transcript or status changes. |
 | **Read the result later** | SQLite preserves call state, transcript fragments, context updates, keypad history, and diagnostic events. |
+| **Answer incoming calls** | GPT-Live takes a confirmed message for a private inbox, with Rocky/MCP access. |
+| **Ask a supervisor for help** | An incoming concierge requests verified information over signed events; a connected agent replies into the call. |
 
 > **Scope:** a small, single-owner service. Each person runs their own instance
 > with their own Twilio and OpenAI accounts. This is an MVP, not a hosted calling
@@ -188,7 +190,21 @@ For ChatGPT, add your `/mcp` URL as a custom MCP plugin and select **OAuth**.
 Complete the owner approval page with the pairing code, install the plugin, and
 enable it in the conversation. Account/workspace availability varies.
 
-[Connection instructions and all nine tools →](docs/mcp.md)
+[Connection instructions and all fourteen tools →](docs/mcp.md)
+
+## Incoming calls and concierge mode
+
+Call your Twilio number or later forward your busy personal line to it. The live
+assistant can take a caller-confirmed message, or request help from a supervising
+agent such as Rocky. The agent uses its own authorized tools and sends verified
+answers back into the conversation. Your paired monitor shows captions, inbox
+messages, pending requests and direct hangup.
+
+Automatic supervision requires an actual, renewed client event subscription;
+installing the plugin alone does not keep an agent listening. Missing or delayed
+help falls back to taking a message. Booking confirmation is disabled by default
+and requires explicit owner authorization plus supervisor verification.
+[Incoming setup, routing, permissions and acceptance tests →](docs/incoming-calls.md)
 
 ## Your phone as a live control panel
 
@@ -258,7 +274,7 @@ deploy/            Example systemd unit
 ## Current limits
 
 - Single owner and single worker; no multi-tenant isolation or production fleet management.
-- No inbound calls, voicemail detection, scheduling, recording, or automatic calendar/email access.
+- No voicemail detection, recording, direct calendar/email access, or independent booking by the voice model. Incoming concierge actions require a connected, authorized supervisor.
 - DTMF briefly reconnects the voice stream; it is not uninterrupted keypad injection.
 - Conversation permissions are mainly prompt-based. The exposed voice tools are restricted,
   but a prompt is not a deterministic guarantee of every spoken response.

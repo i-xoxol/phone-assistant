@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse, JSONResponse
 
 router = APIRouter()
@@ -105,7 +105,13 @@ def bootstrap(request: Request, call_id: UUID | None = None):
     # Read head first. Any concurrent arrivals are replayed; source IDs deduplicate.
     cursor = db.event_head()
     try:
-        return {'cursor': cursor, 'calls': db.recent_calls(), 'call': db.get(str(call_id)) if call_id else None}
+        return {'cursor': cursor, 'calls': db.recent_calls(), 'call': db.get(str(call_id)) if call_id else None,
+                'inbox':db.list_messages(limit=20),
+                'requests':db.list_supervisor_requests(call_id=str(call_id) if call_id else None),
+                'concierge':{'enabled':request.app.state.settings.inbound_enabled,
+                    'mode':request.app.state.settings.inbound_mode,
+                    'live_supervisor':bool(getattr(request.app.state.manager, 'mcp_events', None) and
+                        request.app.state.manager.mcp_events.ready_for('call.supervisor_requested'))}}
     except KeyError:
         raise HTTPException(404, 'Call not found') from None
 
@@ -159,6 +165,22 @@ def logout(request: Request):
     response = Response(status_code=204, headers=HEADERS)
     response.delete_cookie(COOKIE, path='/', secure=True, httponly=True, samesite='strict')
     return response
+
+
+@router.get('/live/messages', dependencies=[Depends(owner)])
+def messages(request: Request, limit: int = Query(default=20, ge=1, le=100), before: UUID | None = None):
+    try:
+        return request.app.state.manager.db.list_messages(limit=limit, before=str(before) if before else None)
+    except ValueError:
+        raise HTTPException(400, 'Invalid message cursor') from None
+
+
+@router.post('/live/messages/{message_id}/read', dependencies=[Depends(write_owner)])
+def message_read(message_id: UUID, request: Request):
+    try:
+        return request.app.state.manager.db.mark_message_read(str(message_id))
+    except KeyError:
+        raise HTTPException(404, 'Message not found') from None
 
 
 @router.post('/live/pairing-code', dependencies=[Depends(write_owner)])

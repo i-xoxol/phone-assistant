@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const terminal = new Set(['completed','failed','busy','no_answer','cancelled']);
 let selected = new URL(location.href).searchParams.get('call_id'), call = null, calls = [], source, lastSeen = 0, pending = false;
 let seen = new Set(), turns = [], buffered = [], loadVersion = 0;
+let inboxCursor = null;
 const csrf = document.querySelector('meta[name="csrf-token"]').content;
 function connection(text, healthy=false) { $('connectionText').textContent=text; $('connection').className='connection '+(healthy?'live':'warn'); }
 async function api(path, options={}) {
@@ -33,7 +34,7 @@ function showList() {
   for (const c of calls) {
     const option=document.createElement('option'); option.value=c.call_id;
     const date=new Date(c.created_at).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-    option.textContent=(c.recipient || c.phone_number)+' · '+date;
+    option.textContent=(c.direction==='inbound'?'Incoming · '+(c.phone_number || 'Unknown caller'):(c.recipient || c.phone_number))+' · '+date;
     $('calls').append(option);
   }
   if (!calls.length) { const option=document.createElement('option'); option.textContent='No calls yet'; $('calls').append(option); }
@@ -49,7 +50,7 @@ function addText(event) {
   if (!turn) {
     const div=document.createElement('div'); div.className='turn '+event.speaker;
     const label=document.createElement('div'); label.className='speaker';
-    const name=document.createElement('span'); name.textContent=event.speaker==='assistant'?'Your assistant':'Recipient';
+    const name=document.createElement('span'); name.textContent=event.speaker==='assistant'?'Your assistant':(call?.direction==='inbound'?'Caller':'Recipient');
     const stamp=document.createElement('time'); stamp.textContent=clock(event.timestamp);
     label.append(name,stamp); const words=document.createElement('div'); words.className='words'; div.append(label,words);
     turn={speaker:event.speaker,start:event.timestamp,end:event.end_timestamp,words}; turns.push(turn); $('transcript').append(div);
@@ -77,6 +78,13 @@ async function loadCall(id) {
 async function handleEvent(event) {
   lastSeen=Date.now(); connection('Live event stream connected',true);
   const data=JSON.parse(event.data);
+  if (data.type.startsWith('call.supervisor_')) {
+    const snapshot=await api('/live/bootstrap'); renderRequests(snapshot);
+  }
+  if (data.type.startsWith('message.')) {
+    await refreshInbox();
+    if (data.type==='message.received' || data.type==='message.updated') $('inbox').open=true;
+  }
   if (data.type==='call.created') {
     const snapshot=await api('/live/bootstrap'); calls=snapshot.calls;
     if (!call || terminal.has(call.status)) { selected=data.call_id; await loadCall(selected); }
@@ -94,6 +102,8 @@ function applyEvent(data) {
 }
 async function start() {
   const data=await api('/live/bootstrap'); calls=data.calls;
+  renderInbox(data.inbox);
+  renderRequests(data);
   selected=selected || calls.find(c=>!terminal.has(c.status))?.call_id || calls[0]?.call_id;
   showList(); await loadCall(selected);
   source=new EventSource('/live/events?cursor='+data.cursor);
@@ -103,6 +113,63 @@ async function start() {
   source.addEventListener('expired',()=>{source.close();connection('Pairing expired. Sign in again.');location.replace('/live/login');});
   source.onerror=()=>connection('Stream disconnected · reconnecting. Hang-up remains available.');
 }
+
+function renderInbox(data, append=false) {
+  $('unreadCount').textContent=data.unread_count+' new';
+  if (data.unread_count && !append) $('inbox').open=true;
+  if (!append) $('messages').replaceChildren();
+  for (const message of data.messages) {
+    const card=document.createElement('article'); card.className='message-card '+message.status;
+    const heading=document.createElement('h3'); heading.textContent=message.caller_name || 'Incoming caller';
+    const stamp=document.createElement('p'); stamp.className='caption-note';
+    stamp.textContent=new Date(message.created_at).toLocaleString()+' · '+message.status;
+    const identity=document.createElement('p'); identity.className='caption-note';
+    identity.textContent='Caller ID (unverified): '+(message.caller_id || 'Withheld/unknown')+
+      (message.callback_number?' · Caller-supplied callback: '+message.callback_number:'');
+    const quality=document.createElement('p'); quality.className='message-quality';
+    quality.textContent=message.capture_method==='transcript_fallback'?
+      'Unconfirmed caller transcript — review the conversation. Message capture may be incomplete.':
+      'Saved by the assistant from the conversation. Caller details are unverified.';
+    const body=document.createElement('p'); body.className='message-body'; body.textContent=message.body;
+    const actions=document.createElement('div'); actions.className='message-actions';
+    const open=document.createElement('button'); open.className='quiet'; open.textContent='View conversation';
+    open.onclick=()=>loadCall(message.call_id).then(()=>{showList();$('calls').scrollIntoView({block:'center'});}).catch(e=>connection(e.message));
+    actions.append(open);
+    if (message.status==='new') {
+      const read=document.createElement('button'); read.className='quiet'; read.textContent='Mark read';
+      read.onclick=async()=>{
+        read.disabled=true;
+        try {await api('/live/messages/'+message.message_id+'/read',{method:'POST',headers:{'X-CSRF-Token':csrf}});await refreshInbox();}
+        catch(e) {connection(e.message);read.disabled=false;}
+      };
+      actions.append(read);
+    }
+    card.append(heading,stamp,identity,quality,body,actions); $('messages').append(card);
+  }
+  if (!data.messages.length && !append) {const p=document.createElement('p');p.className='empty';p.textContent='No messages yet.';$('messages').append(p);}
+  inboxCursor=data.next_cursor; $('olderMessages').hidden=!inboxCursor;
+}
+async function refreshInbox() {renderInbox(await api('/live/messages'));}
+function renderRequests(data) {
+  $('supervisorPanel').hidden=!data.concierge?.enabled || data.concierge.mode!=='concierge';
+  $('supervisorState').textContent=data.concierge?.live_supervisor?
+    'Verified live supervisor subscription is active. Replies still require actual client processing.':
+    'No active live supervisor subscription. Calls can take messages; automatic Rocky supervision is not connected.';
+  $('requests').replaceChildren();
+  for (const request of data.requests || []) {
+    const item=document.createElement('article'); item.className='message-card';
+    const text=document.createElement('p');text.className='message-body';text.textContent=request.question;
+    const stamp=document.createElement('p');stamp.className='caption-note';
+    stamp.textContent='Waiting for verified help · expires '+new Date(request.expires_at).toLocaleTimeString();
+    item.append(text,stamp);$('requests').append(item);
+  }
+}
+$('olderMessages').onclick=async()=>{
+  if (!inboxCursor) return;
+  const button=$('olderMessages');button.disabled=true;
+  try {renderInbox(await api('/live/messages?before='+encodeURIComponent(inboxCursor)),true);}
+  catch(e) {connection(e.message);} finally {button.disabled=false;}
+};
 $('calls').onchange=()=>loadCall($('calls').value).catch(error=>connection(error.message));
 $('hangup').onclick=async()=>{
   if (!call || pending) return;

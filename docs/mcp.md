@@ -96,9 +96,14 @@ allowing arbitrary Host headers.
 | `hangup_call` | Disconnects active or cancels ringing call |
 | `press_digits` | Sends real menu navigation tones and reconnects voice |
 | `send_call_update` | Injects concise facts/requests into the current conversation |
-| `subscribe_call_events` | Verifies and creates a signed call-specific webhook subscription |
+| `subscribe_call_events` | Verifies a signed per-call or line-wide webhook subscription |
 | `get_call_event_subscriptions` | Checks the current OAuth connection's subscriptions/delivery counts |
 | `unsubscribe_call_events` | Stops an owned subscription |
+| `list_messages` | Lists private incoming messages with unread count and pagination |
+| `get_message` | Reads one caller message and its capture quality |
+| `mark_message_read` | Marks one message read; safe to repeat |
+| `list_call_requests` | Lists pending, unexpired concierge requests across incoming calls |
+| `respond_to_call_request` | Returns verified information or an authorized booking result into the live call |
 
 Tool annotations identify read-only versus side-effecting actions. Client
 confirmation settings remain important: authentication proves client access,

@@ -8,7 +8,7 @@ examples do not authorize calls or payments.
 
 ## Authentication
 
-REST `/calls` routes require `Authorization: Bearer <LOCAL_API_TOKEN>`. Use a
+REST `/calls`, `/messages`, and `/call-requests` routes require `Authorization: Bearer <LOCAL_API_TOKEN>`. Use a
 client-side environment variable rather than placing the value in a script or
 shell history. MCP uses owner-paired OAuth and the `phone.calls` scope; the REST
 token does **not** authenticate MCP. Monitor controls use a paired Secure cookie,

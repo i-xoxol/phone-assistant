@@ -8,13 +8,16 @@ semantics are deliberately separate:
 | Path | Destination | Format / setup |
 |---|---|---|
 | Browser SSE | Paired `/live` browser | Cookie-authenticated event stream; no webhook receiver |
-| MCP subscriptions | Client-supplied public HTTPS receiver | Standard Webhooks; per-call filter; OAuth ownership |
+| MCP subscriptions | Client-supplied public HTTPS receiver | Standard Webhooks; per-call or line-wide filter; OAuth ownership |
 | Generic outgoing webhook | Operator-configured `WEBHOOK_URL` | Custom `X-Phone-*` HMAC; service-wide new-event feed |
 
 ## MCP event subscriptions
 
-Two events are available: `transcript.delta` and `call.status`. Both require a
-specific call UUID. New subscriptions begin at the current event head; they
+Five events are available. `transcript.delta` and `call.status` require a
+specific call UUID. `call.incoming`, `call.supervisor_requested` and
+`message.received` use empty arguments (no call UUID), covering future incoming
+calls. [Concierge supervision setup](incoming-calls.md#4-connect-the-supervising-agent)
+describes their request/reply workflow. New subscriptions begin at the current event head; they
 do not export historical transcripts. Read `get_call_result` for saved text.
 
 ### For ordinary tool clients

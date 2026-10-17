@@ -2,14 +2,86 @@ from uuid import UUID
 import re
 
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
+from twilio.twiml.voice_response import VoiceResponse
 from twilio.request_validator import RequestValidator
 
 from app.calling.call_manager import normalize_status
 from app.calling.twilio_client import stream_twiml
 from app.logging_config import log_event
 from app.calling.live_session import handle_media
+from app.storage.models import E164, TERMINAL
 
 router = APIRouter(prefix='/twilio')
+
+
+def declined_incoming():
+    response = VoiceResponse()
+    response.reject(reason='busy')
+    return Response(str(response), media_type='application/xml')
+
+
+@router.post('/incoming')
+async def incoming(request: Request):
+    form = await validated_form(request)
+    manager = request.app.state.manager
+    settings = manager.settings
+    if (form.get('AccountSid') != settings.twilio_account_sid or
+            form.get('To') != settings.twilio_phone_number or form.get('Direction') != 'inbound'):
+        raise HTTPException(403, 'Incoming call binding mismatch')
+    if not settings.inbound_enabled or settings.missing():
+        return declined_incoming()
+    sid = str(form.get('CallSid', ''))
+    if not re.fullmatch(r'CA[0-9a-fA-F]{32}', sid):
+        raise HTTPException(400, 'Invalid call SID')
+    caller = str(form.get('From', ''))
+    caller = caller if re.fullmatch(E164, caller) else ''
+    try:
+        cid = manager.db.create_inbound(sid, caller, settings.inbound_max_duration_minutes,
+                                        settings.inbound_max_calls_per_hour, settings.inbound_mode,
+                                        settings.inbound_booking_allowed)
+    except ValueError:
+        return declined_incoming()
+    record = manager.db.get(cid)
+    if record['status'] in TERMINAL:
+        response = VoiceResponse()
+        response.hangup()
+        return Response(str(response), media_type='application/xml')
+    try:
+        await manager.gateway.prepare_inbound(sid, record['max_duration_minutes'])
+    except Exception as exc:
+        manager.db.voice_error(cid, 'Incoming duration limit could not be confirmed',
+                              {'reason':'incoming_setup_failed', 'error_type':type(exc).__name__})
+        manager.transition(cid, 'failed')
+        response = VoiceResponse()
+        response.say('Sorry, I cannot take a message right now. Please try again later.')
+        response.hangup()
+        return Response(str(response), media_type='application/xml')
+    log_event('incoming_call_accepted', call_id=cid)
+    return Response(stream_twiml(settings, cid), media_type='application/xml')
+
+
+@router.post('/incoming/status')
+async def incoming_status(request: Request):
+    form = await validated_form(request)
+    manager = request.app.state.manager
+    if form.get('AccountSid') != manager.settings.twilio_account_sid:
+        raise HTTPException(403, 'Twilio account mismatch')
+    record = manager.db.by_twilio_sid(str(form.get('CallSid', '')))
+    if not record:
+        return Response(status_code=204)
+    if record['direction'] != 'inbound' or (form.get('To') and form['To'] != manager.settings.twilio_phone_number):
+        raise HTTPException(403, 'Incoming status binding mismatch')
+    try:
+        state = normalize_status(form['CallStatus'])
+        manager.transition(record['call_id'], state,
+            sequence=int(form['SequenceNumber']) if form.get('SequenceNumber') else None,
+            duration=int(form['CallDuration']) if form.get('CallDuration') else None)
+    except (ValueError, KeyError):
+        raise HTTPException(400, 'Invalid status event') from None
+    if state in TERMINAL:
+        manager.capture_inbound_fallback(record['call_id'])
+    log_event('incoming_call_status', call_id=record['call_id'], status=state)
+    return Response(status_code=204)
 
 
 @router.websocket('/media/{call_id}')

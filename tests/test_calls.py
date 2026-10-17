@@ -16,6 +16,10 @@ class MockTwilio:
         self.calls = []
         self.failure = False
         self.status = 'queued'
+        self.incoming_preparations = []
+
+    async def prepare_inbound(self, sid, minutes):
+        self.incoming_preparations.append((sid,minutes))
 
     async def place(self, call_id, number, minutes):
         if self.failure:

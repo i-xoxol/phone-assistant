@@ -34,13 +34,15 @@ async def check():
             discover = await rpc('server/discover')
             assert discover['result']['capabilities']['events'] == {}
             catalog = await rpc('events/list')
-            assert {e['name'] for e in catalog['result']['events']} == {'transcript.delta','call.status'}
+            assert {e['name'] for e in catalog['result']['events']} == {
+                'transcript.delta','call.status','call.incoming','call.supervisor_requested','message.received'}
             print(json.dumps({'mcp_events_discoverable':True,'protocol':'2026-07-28'}))
             for mode in ('auto', 'legacy'):
                 async with Client(streamable_http_client(resource, http_client=http), mode=mode) as session:
                     names = [t.name for t in (await session.list_tools()).tools]
                     assert set(names) == {'place_call','get_call_status','get_call_result','hangup_call','press_digits',
-                        'subscribe_call_events','get_call_event_subscriptions','unsubscribe_call_events','send_call_update'}
+                        'subscribe_call_events','get_call_event_subscriptions','unsubscribe_call_events','send_call_update',
+                        'list_messages','get_message','mark_message_read','list_call_requests','respond_to_call_request'}
                     db = Database(settings.database_path)
                     with db.connect() as conn:
                         row = conn.execute('SELECT call_id FROM calls ORDER BY created_at DESC LIMIT 1').fetchone()

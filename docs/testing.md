@@ -25,6 +25,8 @@ CI validates Python 3.11, 3.12, and 3.14 in clean Linux environments.
 | MCP | Tool inventory/retrieval, owner authentication, OAuth pairing, refresh/resource handling, protocol paths |
 | Browser | Pairing, cookie/origin/CSRF, SSE wakeup/replay, duplicate suppression |
 | Events | Signed challenge, filtering, expiry, ownership, retries, persistence, delivery counters, DNS pinning |
+| Incoming | Admission, deduplication, duration cap, no outbound dial, message storage/read state, transcript fallback |
+| Concierge | Pending request deduplication, verified replies, deadlines, booking limits, future-call events and migration |
 
 Tests assert meaningful transport and permission behavior; simulated playback
 does not prove how a real phone sounds. Run manual acceptance on your accounts.
@@ -56,6 +58,7 @@ These use your own configured account and may incur OpenAI usage:
 | `python -m scripts.check_call_updates` | Actual append/acknowledgment modes with simulated audio |
 | `python -m scripts.check_live_page` | Public browser login and SSE heartbeat; temporary session revoked |
 | `python -m scripts.check_mcp` | Public OAuth MCP catalog and saved retrieval; temporary diagnostic grant revoked |
+| `python -m scripts.check_inbound_voice` | Actual Live concierge/message functions and reply acknowledgment; simulated caller, supervisor and telephone |
 
 Run checks **on the service host** when they need to use its database and
 pairing state. `check_mcp` reads the latest call if one exists but avoids printing
@@ -89,3 +92,10 @@ The underlying prototype has been used on real calls, including an existing
 appointment confirmation through a business menu. That establishes experience
 with the integration, not a guarantee of new account/model/tunnel behavior. No
 personal call transcript or recording is included as test evidence.
+
+The incoming/concierge update passed 126 offline tests on Windows and Linux,
+plus a real Live/Responses probe of supervisor-request and message-save tools
+with a simulated caller/supervisor. Public authenticated MCP inventory/retrieval
+and SSE connectivity were verified. A real incoming call and an actual Rocky
+subscription/reply still require the separate acceptance test; these checks
+do not establish that end-to-end result.

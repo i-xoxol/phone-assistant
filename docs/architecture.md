@@ -171,6 +171,8 @@ Twilio also receives a provider-enforced connected-call duration limit, at most
 | `web_sessions`, `web_pairing` | Browser pairing and session state |
 | `webhook_state` | Generic sender delivery cursor |
 | `mcp_event_subscriptions` | OAuth-owned subscriptions, secrets, cursors, expiry, counters |
+| `messages` | One confirmed incoming message per call, or labelled raw transcript fallback; read state |
+| `supervisor_requests` | Incoming concierge questions, deadlines, idempotent trusted replies and delivery state |
 
 OAuth clients/grants are stored in a separate database. SQLite WAL supports
 short concurrent reads and writes. Call state callbacks use sequence numbers
@@ -182,6 +184,16 @@ voice stream may still produce Twilio `completed`. Read `error_message`,
 `voice_events`, finalization, and transcript before reporting success.
 
 ## Module map
+
+Incoming voice starts at `/twilio/incoming`, with account/number/direction and
+signature binding. It records the existing provider call, caps duration with
+`Calls.update`, and returns the same media bridge without dialing again.
+An incoming-specific prompt exposes `save_message`/`end_call`, plus
+`request_supervisor` in concierge mode. It never includes private outbound briefs.
+Signed line-wide events deliver requests to a subscribed owner client. Trusted
+replies use the existing idempotent Live update channel. A 45-second default
+deadline falls back to message-taking; the service does not run Rocky itself.
+[Full workflow and authority boundaries](incoming-calls.md).
 
 Start with `app/main.py` for composition, `calling/call_manager.py` for actions,
 `calling/live_session.py` for audio, and `storage/database.py` for persistence.

@@ -29,6 +29,10 @@ The application sets its own voice and status URLs on each Calls API request.
 You do not need a SIP trunk, Twilio Agent Connect credentials, or a Twilio
 Functions deployment.
 
+For optional incoming message-taking or supervised concierge calls, follow the
+separate [incoming setup guide](incoming-calls.md). That explicitly configures
+the number's incoming webhook after the service is ready.
+
 ### OpenAI
 
 1. Use [the API platform](https://platform.openai.com/), enable API billing, and

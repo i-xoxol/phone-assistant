@@ -87,7 +87,16 @@ class VoiceTools:
     async def operation(self, item):
         manager = self.bridge.manager
         name = item['name']
-        if name == 'press_digits':
+        inbound = manager.db.get(self.bridge.call_id).get('direction') == 'inbound'
+        if name == 'save_message' and inbound:
+            from app.calling.inbound import MessageArguments
+            args = MessageArguments.model_validate_json(item['arguments'])
+        elif name == 'request_supervisor' and inbound:
+            from app.calling.inbound import SupervisorArguments
+            args = SupervisorArguments.model_validate_json(item['arguments'])
+            if manager.db.get(self.bridge.call_id)['inbound_mode'] != 'concierge':
+                raise ValueError('Supervisor unavailable in message-only mode')
+        elif name == 'press_digits' and not inbound:
             args = KeypadArguments.model_validate_json(item['arguments'])
         elif name == 'end_call':
             args = EndArguments.model_validate_json(item['arguments'])
@@ -99,7 +108,14 @@ class VoiceTools:
         if (manager.bridges.get(self.bridge.call_id) is not self.bridge or self.bridge.closing
                 or self.bridge.call_id in manager.stopping):
             raise ValueError('Voice session is no longer current')
-        if name == 'press_digits':
+        if name == 'request_supervisor':
+            result = await manager.request_supervisor(self.bridge.call_id, args.question)
+        elif name == 'save_message':
+            message = manager.db.save_message(self.bridge.call_id, args.message,
+                                              args.caller_name, args.callback_number)
+            result = {'status':'saved', 'message_id':message['message_id'],
+                      'instruction':'Saved in the private inbox for review. Do not claim the owner received a notification or read it.'}
+        elif name == 'press_digits':
             result = await manager.press_digits(self.bridge.call_id, DigitsRequest(**args.model_dump()))
         else:
             await self.bridge.connection.session.instructions.append(delegation_id=None,

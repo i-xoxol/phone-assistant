@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0 — 2026-10-16
+
+- Incoming GPT-Live calls with a private message inbox and Rocky/MCP access.
+- Supervised concierge requests, verified replies, deadlines, and message fallback.
+- Three line-wide MCP events for future incoming calls, help requests and messages.
+- Five additional MCP tools; optional ordinary-booking authorization, off by default.
+- Mobile inbox and supervisor connection/request status alongside live captions.
+- Signed provider binding, incoming rate/concurrency limits and provider duration caps.
+- Dry-run Twilio routing helper with private backups, offline tests and replication guide.
+
+An actual subscribed client is required for automatic supervision. The voice
+model has no direct calendar or booking credentials. No private deployment
+configuration or caller data is included.
+
 ## 0.1.0 — 2026-10-08
 
 Initial public source release of the working self-hosted prototype.

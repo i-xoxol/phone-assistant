@@ -81,6 +81,9 @@ def greeting_instruction(settings: Settings) -> str:
 
 
 def session_config(settings: Settings, record: dict) -> dict:
+    if record.get('direction') == 'inbound':
+        from app.calling.inbound import incoming_session_config
+        return incoming_session_config(settings, record)
     instructions = voice_prompt(settings, record)
     delegation = {'type': 'client'}
     if settings.live_tools_enabled:

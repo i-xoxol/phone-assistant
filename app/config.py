@@ -1,7 +1,8 @@
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +28,12 @@ class Settings(BaseSettings):
     openai_backend_model: str = 'gpt-6-luna'
     webhook_url: str = ''
     webhook_secret: SecretStr = SecretStr('')
+    inbound_enabled: bool = False
+    inbound_max_duration_minutes: int = Field(default=5, ge=1, le=15)
+    inbound_max_calls_per_hour: int = Field(default=10, ge=1, le=100)
+    inbound_mode: Literal['messages', 'concierge'] = 'messages'
+    supervisor_wait_seconds: int = Field(default=45, ge=10, le=120)
+    inbound_booking_allowed: bool = False
 
     @field_validator('webhook_url')
     @classmethod

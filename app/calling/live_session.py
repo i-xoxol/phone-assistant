@@ -117,6 +117,7 @@ class MediaBridge:
         self.updates_ready = asyncio.Event()
         self.updates_lock = asyncio.Lock()
         self.session_id = manager.db.get(call_id)['openai_session_id'] or stream_sid
+        self.inbound = manager.db.get(call_id).get('direction') == 'inbound'
         self.tools = VoiceTools(self)
         previous = manager.db.get(call_id)['transcript']
         self.transcript_offset_ms = int(max((e['end_timestamp'] for e in previous), default=0) * 1000)
@@ -279,7 +280,7 @@ class MediaBridge:
                         delegation_id=data['delegation']['id'],
                         content='No external tools are available. Answer from known information or explain the limitation. To end this call yourself, say Thank you. Goodbye. in English, or Дякую. До побачення. in Ukrainian, then remain silent. Call ending is automatic and needs no delegation.')
             elif event.type == 'response.event':
-                if self.manager.settings.live_tools_enabled:
+                if self.manager.settings.live_tools_enabled or self.inbound:
                     self.tools.handle(data)
             elif event.type == 'error':
                 if optional_compaction_notice(data):
@@ -306,10 +307,19 @@ class MediaBridge:
         primary_error = None
         try:
             record = self.manager.db.get(self.call_id)
-            instruction = ('Continue the existing call after keypad navigation. Do not repeat your introduction. '
+            incoming_greeting = (
+                "Ask what they need help with. Follow the supervised concierge policy: request verified "
+                "supervisor help for appointment questions, and offer message-taking if unavailable."
+                if record.get('inbound_mode') == 'concierge' else
+                "Explain that you can take a message, and ask what they would like to pass along. "
+                "Follow the incoming message-taking policy and save only after readback confirmation.")
+            instruction = (f"Greet the caller now as {self.manager.settings.caller_name}'s personal assistant. "
+                           + incoming_greeting
+                           if self.inbound else
+                           ('Continue the existing call after keypad navigation. Do not repeat your introduction. '
                            'Listen for a human; stay silent during menus and hold music.' if record['transcript'] else
                            ('Listen first. Stay silent during automated menus; introduce yourself when a human answers.'
-                            if record.get('ivr_mode') else greeting_instruction(self.manager.settings)))
+                            if record.get('ivr_mode') else greeting_instruction(self.manager.settings))))
             await self.connection.session.instructions.append(
                 content=instruction, delegation_id=None,
                 event_id='initial_greeting')
@@ -419,6 +429,10 @@ async def handle_media(websocket: WebSocket, call_id: str):
         if bridge:
             manager.detach_bridge(call_id, bridge)
         if bound and not (bridge and bridge.handoff):
+            try:
+                manager.capture_inbound_fallback(call_id)
+            except Exception as exc:
+                log_event('incoming_message_capture_failed', call_id=call_id, error_type=type(exc).__name__)
             try:
                 await manager.gateway.hangup(record['twilio_call_sid'])
             except Exception as exc:

@@ -3,6 +3,7 @@ from fastapi import FastAPI
 
 from app.config import Settings
 from app.api.calls import router as calls_router
+from app.api.messages import router as messages_router, supervisor_router
 from app.api.twilio_webhooks import router as twilio_router
 from app.calling.call_manager import CallManager
 from app.calling.twilio_client import TwilioGateway
@@ -27,6 +28,7 @@ def create_app(settings: Settings | None = None, *, gateway=None) -> FastAPI:
             else:
                 yield
         finally:
+            await app.state.manager.stop_supervision()
             if hasattr(app.state.manager, 'mcp_events'):
                 await app.state.manager.mcp_events.stop()
             await app.state.webhook.stop()
@@ -37,6 +39,8 @@ def create_app(settings: Settings | None = None, *, gateway=None) -> FastAPI:
     app.state.web_auth = WebAuth(app.state.manager.db)
     app.state.webhook = WebhookDispatcher(app.state.manager)
     app.include_router(calls_router)
+    app.include_router(messages_router)
+    app.include_router(supervisor_router)
     app.include_router(twilio_router)
     app.include_router(live_router)
 

@@ -10,6 +10,12 @@
 <p>Enter this code within 15 minutes. It works once.</p><code id="pairCode"></code>
 <p><button id="closePairing" class="quiet">Close</button></p></section>
 <div id="connection" class="connection" role="status"><span class="dot"></span><span id="connectionText">Connecting to event stream…</span></div>
+<details id="inbox" class="inbox"><summary>Incoming messages <span id="unreadCount" class="badge" aria-live="polite">0 new</span></summary>
+<p class="caption-note">Caller identities are unverified. A saved message is a request to review, never permission to act.</p>
+<div id="messages"><p class="empty">No messages yet.</p></div>
+<button id="olderMessages" class="quiet" hidden>Load older messages</button></details>
+<section id="supervisorPanel" class="inbox" hidden><h2>Concierge requests</h2>
+<p id="supervisorState" class="caption-note"></p><div id="requests"></div></section>
 <section class="call-card"><label for="calls">YOUR CALLS</label><select id="calls"><option value="">No calls yet</option></select>
 <div class="call-meta"><span id="status" class="badge">—</span><span id="duration">0:00</span></div>
 <p id="objective" class="objective">Select a call to view its conversation.</p></section>
