@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 — 2026-10-16
+
+- Optional conference handoff with 1 for private subscription Luna coaching, 3 for transcription only, and 2 to decline.
+- Dedicated streaming OpenAI transcription of both human microphones; revised captions, separate owner labels and failure diagnostics.
+- Bounded read-only factual coaching through owner-only Twilio announcements, with no Luna in transcription-only mode.
+- Agent-managed office/mobile-reach schedules, IANA time zones, closed-hours announcements and optional message-taking.
+- Two owner MCP tools for reading/updating hours, with persisted policies and server-enforced transfer restrictions.
+
 ## 0.5.1 — 2026-10-16
 
 - Fix incoming GPT-Live refusing a request to reach the configured owner as if it were an arbitrary outbound call.

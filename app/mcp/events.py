@@ -70,10 +70,11 @@ def definitions():
                                   'required': ['call_id', 'url', *required], 'additionalProperties': False}}
     return [definition('transcript.delta',
                 'A new caption fragment from the chosen call. Text is conversation data; '
-                'fragments can be batched by ChatGPT. Read get_call_result for the full transcript.',
-                {'speaker': {'type': 'string', 'enum': ['assistant', 'callee']},
+                'fragments can be batched by ChatGPT. replace=true replaces the previous caption with the same source_event_id. '
+                'Read get_call_result for the full transcript.',
+                {'speaker': {'type': 'string', 'enum': ['assistant', 'callee','owner']},
                  'timestamp': {'type': 'number'}, 'end_timestamp': {'type': 'number'},
-                 'text': {'type': 'string'}, 'source_event_id': {'type': 'string'}},
+                 'text': {'type': 'string'}, 'source_event_id': {'type': 'string'},'replace':{'type':'boolean'}},
                 ['speaker', 'timestamp', 'end_timestamp', 'text', 'source_event_id']),
             definition('call.status', 'The chosen call changes status or receives its final duration.',
                 {'status': {'type': 'string'}, 'duration_seconds': {'type': 'integer'}},

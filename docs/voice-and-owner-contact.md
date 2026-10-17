@@ -67,6 +67,58 @@ disclosure authority is created by escalation.
 
 ## Screened transfer flow
 
+### With continuous transcription and optional coaching
+
+Set `OWNER_OBSERVATION_ENABLED=true` to use the conference flow. Supply API access
+to `OPENAI_TRANSCRIPTION_MODEL=gpt-live-transcribe`. For coaching also enable the
+existing subscription lookup worker and sign Codex in with ChatGPT on the service host.
+
+The private screening prompt offers **1: accept with Luna coaching**, **3: accept
+with Luna off**, and **2: decline**. Both accepted modes stream both people's
+microphones to dedicated OpenAI transcription sessions. The mobile monitor and
+MCP transcript events continue after handoff, labeling the owner separately.
+Partial captions replace earlier text with the same source event ID; the saved
+record contains the latest revision. No audio files are recorded.
+
+Only whisper mode starts GPT-6 Luna. It selects one useful current phone-safe
+fact, anticipated-call note or fresh availability window from owner-maintained
+context. The server rechecks the fact before a private Twilio participant
+announcement to the owner's leg. The caller cannot hear that announcement.
+Luna cannot use arbitrary tools, spend money, book anything or choose recipients.
+It uses the existing subscription CLI with no API-key fallback. There are at
+most twelve lookups and eight unique suggestions per call, with a twenty-second
+lookup cooldown, twenty-five-second announcement cooldown and a quiet-gap check.
+Suggestions are not instant; a delayed result is discarded when the call ends.
+This is bounded factual coaching, not unrestricted continuous reasoning or
+an independent calendar/booking agent. There is no phone-page button required.
+
+Twilio conference and media-stream charges, two phone legs and OpenAI transcription
+charges apply. Luna uses subscription limits; Twilio supplies the announcement
+voice independently of the GPT-Live voice setting. Your original duration cap
+still applies to both phones. Transcription is enabled in both modes, but network
+or provider failures can create gaps; the monitor reports `degraded`. Such a
+failure does not disconnect the human conversation or start Luna in captions-only mode.
+There is currently no automatic transcription reconnection after a provider failure.
+
+Expose the same HTTPS origin including `/twilio/owner-media/{transfer_id}/{caller|owner}`
+as WSS and all signed `/twilio/owner-transfer/{transfer_id}/*` callbacks. No new
+public owner-control endpoint or credential is needed. Conference callbacks bind
+the account, room and participant; microphone streams additionally bind the exact
+call SID. Callers hear that the conversation will be transcribed before joining.
+
+Manual acceptance test: call from a second phone, request the owner, and select 3.
+Speak distinct phrases on both phones and confirm two labeled live captions and
+zero coaching. Repeat with 1 after setting a short synthetic fact through
+`set_call_fact`; ask about it and confirm only the owner hears the suggestion.
+Also test 2/no answer, direct monitor hangup, and both phones disconnecting.
+`python -m scripts.check_owner_transcription --caller-wav synthetic.wav` verifies
+actual OpenAI transcription of synthetic mono PCM16/8k audio without dialing.
+`python -m scripts.check_owner_coaching` verifies actual subscription Luna selection
+against a simulated telephone announcement. Neither proves handset isolation;
+the two-phone test is still required on your deployment.
+
+### Legacy bridge (observation disabled)
+
 1. The server checks the current call/bridge, remaining call time, fixed target,
    one-attempt-per-call rule and maximum ten attempts per hour.
 2. It expires pending supervisor requests and pauses the voice bridge. Automated

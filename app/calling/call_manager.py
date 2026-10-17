@@ -31,14 +31,18 @@ class CallManager:
         self.stopping = set()
         self.supervisor_tasks = {}
         self.context = ConciergeContext(database)
+        from app.calling.hours import OperatingHours
+        self.hours=OperatingHours(database)
         self.knowledge = CallKnowledge(database)
         self.lookup = LookupService(self)
         self.voices = VoicePreferences(database,settings)
         self.transfer = OwnerTransfer(self)
+        from app.calling.owner_observer import TransferObserver
+        self.observer = TransferObserver(self)
 
     def result(self, call_id):
         return {**self.db.get(call_id),'lookup_requests':self.lookup.list_for_call(call_id),
-                'owner_transfer':self.transfer.for_call(call_id)}
+                'owner_transfer':self.transfer.for_call(call_id),'owner_coaching':self.observer.history(call_id)}
 
     def voice_record(self,call_id):
         record=self.db.get(call_id)
@@ -46,6 +50,8 @@ class CallManager:
         record['owner_transfer']=self.transfer.for_call(call_id)
         if record.get('direction')=='inbound':
             record['incoming_context']=self.context.for_call(record)
+            if record['inbound_mode']=='messages' and not self.hours.state()['office_open']:
+                record['closed_announcement']=self.hours.closed_announcement()
         return record
 
     async def context_changed(self):
@@ -124,6 +130,7 @@ class CallManager:
                 'note':'Reply injection is not proof the caller heard it. Verify transcript; never repeat a booking on a delivery retry.'}
 
     async def stop_supervision(self):
+        await self.observer.stop()
         await self.lookup.stop()
         tasks = list(self.supervisor_tasks.values())
         for task in tasks:
@@ -208,6 +215,8 @@ class CallManager:
     def transition(self, call_id: str, status: str, **kwargs):
         if self.db.transition(call_id, status, **kwargs):
             log_event('call_state_changed', call_id=call_id, status=status)
+            if status in TERMINAL:
+                self.observer.call_ended(call_id)
 
     def status(self, call_id: str) -> dict:
         record = self.db.get(call_id)
@@ -233,6 +242,9 @@ class CallManager:
         """Keep interrupted incoming conversations visible without inventing a summary."""
         record = self.db.get(call_id)
         if record['direction'] != 'inbound':
+            return
+        if (self.transfer.for_call(call_id) or {}).get('accepted'):
+            # Human-to-human speech is a transcript, not a message intended for the inbox.
             return
         for request in record['supervisor_requests']:
             if request['status'] == 'pending':

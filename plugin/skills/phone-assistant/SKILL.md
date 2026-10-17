@@ -113,7 +113,7 @@ For a complex active call that needs the owner personally, explain the transitio
 and confirm the caller wishes to hold, then use `reach_owner(call_id,reason)`.
 The destination is server-configured; never supply, invent or expose another number.
 It makes one paid Twilio attempt per call, with private screening: the owner must
-press 1 to accept. No answer/decline returns the caller to GPT-Live. Never promise
+follow the spoken acceptance choices. No answer/decline returns the caller to GPT-Live. Never promise
 the owner will answer, redial after ambiguity, or interpret escalation as expanded
 financial/contractual authority. Calling the same mobile already participating is
 blocked. For a live test, use a separate caller phone while the owner mobile is free.
@@ -121,4 +121,9 @@ blocked. For a live test, use a separate caller phone while the owner mobile is 
 Inspect `get_call_result.owner_transfer`. Pause all automated booking/actions while
 owner contact is dialing, screening or accepted. Pending supervisor requests expire
 at handoff. Never repeat a booking or call to retry notification. Human conversation
-after acceptance is not recorded/transcribed; the monitor's direct hangup still works.
+after acceptance is not audio-recorded. When owner observation is enabled, press 1
+for transcription plus private Luna coaching, 3 for transcription with Luna off,
+or 2 to decline. Captions identify the owner separately and can revise earlier
+partial text (`replace=true`, same source_event_id). Legacy instances stop captions
+at handoff. The monitor's direct hangup still works. Coaching reads only current
+approved facts and fresh availability; it cannot perform bookings or other actions.

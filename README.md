@@ -15,6 +15,10 @@
   Twilio connects the call. OpenAI GPT-Live handles the conversation. You keep control.
 </p>
 
+Owner agents can manage [office and mobile-reach hours](docs/operating-hours.md).
+Optional [observed handoffs](docs/voice-and-owner-contact.md) keep human-call
+transcription on, with a keypad choice of private Luna coaching or no coaching.
+
 <p align="center">
   <a href="docs/getting-started.md">Set it up</a> ·
   <a href="docs/architecture.md">How it works</a> ·
@@ -196,7 +200,7 @@ For ChatGPT, add your `/mcp` URL as a custom MCP plugin and select **OAuth**.
 Complete the owner approval page with the pairing code, install the plugin, and
 enable it in the conversation. Account/workspace availability varies.
 
-[Connection instructions and all twenty-six tools →](docs/mcp.md)
+[Connection instructions and all twenty-eight tools →](docs/mcp.md)
 
 ## Incoming calls and concierge mode
 

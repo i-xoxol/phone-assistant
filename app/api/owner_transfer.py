@@ -1,8 +1,15 @@
 from uuid import UUID
-from fastapi import APIRouter,HTTPException,Request,Response
+from fastapi import APIRouter,HTTPException,Request,Response,WebSocket
 from app.api.twilio_webhooks import validated_form
 
 router=APIRouter(prefix='/twilio/owner-transfer')
+media_router=APIRouter(prefix='/twilio/owner-media')
+
+
+@media_router.websocket('/{transfer_id}/{side}')
+async def owner_media(transfer_id:UUID,side:str,websocket:WebSocket):
+    from app.calling.transcription import handle_owner_media
+    await handle_owner_media(websocket,str(transfer_id),side)
 
 
 @router.post('/{transfer_id}/{action}')
@@ -14,6 +21,9 @@ async def transfer_callback(transfer_id:UUID,action:str,request:Request):
     tid=str(transfer_id)
     try:
         row=m.transfer.get(tid)
+        if row['strategy']=='conference':
+            xml=await m.observer.callback(row,action,form)
+            return Response(xml,media_type='application/xml')
         if action=='screen':
             xml=await m.transfer.screen(tid,form)
         elif action=='accept':

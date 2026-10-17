@@ -217,6 +217,9 @@ An information reply does not authorize confirmation; appointment_confirmed mean
         if transfer and transfer['status']=='returned_to_assistant':
             opening+=' The owner could not be connected. Explain briefly and offer to take a message. Never retry the owner attempt.'
         instructions+='\nTrusted owner-contact outcome: '+json.dumps(transfer,ensure_ascii=False)
+    if record.get('closed_announcement'):
+        instructions+='\nOFFICE CLOSED: '+record['closed_announcement']+' Offer message-taking only. Do not promise owner contact.'
+        opening='The telephone already played the office-closed announcement and hours. Do not repeat it. Offer to take a message now.'
     return {'model':settings.openai_live_model, 'instructions':instructions,
         'input':[{'type':'message','role':'developer','content':[{'type':'input_text','text':opening}]}],
         'audio':{'format':{'type':'audio/pcmu', 'rate':8000}, 'output':{'voice':record.get('voice_name') or settings.openai_voice}},

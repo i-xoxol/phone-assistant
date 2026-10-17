@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     owner_transfer_enabled: bool = False
     owner_transfer_number: str = Field(default='',pattern=r'^(?:|\+[1-9][0-9]{7,14})$')
     owner_transfer_ring_seconds: int = Field(default=20,ge=10,le=30)
+    owner_observation_enabled: bool = False
+    openai_transcription_model: str = 'gpt-live-transcribe'
 
     @field_validator('webhook_url')
     @classmethod

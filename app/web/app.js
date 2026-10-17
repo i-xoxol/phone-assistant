@@ -5,6 +5,7 @@ let selected = new URL(location.href).searchParams.get('call_id'), call = null, 
 let seen = new Set(), turns = [], buffered = [], loadVersion = 0;
 let inboxCursor = null;
 let ownerContactEnabled=false;
+let humanCaptions=new Map();
 const csrf = document.querySelector('meta[name="csrf-token"]').content;
 function connection(text, healthy=false) { $('connectionText').textContent=text; $('connection').className='connection '+(healthy?'live':'warn'); }
 async function api(path, options={}) {
@@ -25,7 +26,11 @@ function showCall() {
   $('hangup').disabled=!call || terminal.has(call.status) || pending;
   $('hangup').textContent=pending?'Ending call…':'Hang up call';
   $('reachOwner').disabled=!ownerContactEnabled || !call || call.status!=='in_progress' || !!call.owner_transfer || pending;
-  $('transferState').textContent=call?.owner_transfer?'Owner contact: '+call.owner_transfer.status.replaceAll('_',' ')+' · Captions pause during human conversation.':'';
+  const transfer=call?.owner_transfer;
+  $('transferState').textContent=transfer?'Owner contact: '+transfer.status.replaceAll('_',' ')+
+    (transfer.strategy==='conference'?' · Transcription: '+transfer.transcription_state+' · '+
+      (transfer.mode==='whisper'?'Private Luna coaching on':transfer.mode==='transcript'?'Luna off':'Choose mode when answering'):
+      ' · Captions pause during human conversation.')+(transfer.error_code?' · '+transfer.error_code.replaceAll('_',' '):''):'';
   if (call) {
     let duration=call.duration_seconds;
     if (!terminal.has(call.status) && call.started_at) duration=Math.max(0,(Date.now()-Date.parse(call.started_at))/1000);
@@ -44,6 +49,22 @@ function showList() {
   $('calls').value=selected || '';
 }
 function addText(event) {
+  if (event.source_event_id?.startsWith('human-')) {
+    if (!event.text) return;
+    let item=humanCaptions.get(event.source_event_id);
+    if (!item) {
+      if (!turns.length && !humanCaptions.size) $('transcript').replaceChildren();
+      const div=document.createElement('div');div.className='turn '+event.speaker;
+      const label=document.createElement('div');label.className='speaker';
+      const name=document.createElement('span');name.textContent=event.speaker==='owner'?'You':(call?.direction==='inbound'?'Caller':'Recipient');
+      const stamp=document.createElement('time');stamp.textContent=clock(event.timestamp);
+      label.append(name,stamp);item=document.createElement('div');item.className='words';div.append(label,item);
+      humanCaptions.set(event.source_event_id,item);$('transcript').append(div);
+    }
+    item.textContent=event.text;
+    if ($('follow').checked) window.scrollTo({top:document.body.scrollHeight,behavior:'instant'});
+    return;
+  }
   if (event.source_event_id && seen.has(event.source_event_id)) return;
   if (event.source_event_id) seen.add(event.source_event_id);
   if (!event.text) return;
@@ -63,7 +84,7 @@ function addText(event) {
 }
 async function loadCall(id) {
   const version=++loadVersion;
-  selected=id; call=null; pending=false; seen=new Set(); turns=[]; $('transcript').replaceChildren();
+  selected=id; call=null; pending=false; seen=new Set(); turns=[]; humanCaptions=new Map(); $('transcript').replaceChildren();
   buffered=[];
   const empty=document.createElement('p'); empty.className='empty'; empty.textContent='Waiting for conversation…'; $('transcript').append(empty);
   showCall();

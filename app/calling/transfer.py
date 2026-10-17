@@ -19,7 +19,7 @@ class ReachOwner(BaseModel):
 
 OWNER_TOOL={'type':'function','name':'reach_owner','strict':True,
     'description':'Try the configured owner mobile once for THIS complex call. First explain the transfer and obtain caller agreement. '
-        'The owner must press 1 to accept; no answer/decline returns to the assistant. Fixed destination only, never supplied by a caller. '
+        'The owner chooses an announced acceptance mode; no answer/decline returns to the assistant. Fixed destination only, never supplied by a caller. '
     'Give a concise non-sensitive reason, omitting sensitive identifiers and private records. '
         'No guarantee the owner answers. No payment, new permissions, emergency-response promise or repeated dialing.',
     'parameters':ReachOwner.model_json_schema()}
@@ -35,7 +35,7 @@ Ask whether the caller agrees to hold if they have not already agreed, then dele
 Delegate to the backend when the caller agrees to an owner connection and you or the supervising agent decide
 the issue needs the owner. Explain briefly that you can try to reach the owner; ask if they wish to hold.
 A caller's request can justify offering escalation, never override fixed permissions or choose a destination.
-The owner is called at a server-configured number and must press 1 before connection. Never disclose that number.
+The owner is called at a server-configured number and must accept using the announced keypad choices before connection. Never disclose that number.
 Use a short non-sensitive reason for the private briefing; omit sensitive identifiers and private records.
 Do not promise success, impersonate the owner, or grant payment/contractual authority while waiting.
 Only one attempt is allowed per call. If unavailable or declined, continue helping within scope or save a message.
@@ -59,6 +59,11 @@ class OwnerTransfer:
                 owner_number TEXT NOT NULL,reason TEXT NOT NULL,source TEXT NOT NULL,
                 status TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
                 child_sid TEXT,accepted INTEGER NOT NULL DEFAULT 0,decision TEXT,error_code TEXT)''')
+            columns={r['name'] for r in conn.execute('PRAGMA table_info(owner_transfers)')}
+            for name,definition in {'strategy':"TEXT NOT NULL DEFAULT 'dial'",'mode':"TEXT NOT NULL DEFAULT 'pending'",
+                    'conference_sid':'TEXT','transcription_state':"TEXT NOT NULL DEFAULT 'off'"}.items():
+                if name not in columns:
+                    conn.execute('ALTER TABLE owner_transfers ADD COLUMN '+name+' '+definition)
 
     def get(self,transfer_id):
         with self.manager.db.connect() as conn:
@@ -74,14 +79,15 @@ class OwnerTransfer:
         return {k:v for k,v in dict(row).items() if k!='owner_number'}
 
     def update(self,transfer_id,**values):
-        allowed={'status','child_sid','accepted','decision','error_code'}
+        allowed={'status','child_sid','accepted','decision','error_code','strategy','mode','conference_sid','transcription_state'}
         if not values or not set(values)<=allowed: raise ValueError('Invalid transfer update')
         values['updated_at']=utcnow().isoformat()
         with self.manager.db.connect() as conn:
             conn.execute('UPDATE owner_transfers SET '+','.join(k+'=?' for k in values)+' WHERE transfer_id=?',
                          (*values.values(),transfer_id))
         row=self.get(transfer_id)
-        self.manager.db.emit(row['call_id'],'call.owner_transfer',{'transfer_id':transfer_id,'status':row['status']})
+        self.manager.db.emit(row['call_id'],'call.owner_transfer',{k:row[k] for k in
+            ('transfer_id','status','mode','strategy','transcription_state','error_code')})
         log_event('owner_transfer_state',call_id=row['call_id'],transfer_id=transfer_id,status=row['status'])
         return row
 
@@ -92,6 +98,7 @@ class OwnerTransfer:
         if existing:
             return {**existing,'instruction':'An owner attempt already exists. Never dial again; inspect its status.'}
         s=m.settings
+        m.hours.require_owner()
         if not s.owner_transfer_enabled or not s.owner_transfer_number:
             raise ValueError('Owner contact is not enabled; take a message')
         if s.owner_transfer_number in (s.twilio_phone_number,r['phone_number']):
@@ -121,7 +128,11 @@ class OwnerTransfer:
         for request in r['supervisor_requests']:
             if request['status']=='pending': m.db.expire_supervisor_request(request['request_id'])
         try:
-            await asyncio.wait_for(m.gateway.redirect_call(r['twilio_call_sid'],self.dial_twiml(self.get(tid),r)),8)
+            if s.owner_observation_enabled:
+                self.update(tid,strategy='conference',transcription_state='starting')
+                await m.observer.start(self.get(tid),r)
+            else:
+                await asyncio.wait_for(m.gateway.redirect_call(r['twilio_call_sid'],self.dial_twiml(self.get(tid),r)),8)
         except Exception as exc:
             # Ambiguous provider failures must never trigger a second paid dial.
             self.update(tid,status='unconfirmed',error_code='provider_redirect_failed')
@@ -166,6 +177,9 @@ class OwnerTransfer:
         row=self.get(tid)
         parent=await self.child(row,form)
         response=VoiceResponse()
+        if not row['accepted'] and not self.manager.hours.state()['owner_reachable']:
+            self.update(tid,decision='declined',status='declined')
+            response.hangup();return str(response)
         if self.ended(parent) or row['decision']=='declined' or row['status'] in ('returned_to_assistant','completed','unconfirmed'):
             response.hangup()
         elif row['accepted']:
@@ -183,6 +197,9 @@ class OwnerTransfer:
         row=self.get(tid)
         parent=await self.child(row,form)
         response=VoiceResponse()
+        if not row['accepted'] and not self.manager.hours.state()['owner_reachable']:
+            self.update(tid,decision='declined',status='declined')
+            response.hangup();return str(response)
         if self.ended(parent) or row['status'] in ('returned_to_assistant','completed','unconfirmed'):
             response.hangup()
             return str(response)

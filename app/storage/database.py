@@ -504,8 +504,20 @@ class Database:
         self.on_event()
         return changed
 
+    def human_caption(self,call_id,event_id,speaker,start_ms,end_ms,text):
+        if speaker not in ('owner','callee'): raise ValueError('Invalid human speaker')
+        with self.connect() as db:
+            db.execute('''INSERT INTO transcript_events(call_id,event_id,speaker,start_ms,end_ms,text)
+                VALUES (?,?,?,?,?,?) ON CONFLICT(call_id,event_id) DO UPDATE SET text=excluded.text,end_ms=excluded.end_ms''',
+                (call_id,event_id,speaker,start_ms,end_ms,text))
+            self._event(db,call_id,'transcript.delta',{'speaker':speaker,'timestamp':start_ms/1000,
+                'end_timestamp':end_ms/1000,'text':text,'source_event_id':event_id,'replace':True})
+        self.on_event()
+
     def transcript(self, call_id: str, event: dict):
-        speaker = 'callee' if event['type'] == 'session.input_transcript.delta' else 'assistant'
+        speaker = event.get('speaker') or ('callee' if event['type'] == 'session.input_transcript.delta' else 'assistant')
+        if speaker not in ('callee','assistant','owner'):
+            raise ValueError('Invalid transcript speaker')
         with self.connect() as db:
             inserted = db.execute('''INSERT OR IGNORE INTO transcript_events
                 (call_id,event_id,speaker,start_ms,end_ms,text) VALUES (?,?,?,?,?,?)''',

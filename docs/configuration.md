@@ -78,6 +78,13 @@ persistent voice selector and optional `OWNER_TRANSFER_ENABLED`, private
 `OWNER_TRANSFER_NUMBER`, and `OWNER_TRANSFER_RING_SECONDS` (10–30, default 20).
 Never place the owner number in a public plugin manifest or example environment.
 
+`OWNER_OBSERVATION_ENABLED=true` opts into conference transfers with continuous
+human-call transcription using `OPENAI_TRANSCRIPTION_MODEL=gpt-live-transcribe`.
+Both accepted modes transcribe; only keypad choice 1 enables subscription Luna
+coaching. Choice 3 keeps Luna off. See the provider costs and test instructions
+in the owner-contact guide. [Office hours](operating-hours.md) are stored in
+SQLite and managed by owner MCP tools or `/hours`, rather than environment variables.
+
 The optional [GPT-6 Luna subscription lookup](subscription-lookup.md) uses
 `SUBSCRIPTION_LOOKUP_ENABLED=false` by default and a twenty-second
 `SUBSCRIPTION_LOOKUP_TIMEOUT_SECONDS` (allowed 5–40). It requires a private

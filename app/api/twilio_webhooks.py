@@ -40,9 +40,12 @@ async def incoming(request: Request):
         log_event('incoming_forwarding_loop_blocked')
         return declined_incoming()
     try:
+        hours=manager.hours.policy()
+        closed=not manager.hours.state()['office_open']
+        mode='messages' if closed and hours.outside_hours=='messages' else settings.inbound_mode
         cid = manager.db.create_inbound(sid, caller, settings.inbound_max_duration_minutes,
-                                        settings.inbound_max_calls_per_hour, settings.inbound_mode,
-                                        settings.inbound_booking_allowed)
+                                        settings.inbound_max_calls_per_hour, mode,
+                                        settings.inbound_booking_allowed and not closed)
     except ValueError:
         return declined_incoming()
     record = manager.db.get(cid)
@@ -50,6 +53,19 @@ async def incoming(request: Request):
         response = VoiceResponse()
         response.hangup()
         return Response(str(response), media_type='application/xml')
+    if closed and hours.outside_hours=='closed':
+        response=VoiceResponse()
+        response.say(manager.hours.closed_announcement())
+        response.hangup()
+        log_event('incoming_office_closed',call_id=cid)
+        return Response(str(response),media_type='application/xml')
+    if closed:
+        import xml.etree.ElementTree as ET
+        response=VoiceResponse();response.say(manager.hours.closed_announcement())
+        root=ET.fromstring(str(response))
+        root.extend(list(ET.fromstring(stream_twiml(settings,cid))))
+        log_event('incoming_office_closed_messages',call_id=cid)
+        return Response(ET.tostring(root,encoding='unicode'),media_type='application/xml')
     # Twilio is still ringing while it fetches these instructions. Calls.update
     # rejects that state (21220). Establish the stream first; handle_media then
     # sets the provider duration cap before connecting any paid Live session.

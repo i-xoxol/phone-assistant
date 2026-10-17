@@ -41,6 +41,20 @@ class TwilioGateway:
     async def redirect_call(self,sid,twiml):
         return await asyncio.to_thread(self.client().calls(sid).update,twiml=twiml)
 
+    async def ring_owner(self, row, seconds):
+        path='/twilio/owner-transfer/'+row['transfer_id']
+        return await asyncio.to_thread(self.client().calls.create,
+            to=row['owner_number'],from_=self.settings.twilio_phone_number,
+            url=self.settings.public_url(path+'/screen'),method='POST',
+            status_callback=self.settings.public_url(path+'/leg-status'),status_callback_method='POST',
+            status_callback_event=['initiated','ringing','answered','completed'],
+            timeout=self.settings.owner_transfer_ring_seconds,time_limit=seconds,record=False)
+
+    async def whisper(self, conference_sid, owner_sid, url):
+        # A participant announcement targets only this participant, never the room.
+        return await asyncio.to_thread(self.client().conferences(conference_sid).participants(owner_sid).update,
+            announce_url=url,announce_method='POST')
+
     async def prepare_inbound(self, sid: str, minutes: int):
         # Only call AFTER the signed media start proves Twilio answered.
         # Number-level configuration already supplies the status callback.
