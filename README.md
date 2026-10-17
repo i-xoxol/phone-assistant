@@ -42,6 +42,8 @@ recordings, account credentials, or access to the author's deployment.
 |---|---|
 | **Place a real call** | Give an E.164 number, objective, context, constraints, and duration limit. Creation returns while the call continues. |
 | **Have a natural conversation** | GPT-Live listens and speaks over a continuous audio connection, with normal turn-taking and interruption support. |
+| **Choose a voice** | Set a documented Live voice for new calls from MCP or the private mobile monitor. |
+| **Reach the owner** | One screened attempt rings a fixed mobile; press 1 to connect. No answer/decline returns to the assistant. [Setup →](docs/voice-and-owner-contact.md) |
 | **Navigate phone menus** | Send real DTMF digits. Optionally let the in-service voice backend choose navigation keys from the menu it heard. |
 | **Update a call in progress** | Send new availability, corrected facts, or a short request without restarting the conversation. |
 | **Follow live captions** | Pair a phone or laptop browser with the private monitor. Transcripts stream through Server-Sent Events. |
@@ -194,7 +196,7 @@ For ChatGPT, add your `/mcp` URL as a custom MCP plugin and select **OAuth**.
 Complete the owner approval page with the pairing code, install the plugin, and
 enable it in the conversation. Account/workspace availability varies.
 
-[Connection instructions and all twenty-three tools →](docs/mcp.md)
+[Connection instructions and all twenty-six tools →](docs/mcp.md)
 
 ## Incoming calls and concierge mode
 

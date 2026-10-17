@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 — 2026-10-16
+
+- Persistent GPT-Live voice selection through MCP, REST and the paired mobile monitor; active calls keep their voice.
+- One screened owner-contact attempt for a complex active call: fixed mobile, private briefing and press-1 acceptance.
+- No-answer/decline returns to GPT-Live with retained history, voice and remaining duration; human conversation is not recorded/transcribed.
+- Voice/Rocky initiation and bounded Luna recommendations; pause pending supervision and automated bookings during handoff.
+- Signed parent/child callbacks, loop prevention, limits, ambiguity handling and transfer-state diagnostics.
+
 ## 0.4.1 — 2026-10-16
 
 - Fix incoming calls being rejected before GPT-Live could start: apply the duration cap after the signed media start, when Twilio is in progress.

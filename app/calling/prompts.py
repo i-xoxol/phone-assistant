@@ -96,6 +96,13 @@ def session_config(settings: Settings, record: dict) -> dict:
         delegation = {'type': 'responses', 'responses': {'model': settings.openai_backend_model,
             'instructions': backend_prompt(settings, record), 'tools': TOOLS,
             'tool_choice': 'auto', 'parallel_tool_calls': False, 'max_output_tokens': 500}}
+        if settings.owner_transfer_enabled:
+            from app.calling.transfer import OWNER_TOOL,OWNER_POLICY
+            instructions+=OWNER_POLICY
+            delegation['responses']['tools']=[*TOOLS,OWNER_TOOL]
+            delegation['responses']['instructions']=delegation['responses']['instructions'].replace(
+                'No tool can place another call.',
+                'The only extra call allowed is reach_owner to the fixed configured owner for this complex call, after caller agreement. No other destinations or retries.')+OWNER_POLICY
     instructions += '\nKEYPAD: Listen silently during automated phone menus and hold music. The supervising agent can send keypad digits. Never speak a digit as a substitute for pressing it. Do not approve charges or agreements through menu choices. Once a human answers, introduce yourself and continue the objective.\n'
     if settings.live_tools_enabled:
         instructions += '\nThe in-service backend can press_digits directly when you delegate. You do not need to wait for the originating ChatGPT agent to poll the transcript. Choose one current menu at a time and wait for the next prompt after the stream reconnects.\n'
@@ -110,5 +117,5 @@ def session_config(settings: Settings, record: dict) -> dict:
             + json.dumps([{'mode':r['mode'], 'content':r['content']} for r in retained], ensure_ascii=False))
     return {'model': settings.openai_live_model, 'instructions': instructions,
             'audio': {'format': {'type': 'audio/pcmu', 'rate': 8000},
-                      'output': {'voice': settings.openai_voice}},
+                      'output': {'voice': record.get('voice_name') or settings.openai_voice}},
             'delegation': delegation, 'store': False}

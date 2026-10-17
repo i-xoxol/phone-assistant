@@ -6,7 +6,9 @@ The server uses the official MCP Python SDK and **Streamable HTTP** at `/mcp`.
 It shares the FastAPI process and call manager. There is no separate stdio
 process in this release.
 
-The server currently exposes 23 owner tools. The four curated-directory tools
+The server currently exposes 26 owner tools. Voice selection and screened owner
+contact are documented in [voice and owner contact](voice-and-owner-contact.md).
+The four curated-directory tools
 are documented in [subscription lookup](subscription-lookup.md). Enabling that
 worker adds a voice-internal reader, not a public agent execution tool.
 

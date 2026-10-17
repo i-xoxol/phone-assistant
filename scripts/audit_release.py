@@ -26,6 +26,7 @@ FICTIONAL_PHONE = re.compile(r'\+' + '120255501' + r'[0-9]{2}$')
 SECRET_FIELDS = {'OPENAI_API_KEY', 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN',
                  'TWILIO_PHONE_NUMBER', 'PUBLIC_BASE_URL', 'LOCAL_API_TOKEN',
                  'CALLBACK_NUMBER', 'WEBHOOK_URL', 'WEBHOOK_SECRET'}
+SECRET_FIELDS.add('OWNER_TRANSFER_NUMBER')
 
 
 def path_problem(path: Path) -> str | None:

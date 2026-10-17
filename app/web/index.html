@@ -10,6 +10,11 @@
 <p>Enter this code within 15 minutes. It works once.</p><code id="pairCode"></code>
 <p><button id="closePairing" class="quiet">Close</button></p></section>
 <div id="connection" class="connection" role="status"><span class="dot"></span><span id="connectionText">Connecting to event stream…</span></div>
+<details class="inbox"><summary>Voice and owner contact</summary>
+<label for="voiceChoice">Voice for new calls</label><select id="voiceChoice"></select>
+<p class="caption-note">Active calls keep their voice. Accent and pronunciation vary by language.</p>
+<button id="saveVoice" class="quiet">Save voice</button><p id="voiceState" class="caption-note" role="status"></p>
+<p class="caption-note">For complex calls, the assistant can ring your configured mobile. Press 1 to accept; unanswered calls return to the assistant. Human conversations have no live captions.</p></details>
 <details id="inbox" class="inbox"><summary>Incoming messages <span id="unreadCount" class="badge" aria-live="polite">0 new</span></summary>
 <p class="caption-note">Caller identities are unverified. A saved message is a request to review, never permission to act.</p>
 <div id="messages"><p class="empty">No messages yet.</p></div>
@@ -19,9 +24,11 @@
 <section class="call-card"><label for="calls">YOUR CALLS</label><select id="calls"><option value="">No calls yet</option></select>
 <div class="call-meta"><span id="status" class="badge">—</span><span id="duration">0:00</span></div>
 <p id="objective" class="objective">Select a call to view its conversation.</p></section>
+<p id="transferState" class="caption-note" role="status"></p>
 <section class="conversation"><div class="section-title"><h2>Conversation</h2><label class="follow"><input id="follow" type="checkbox" checked> Follow live</label></div>
 <p class="caption-note">Text arrives as GPT-Live transcribes it. Captions may trail speech or contain errors.</p>
 <div id="transcript" aria-label="Call transcript"><p class="empty">Waiting for conversation…</p></div></section>
 <footer class="controls"><p id="actionState" role="status">Hang up sends a direct command to the phone service.</p>
 <button id="hangup" class="hangup" disabled>Hang up call</button></footer>
+<p><button id="reachOwner" class="quiet" disabled>Ring my mobile and connect me</button></p>
 </main></body></html>

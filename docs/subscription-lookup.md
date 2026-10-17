@@ -11,6 +11,10 @@ The incoming concierge has three ways to obtain information:
 The voice conversation continues while a lookup runs. It can ask a useful
 clarification and say it is checking. It must not invent progress or keep callers
 waiting indefinitely. A supervisor request can run alongside the quick lookup.
+Luna can also recommend owner involvement for a complex issue. That recommendation
+does not dial: the voice asks whether the caller wants to hold, then may use the
+separate [screened owner-contact tool](voice-and-owner-contact.md). Its fixed-number
+server policy still applies, and no booking/payment authority is added.
 
 ## Billing and prerequisites
 

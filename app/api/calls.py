@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.storage.models import CallRequest, DigitsRequest, CallUpdateRequest
+from app.calling.transfer import ReachOwner
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -16,6 +17,13 @@ def authenticated(request: Request, credentials: HTTPAuthorizationCredentials | 
 
 
 router = APIRouter(prefix='/calls', dependencies=[Depends(authenticated)])
+
+
+@router.post('/{call_id}/reach-owner')
+async def reach_owner(call_id:UUID,body:ReachOwner,request:Request):
+    try: return await request.app.state.manager.transfer.request(str(call_id),body.reason)
+    except KeyError: raise HTTPException(404,'Call not found') from None
+    except ValueError as exc: raise HTTPException(409,str(exc)) from None
 
 
 @router.post('', status_code=201)

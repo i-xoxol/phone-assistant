@@ -10,6 +10,8 @@ from app.events import EventHub
 from app.calling.context import ConciergeContext
 from app.calling.knowledge import CallKnowledge
 from app.calling.lookup import LookupService
+from app.calling.voices import VoicePreferences
+from app.calling.transfer import OwnerTransfer
 
 
 def normalize_status(status: str) -> str:
@@ -21,6 +23,7 @@ class CallManager:
     def __init__(self, settings: Settings, database: Database, gateway):
         self.settings, self.db, self.gateway = settings, database, gateway
         self.bridges = {}
+        self.connecting = set()
         self.navigation = {}
         self.events = EventHub()
         self.db.on_event = self.events.notify
@@ -30,12 +33,17 @@ class CallManager:
         self.context = ConciergeContext(database)
         self.knowledge = CallKnowledge(database)
         self.lookup = LookupService(self)
+        self.voices = VoicePreferences(database,settings)
+        self.transfer = OwnerTransfer(self)
 
     def result(self, call_id):
-        return {**self.db.get(call_id),'lookup_requests':self.lookup.list_for_call(call_id)}
+        return {**self.db.get(call_id),'lookup_requests':self.lookup.list_for_call(call_id),
+                'owner_transfer':self.transfer.for_call(call_id)}
 
     def voice_record(self,call_id):
         record=self.db.get(call_id)
+        record['voice_name']=self.voices.pin(record)
+        record['owner_transfer']=self.transfer.for_call(call_id)
         if record.get('direction')=='inbound':
             record['incoming_context']=self.context.for_call(record)
         return record
@@ -43,7 +51,7 @@ class CallManager:
     async def context_changed(self):
         """Notify live incoming sessions to fetch the latest safe context, without a restart."""
         for cid,bridge in list(self.bridges.items()):
-            if not bridge.inbound or bridge.closing or bridge.end_requested.is_set():
+            if not bridge.inbound or bridge.closing or bridge.handoff or bridge.end_requested.is_set():
                 continue
             try:
                 await self.send_call_update(cid,CallUpdateRequest(mode='instructions',update_id=uuid4(),
@@ -55,6 +63,9 @@ class CallManager:
     async def request_supervisor(self, call_id: str, question: str) -> dict:
         if call_id in self.stopping:
             raise ValueError('Call is stopping')
+        transfer=self.transfer.for_call(call_id)
+        if transfer and transfer['status'] not in ('returned_to_assistant','declined'):
+            raise ValueError('Owner contact is handling this call; do not perform automated actions')
         expires = (datetime.now(timezone.utc)+timedelta(seconds=self.settings.supervisor_wait_seconds)).isoformat()
         request = self.db.create_supervisor_request(call_id, question.strip(), expires)
         bridge = getattr(self, 'mcp_events', None)
@@ -90,6 +101,9 @@ class CallManager:
 
     async def respond_to_supervisor(self, request_id: str, reply: SupervisorReply) -> dict:
         record = self.db.get(self.db.supervisor_request(request_id)['call_id'])
+        transfer=self.transfer.for_call(record['call_id'])
+        if transfer and transfer['status'] not in ('returned_to_assistant','declined'):
+            raise ValueError('Owner contact is handling this call; no new automated booking')
         if reply.outcome == 'appointment_confirmed' and not record['inbound_booking_allowed']:
             raise ValueError('This call has no standing booking authorization; ask the owner first')
         headings = {'information':'Supervisor verified information; no booking is confirmed:',

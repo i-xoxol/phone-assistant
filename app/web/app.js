@@ -4,6 +4,7 @@ const terminal = new Set(['completed','failed','busy','no_answer','cancelled']);
 let selected = new URL(location.href).searchParams.get('call_id'), call = null, calls = [], source, lastSeen = 0, pending = false;
 let seen = new Set(), turns = [], buffered = [], loadVersion = 0;
 let inboxCursor = null;
+let ownerContactEnabled=false;
 const csrf = document.querySelector('meta[name="csrf-token"]').content;
 function connection(text, healthy=false) { $('connectionText').textContent=text; $('connection').className='connection '+(healthy?'live':'warn'); }
 async function api(path, options={}) {
@@ -23,6 +24,8 @@ function showCall() {
   $('objective').textContent=call?.objective || 'Select a call to view its conversation.';
   $('hangup').disabled=!call || terminal.has(call.status) || pending;
   $('hangup').textContent=pending?'Ending call…':'Hang up call';
+  $('reachOwner').disabled=!ownerContactEnabled || !call || call.status!=='in_progress' || !!call.owner_transfer || pending;
+  $('transferState').textContent=call?.owner_transfer?'Owner contact: '+call.owner_transfer.status.replaceAll('_',' ')+' · Captions pause during human conversation.':'';
   if (call) {
     let duration=call.duration_seconds;
     if (!terminal.has(call.status) && call.started_at) duration=Math.max(0,(Date.now()-Date.parse(call.started_at))/1000);
@@ -66,6 +69,7 @@ async function loadCall(id) {
   showCall();
   if (!id) return;
   const data=await api('/live/bootstrap?call_id='+encodeURIComponent(id));
+  renderVoice(data);
   // The selector may have changed during the request.
   if (selected!==id || version!==loadVersion) return;
   call=data.call; for (const fragment of call.transcript) addText(fragment); showCall();
@@ -95,6 +99,9 @@ async function handleEvent(event) {
   applyEvent(data);
 }
 function applyEvent(data) {
+  if (data.type==='call.owner_transfer') {
+    call.owner_transfer={...(call.owner_transfer || {}),...data.data};showCall();
+  }
   if (data.type==='transcript.delta') addText(data.data);
   else if (data.type==='call.status') { Object.assign(call,data.data); showCall(); if (terminal.has(call.status)) $('actionState').textContent='Call ended. Transcript is saved.'; }
   else if (data.type==='call.hangup_requested') $('actionState').textContent='Outgoing audio muted. Waiting for Twilio to disconnect…';
@@ -151,6 +158,7 @@ function renderInbox(data, append=false) {
 }
 async function refreshInbox() {renderInbox(await api('/live/messages'));}
 function renderRequests(data) {
+  renderVoice(data);
   $('supervisorPanel').hidden=!data.concierge?.enabled || data.concierge.mode!=='concierge';
   $('supervisorState').textContent=data.concierge?.live_supervisor?
     'Verified live supervisor subscription is active. Replies still require actual client processing.':
@@ -168,6 +176,26 @@ function renderRequests(data) {
     item.append(text,stamp);$('requests').append(item);
   }
 }
+function renderVoice(data) {
+  ownerContactEnabled=!!data.owner_contact_enabled;
+  if (!data.voice) return;
+  if (!$('voiceChoice').options.length) {
+    for (const item of data.voice.voices) { const option=document.createElement('option');option.value=item.id;option.textContent=item.label;$('voiceChoice').append(option); }
+    $('voiceChoice').value=data.voice.voice;
+  }
+  $('voiceState').textContent='Default: '+data.voice.voice+' · applies to new calls';
+}
+$('saveVoice').onclick=async()=>{
+  $('saveVoice').disabled=true;
+  try {const result=await api('/live/voice',{method:'PUT',headers:{'X-CSRF-Token':csrf,'Content-Type':'application/json'},body:JSON.stringify({voice:$('voiceChoice').value})});renderVoice({voice:result,owner_contact_enabled:ownerContactEnabled});}
+  catch(e) {$('voiceState').textContent=e.message;} finally {$('saveVoice').disabled=false;}
+};
+$('reachOwner').onclick=async()=>{
+  if (!call) return;
+  $('reachOwner').disabled=true;
+  try {call.owner_transfer=await api('/live/calls/'+selected+'/reach-owner',{method:'POST',headers:{'X-CSRF-Token':csrf,'Content-Type':'application/json'},body:JSON.stringify({reason:'The owner asked to join this call.'})});showCall();}
+  catch(e) {$('transferState').textContent=e.message;}
+};
 $('olderMessages').onclick=async()=>{
   if (!inboxCursor) return;
   const button=$('olderMessages');button.disabled=true;

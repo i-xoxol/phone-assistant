@@ -45,6 +45,8 @@ class Database:
                 );
             ''')
             columns = {row['name'] for row in db.execute('PRAGMA table_info(calls)')}
+            if 'voice_name' not in columns:
+                db.execute('ALTER TABLE calls ADD COLUMN voice_name TEXT')
             if 'ivr_mode' not in columns:
                 db.execute('ALTER TABLE calls ADD COLUMN ivr_mode INTEGER NOT NULL DEFAULT 0')
             if 'direction' not in columns:

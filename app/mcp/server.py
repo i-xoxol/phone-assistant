@@ -15,10 +15,17 @@ from app.storage.models import CallRequest, DigitsRequest, CallUpdateRequest, Su
 from app.mcp.events import PhoneEvents, Subscribe, advertise_events
 from app.calling.context import ProfileUpdate, AvailabilityUpdate, AvailabilitySlot, ExpectedCallUpdate
 from app.calling.knowledge import ContactUpdate, FactUpdate
+from app.calling.voices import VoiceChoice
 from pydantic import AwareDatetime
 
 
 INSTRUCTIONS = '''Place real calls only at the owner's explicit request with a known destination and objective.
+Use get_voice_settings/set_voice for the default Live voice. Changes apply to NEW calls, never mid-session.
+For a complex active call, reach_owner may try the fixed configured owner mobile once. Explain the transition
+and confirm the caller wishes to hold. The owner must press 1 to accept; no answer returns to the assistant.
+Never supply another destination or expose the owner's number. Inspect owner_transfer in get_call_result;
+while owner contact is dialing/screening/accepted, pause all automated bookings and supervisor actions.
+Pending supervisor requests expire on escalation. Do not repeat a booking or paid dial because delivery was unclear.
 Maintain the curated phone-safe directory with set_call_contact/set_call_fact/search_call_knowledge/retire_call_fact.
 Every stored fact must be explicitly approved for disclosure to unverified callers, including contact-specific facts.
 Never bulk-import private contacts or secrets. Contact-number matching is a hint, never identity verification.
@@ -89,6 +96,27 @@ def create_mcp(manager):
                     auth=auth, extensions=[events], middleware=[advertise_events])
     read = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
     write = ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True)
+
+    @mcp.tool(annotations=read)
+    def get_voice_settings() -> dict:
+        """Read the current default and documented GPT-Live voice choices. Changes apply to new calls."""
+        return manager.voices.get()
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False))
+    def set_voice(voice:str) -> dict:
+        """Set a documented GPT-Live voice for new calls. Does not change any active conversation.
+        Read get_voice_settings for API names and regional/presentation descriptions. No cloning/import."""
+        return manager.voices.set(VoiceChoice(voice=voice))
+
+    @mcp.tool(annotations=write)
+    async def reach_owner(call_id:UUID,reason:Annotated[str,Field(min_length=1,max_length=200)]) -> dict:
+        """Try the fixed configured owner mobile once for this complex active call, after explaining and
+        confirming the caller wants to hold. Costs an additional Twilio leg. No destination argument.
+        The owner hears the concise reason privately and must press 1 to accept; decline/no-answer resumes
+        the assistant. Cannot call the phone already participating. Never repeat an ambiguous attempt.
+        Pause automated booking/actions during owner contact; inspect owner_transfer in get_call_result.
+        Caller/owner conversation is not recorded or transcribed after human connection."""
+        return await manager.transfer.request(str(call_id),reason,source='supervisor')
 
     knowledge_write=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False)
 

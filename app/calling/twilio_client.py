@@ -38,6 +38,9 @@ class TwilioGateway:
     async def fetch(self, sid: str):
         return await asyncio.to_thread(self.client().calls(sid).fetch)
 
+    async def redirect_call(self,sid,twiml):
+        return await asyncio.to_thread(self.client().calls(sid).update,twiml=twiml)
+
     async def prepare_inbound(self, sid: str, minutes: int):
         # Only call AFTER the signed media start proves Twilio answered.
         # Number-level configuration already supplies the status callback.

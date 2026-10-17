@@ -166,3 +166,19 @@ def test_lookup_disabled_missing_facts_and_rate_limits(service):
                     (str(uuid4()),cid,'demo','answered',utcnow().isoformat()))
         assert (await m.lookup.request(cid,'demo'))['status']=='unavailable'
     asyncio.run(exercise())
+
+
+def test_luna_recommendation_cannot_dial_the_owner_directly(service):
+    client,m,_=service
+    m.knowledge.fact(fact())
+    async def exercise():
+        cid,_=setup_call(client,m)
+        m.settings.owner_transfer_enabled=True
+        async def recommend(*_): return Selection(selected_ids=[],needs_supervisor=True,recommend_owner=True)
+        m.lookup.runner=recommend
+        await m.lookup.request(cid,'demo')
+        await asyncio.gather(*list(m.lookup.tasks.values()))
+        assert m.transfer.for_call(cid) is None
+        updates=m.db.get(cid)['call_updates']
+        assert any('after agreement use reach_owner' in row['content'] for row in updates)
+    asyncio.run(exercise())

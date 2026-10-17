@@ -73,6 +73,11 @@ context; it is not a private note invisible to the voice agent.
 
 ## Secret handling
 
+[Voice and screened owner contact](voice-and-owner-contact.md) documents the
+persistent voice selector and optional `OWNER_TRANSFER_ENABLED`, private
+`OWNER_TRANSFER_NUMBER`, and `OWNER_TRANSFER_RING_SECONDS` (10–30, default 20).
+Never place the owner number in a public plugin manifest or example environment.
+
 The optional [GPT-6 Luna subscription lookup](subscription-lookup.md) uses
 `SUBSCRIPTION_LOOKUP_ENABLED=false` by default and a twenty-second
 `SUBSCRIPTION_LOOKUP_TIMEOUT_SECONDS` (allowed 5–40). It requires a private

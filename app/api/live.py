@@ -8,6 +8,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse, JSONResponse
+from app.calling.voices import VoiceChoice
+from app.calling.transfer import ReachOwner
 
 router = APIRouter()
 COOKIE = '__Host-phone-owner'
@@ -107,7 +109,9 @@ def bootstrap(request: Request, call_id: UUID | None = None):
     saved=request.app.state.manager.context.snapshot()
     availability=saved['availability']
     try:
-        return {'cursor': cursor, 'calls': db.recent_calls(), 'call': db.get(str(call_id)) if call_id else None,
+        return {'cursor': cursor, 'calls': db.recent_calls(), 'call': request.app.state.manager.result(str(call_id)) if call_id else None,
+                'voice':request.app.state.manager.voices.get(),
+                'owner_contact_enabled':request.app.state.settings.owner_transfer_enabled and bool(request.app.state.settings.owner_transfer_number),
                 'inbox':db.list_messages(limit=20),
                 'requests':db.list_supervisor_requests(call_id=str(call_id) if call_id else None),
                 'concierge':{'enabled':request.app.state.settings.inbound_enabled,
@@ -163,6 +167,18 @@ async def hangup(call_id: UUID, request: Request):
         raise HTTPException(404, 'Call not found') from None
     except Exception:
         raise HTTPException(502, 'Disconnect unconfirmed. Outgoing audio is blocked for this call; retry hang-up or check Twilio.') from None
+
+
+@router.put('/live/voice',dependencies=[Depends(write_owner)])
+def choose_voice(body:VoiceChoice,request:Request):
+    return request.app.state.manager.voices.set(body)
+
+
+@router.post('/live/calls/{call_id}/reach-owner',dependencies=[Depends(write_owner)])
+async def reach_owner(call_id:UUID,body:ReachOwner,request:Request):
+    try: return await request.app.state.manager.transfer.request(str(call_id),body.reason,source='owner_monitor')
+    except KeyError: raise HTTPException(404,'Call not found') from None
+    except ValueError as exc: raise HTTPException(409,str(exc)) from None
 
 
 @router.post('/live/logout', dependencies=[Depends(write_owner)])

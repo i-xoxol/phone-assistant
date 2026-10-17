@@ -103,3 +103,22 @@ voice and Responses delegation still use API billing. This worker cannot book, r
 your plugins or access your private files. No match/failure means supervisor help or
 a saved message. Inspect get_call_result.lookup_requests for evidence IDs, result
 and delivery state. A returned fact is not a booking or expanded authorization.
+
+Use `get_voice_settings` and `set_voice` to change the default GPT-Live voice for
+new calls. Active calls keep their pinned voice, including when resumed after an
+unsuccessful owner connection. Voices are selected from the documented catalog;
+this does not clone voices or change the Luna/backend model.
+
+For a complex active call that needs the owner personally, explain the transition
+and confirm the caller wishes to hold, then use `reach_owner(call_id,reason)`.
+The destination is server-configured; never supply, invent or expose another number.
+It makes one paid Twilio attempt per call, with private screening: the owner must
+press 1 to accept. No answer/decline returns the caller to GPT-Live. Never promise
+the owner will answer, redial after ambiguity, or interpret escalation as expanded
+financial/contractual authority. Calling the same mobile already participating is
+blocked. For a live test, use a separate caller phone while the owner mobile is free.
+
+Inspect `get_call_result.owner_transfer`. Pause all automated booking/actions while
+owner contact is dialing, screening or accepted. Pending supervisor requests expire
+at handoff. Never repeat a booking or call to retry notification. Human conversation
+after acceptance is not recorded/transcribed; the monitor's direct hangup still works.

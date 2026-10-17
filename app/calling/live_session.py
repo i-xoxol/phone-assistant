@@ -383,6 +383,7 @@ async def handle_media(websocket: WebSocket, call_id: str):
         return
     await websocket.accept()
     bound = False
+    claimed = False
     bridge = None
     try:
         async with asyncio.timeout(10):
@@ -392,12 +393,21 @@ async def handle_media(websocket: WebSocket, call_id: str):
                     if not valid_stream_start(settings, record, message['start']):
                         await websocket.close(code=1008)
                         return
+                    previous=manager.bridges.get(call_id)
+                    if call_id in manager.connecting or (previous and not previous.handoff):
+                        await websocket.close(code=1008)
+                        return
+                    manager.connecting.add(call_id)
+                    claimed=True
                     bound = True
                     stream_sid = message['start']['streamSid']
                     break
                 if message['event'] != 'connected':
                     raise ValueError('Expected Twilio start')
         manager.transition(call_id, 'in_progress')
+        from app.calling.transfer import remaining_seconds
+        if remaining_seconds(manager.db.get(call_id))<=0:
+            raise BridgeFailure('call_duration_exhausted')
         if record.get('direction') == 'inbound':
             try:
                 await asyncio.wait_for(manager.gateway.prepare_inbound(
@@ -413,7 +423,10 @@ async def handle_media(websocket: WebSocket, call_id: str):
                 log_event('gpt_live_connected', call_id=call_id)
                 bridge = MediaBridge(websocket, connection, manager, call_id, stream_sid)
                 manager.attach_bridge(call_id, bridge)
-                await bridge.run(record['max_duration_minutes'])
+                manager.connecting.discard(call_id)
+                claimed=False
+                from app.calling.transfer import remaining_seconds
+                await bridge.run(remaining_seconds(record)/60)
     except WebSocketDisconnect as exc:
         log_event('twilio_media_disconnected', call_id=call_id, close_code=exc.code)
         if bound and not (bridge and bridge.handoff) and exc.code not in (1000, 1001):
@@ -428,6 +441,7 @@ async def handle_media(websocket: WebSocket, call_id: str):
             manager.transition(call_id, 'failed')
         log_event('voice_bridge_failed', call_id=call_id, **failure_details(exc))
     finally:
+        if claimed: manager.connecting.discard(call_id)
         # Ensure a stopped/broken bridge cannot leave a paid silent call running.
         if bridge:
             manager.detach_bridge(call_id, bridge)

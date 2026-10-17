@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.storage.models import DigitsRequest
 from app.logging_config import log_event
+from app.calling.transfer import ReachOwner
 
 
 class KeypadArguments(BaseModel):
@@ -88,7 +89,11 @@ class VoiceTools:
         manager = self.bridge.manager
         name = item['name']
         inbound = manager.db.get(self.bridge.call_id).get('direction') == 'inbound'
-        if name == 'save_message' and inbound:
+        if name == 'reach_owner':
+            args=ReachOwner.model_validate_json(item['arguments'])
+            if inbound and manager.db.get(self.bridge.call_id)['inbound_mode']!='concierge':
+                raise ValueError('Owner contact unavailable in message-only mode')
+        elif name == 'save_message' and inbound:
             from app.calling.inbound import MessageArguments
             args = MessageArguments.model_validate_json(item['arguments'])
         elif name == 'request_supervisor' and inbound:
@@ -123,7 +128,9 @@ class VoiceTools:
         if (manager.bridges.get(self.bridge.call_id) is not self.bridge or self.bridge.closing
                 or self.bridge.call_id in manager.stopping):
             raise ValueError('Voice session is no longer current')
-        if name == 'request_quick_lookup':
+        if name == 'reach_owner':
+            result=await manager.transfer.request(self.bridge.call_id,args.reason,source='voice_backend')
+        elif name == 'request_quick_lookup':
             result = await manager.lookup.request(self.bridge.call_id, args.question)
         elif name == 'request_supervisor':
             result = await manager.request_supervisor(self.bridge.call_id, args.question)

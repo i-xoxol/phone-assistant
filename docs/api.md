@@ -1,5 +1,10 @@
 # API and tool reference
 
+Voice: `GET /voice`, `PUT /voice` with `{"voice":"meridian"}`.
+Screened owner contact: `POST /calls/{call_id}/reach-owner` with `{"reason":"..."}`.
+These require owner authentication. Read [voice and owner contact](voice-and-owner-contact.md)
+for fixed destinations, acceptance screening, callbacks and remaining-time limits.
+
 Curated lookup endpoints also require the owner bearer token:
 `GET /concierge/knowledge?query=...`, `PUT /concierge/contacts`,
 `PUT /concierge/facts`, `POST /concierge/facts/{fact_id}/retire`.

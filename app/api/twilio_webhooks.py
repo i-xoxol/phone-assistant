@@ -35,6 +35,10 @@ async def incoming(request: Request):
         raise HTTPException(400, 'Invalid call SID')
     caller = str(form.get('From', ''))
     caller = caller if re.fullmatch(E164, caller) else ''
+    if caller == settings.twilio_phone_number:
+        # A busy-forwarded owner leg must not recursively re-enter this assistant.
+        log_event('incoming_forwarding_loop_blocked')
+        return declined_incoming()
     try:
         cid = manager.db.create_inbound(sid, caller, settings.inbound_max_duration_minutes,
                                         settings.inbound_max_calls_per_hour, settings.inbound_mode,
