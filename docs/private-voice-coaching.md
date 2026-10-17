@@ -53,6 +53,20 @@ With it off, saved names are possible matches. Unknown, missing and ambiguous
 numbers do not become known identities. This policy grants no additional payment,
 booking or private-record disclosure authority.
 
+Contacts can also have a `preferred_language`, such as `uk` for Ukrainian or `en`
+for English, through `set_call_contact` or the existing contact REST endpoint.
+Omitting it preserves the saved preference; an empty string clears it. A trusted
+known caller gets a warm greeting in that language from the first word and can
+switch languages during the conversation. Relationship labels such as Mama refer
+to the owner's family; the assistant does not impersonate a family member.
+
+During a configured pre-answer delay, a best-effort Luna task selects up to two
+relevant context items before the voice session starts. It shares the existing
+lookup concurrency/hourly allowance and finishes before the delay deadline.
+Pickup is never delayed for that task. If it times out, the saved caller identity
+and language still personalize the greeting. Historical speech remains internal
+background and is not recited in a greeting. Zero-delay calls skip this preparation.
+
 ## Cost and testing
 
 At the October 17, 2026 prices, OpenAI's selected model costs $20 per million output

@@ -61,8 +61,10 @@ or an open-source CI workflow using someone's ChatGPT login. See the official
 There is no automatic address-book, email or private-file import. The owner or an
 authorized agent maintains a small SQLite directory through authenticated MCP/REST:
 
-- `set_call_contact(name, phone_number?, contact_id?)`: optional number is routing
-  metadata only. Reuse IDs for updates and retries.
+- `set_call_contact(name, phone_number?, contact_id?, preferred_language?)`: the number
+  follows the owner's saved-number recognition policy. Reuse IDs for updates and
+  retries. A language such as `uk` starts known callers in Ukrainian; omit to preserve
+  the current preference, or use an empty string to clear it.
 - `set_call_fact(topic, text, source, expires_at, approved_for_callers, contact_id?, fact_id?)`:
   one short verified fact, **at most 250 UTF-8 bytes**, expiring within ninety days.
   Explicit `approved_for_callers=true` is mandatory.

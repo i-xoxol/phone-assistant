@@ -13,6 +13,7 @@ class ContactUpdate(BaseModel):
     contact_id: UUID = Field(default_factory=uuid4)
     name: str = Field(min_length=1, max_length=120)
     phone_number: str = Field(default='', pattern=r'^(?:|\+[1-9][0-9]{7,14})$')
+    preferred_language: str | None = Field(default=None,pattern=r'^(?:|[a-z]{2,3}(?:-[A-Z]{2})?)$',max_length=12)
 
 
 class FactUpdate(BaseModel):
@@ -64,6 +65,9 @@ class CallKnowledge:
                     topic TEXT NOT NULL, text TEXT NOT NULL, source TEXT NOT NULL,
                     expires_at TEXT NOT NULL, updated_at TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);
                 CREATE INDEX IF NOT EXISTS concierge_facts_expiry ON concierge_facts(active,expires_at);
+                CREATE TABLE IF NOT EXISTS concierge_contact_preferences (
+                    contact_id TEXT PRIMARY KEY REFERENCES concierge_contacts(contact_id),
+                    preferred_language TEXT NOT NULL);
             ''')
 
     def matching_contacts(self, number):
@@ -71,7 +75,9 @@ class CallKnowledge:
             return []
         with self.db.connect() as conn:
             return [dict(r) for r in conn.execute(
-                'SELECT name FROM concierge_contacts WHERE phone_number=? ORDER BY name LIMIT 3', (number,))]
+                '''SELECT c.name,COALESCE(p.preferred_language,'') AS preferred_language
+                FROM concierge_contacts c LEFT JOIN concierge_contact_preferences p USING(contact_id)
+                WHERE c.phone_number=? ORDER BY c.name LIMIT 3''', (number,))]
 
     def contact(self, body: ContactUpdate):
         with self.db.connect() as conn:
@@ -83,6 +89,10 @@ class CallKnowledge:
             conn.execute('INSERT INTO concierge_contacts VALUES (?,?,?,?) ON CONFLICT(contact_id) DO UPDATE SET '
                 'name=excluded.name,phone_number=excluded.phone_number,updated_at=excluded.updated_at',
                 (str(body.contact_id), body.name.strip(), body.phone_number, utcnow().isoformat()))
+            if body.preferred_language is not None:
+                conn.execute('INSERT INTO concierge_contact_preferences VALUES (?,?) ON CONFLICT(contact_id) '
+                    'DO UPDATE SET preferred_language=excluded.preferred_language',
+                    (str(body.contact_id),body.preferred_language))
         return {'contact_id': str(body.contact_id), 'status': 'saved'}
 
     def fact(self, body: FactUpdate):
@@ -114,7 +124,9 @@ class CallKnowledge:
         with self.db.connect() as conn:
             rows=conn.execute('SELECT f.*,c.name AS contact_name,c.phone_number FROM concierge_facts f '
                 'LEFT JOIN concierge_contacts c USING(contact_id) WHERE f.active=1 ORDER BY f.updated_at DESC LIMIT 500').fetchall()
-            contacts=[dict(r) for r in conn.execute('SELECT * FROM concierge_contacts ORDER BY name LIMIT 200')] if owner else []
+            contacts=[dict(r) for r in conn.execute('''SELECT c.*,COALESCE(p.preferred_language,'') AS preferred_language
+                FROM concierge_contacts c LEFT JOIN concierge_contact_preferences p USING(contact_id)
+                ORDER BY c.name LIMIT 200''')] if owner else []
         terms=words(query)
         ranked=[]
         for row in rows:

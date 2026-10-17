@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Prepare caller context with Luna during pre-answer ringing, without extending the pickup delay.
+- Persist per-contact greeting languages and personalize known callers while preserving owner/caller roles.
+
 - On-demand natural OpenAI private speech with subscription Luna, owner-leg request handling and single-use announcements.
 - Prevent raw historical speech from being selected as coaching; revalidate source facts through audio delivery.
 - Optional trusted saved-number recognition with explicit owner/caller roles.

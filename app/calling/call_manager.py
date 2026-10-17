@@ -37,6 +37,8 @@ class CallManager:
         from app.calling.memory import CallMemory
         self.memory=CallMemory(self)
         self.lookup = LookupService(self)
+        from app.calling.greeting import GreetingPreparation
+        self.greetings = GreetingPreparation(self)
         self.voices = VoicePreferences(database,settings)
         self.transfer = OwnerTransfer(self)
         from app.calling.owner_observer import TransferObserver
@@ -66,6 +68,7 @@ class CallManager:
             context['caller']['identity_basis'] = ('owner_trusted_saved_number' if context['caller']['identity_verified']
                                                    else 'presented_number')
             context['owner'] = {'name': self.settings.caller_name, 'role': 'owner, not the incoming caller'}
+            context['greeting_preparation'] = self.greetings.snapshot(record)
         if self.settings.call_history_enabled:
             context['call_history']=self.memory.overview(record)
         return context
@@ -233,6 +236,7 @@ class CallManager:
             log_event('call_state_changed', call_id=call_id, status=status)
             if status in TERMINAL:
                 self.observer.call_ended(call_id)
+                self.greetings.ended(call_id)
 
     def status(self, call_id: str) -> dict:
         record = self.db.get(call_id)

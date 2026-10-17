@@ -31,7 +31,8 @@ while owner contact is dialing/screening/accepted, pause all automated bookings 
 Pending supervisor requests expire on escalation. Do not repeat a booking or paid dial because delivery was unclear.
 Maintain the curated phone-safe directory with set_call_contact/set_call_fact/search_call_knowledge/retire_call_fact.
 Every stored fact must be explicitly approved for disclosure to unverified callers, including contact-specific facts.
-Never bulk-import private contacts or secrets. Contact-number matching is a hint, never identity verification.
+Never bulk-import private contacts or secrets. Saved-number matching follows the owner's recognition policy; it never expands action authority.
+set_call_contact can store preferred_language (uk for Ukrainian, en for English); preserve existing contact_id/name/number when updating it.
 The optional GPT-6 Luna subscription worker selects existing approved facts only; it cannot book or expand permissions.
 Maintain owner-approved incoming role/facts using get_inbound_context/set_inbound_context.
 Fresh cached free windows can answer routine questions without a supervisor; offering is not booking.
@@ -162,11 +163,13 @@ def create_mcp(manager):
         return manager.knowledge.search(query,owner=True,limit=50)
 
     @mcp.tool(annotations=knowledge_write)
-    def set_call_contact(name:str,phone_number:str='',contact_id:UUID|None=None) -> dict:
-        """Create/update a curated contact. Optional E.164 number is a routing hint, never authentication.
+    def set_call_contact(name:str,phone_number:str='',contact_id:UUID|None=None,preferred_language:str|None=None) -> dict:
+        """Create/update a curated contact. Optional E.164 number follows the owner's saved-number recognition policy.
+        preferred_language can be uk for Ukrainian, en for English, or another language code. Omit to preserve; empty clears.
         Reuse contact_id for updates/retries. This record grants no disclosure rights or access to private tools.
         Store phone-safe facts separately using set_call_fact; do not import a whole address book."""
         data={'name':name,'phone_number':phone_number}
+        if preferred_language is not None: data['preferred_language']=preferred_language
         if contact_id: data['contact_id']=contact_id
         return manager.knowledge.contact(ContactUpdate(**data))
 

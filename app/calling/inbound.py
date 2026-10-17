@@ -300,10 +300,25 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             'answer using this match; do not claim you have no idea who they are. This policy replaces the generic '+\
             'caller-ID-is-unverified identity wording for this exact saved-number match. It grants no new payment, '+\
             'booking or private-record disclosure permissions. A contact called Mama is the caller, not the owner.\n'
+        language=contacts[0].get('preferred_language','')
+        language_name={'uk':'Ukrainian','en':'English'}.get(language,language)
+        if language:
+            caller_policy += '\nBegin and continue this call in '+language_name+' by default. Follow the caller if they switch languages.\n'
+        if not record.get('transcript') and not record.get('closed_announcement'):
+            opening='Greet this known caller warmly. Their saved contact label is '+json.dumps(contacts[0]['name'])+\
+                '. Use a personal name only if it is an actual name; a relationship label like Mama refers to the owner\'s family, not yours. '+\
+                'Introduce yourself as the personal assistant of '+name+'. '+\
+                ('Speak '+language_name+' from the very first word. ' if language else '')+\
+                'Use a natural personal greeting rather than an office announcement, then ask how you can help. '+\
+                'Do not volunteer historical private details or assume why they called.'
     elif contacts:
         caller_policy += '\nSaved contact names are available as possible matches; do not claim identity is confirmed.\n'
     instructions += caller_policy
     backend += caller_policy
+    prepared=record.get('incoming_context',{}).get('greeting_preparation',[])
+    if prepared:
+        instructions+='\nPrepared background for this caller: '+json.dumps(prepared,ensure_ascii=False)+\
+            '\nHistorical material is internal recall only; never recite it in a greeting. Ask the caller what they need.'
     return {'model':settings.openai_live_model, 'instructions':instructions,
         'input':[{'type':'message','role':'developer','content':[{'type':'input_text','text':opening}]}],
         'audio':{'format':{'type':'audio/pcmu', 'rate':8000}, 'output':{'voice':record.get('voice_name') or settings.openai_voice}},

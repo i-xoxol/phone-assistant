@@ -62,6 +62,8 @@ async def incoming(request: Request):
         response = VoiceResponse()
         response.hangup()
         return Response(str(response), media_type='application/xml')
+    if not (closed and hours.outside_hours=='closed'):
+        manager.greetings.start(cid)
     if closed and hours.outside_hours=='closed':
         response=VoiceResponse()
         response.say(manager.hours.closed_announcement())
