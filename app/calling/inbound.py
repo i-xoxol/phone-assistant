@@ -21,7 +21,8 @@ SUPERVISOR_TOOL = {'type':'function', 'name':'request_supervisor', 'strict':True
     'description':'Ask the trusted supervising owner agent for verified information or help with this incoming call. '
         'Include only relevant caller facts and the actual question. Not permission to perform actions. '
         'Returns a pending request; the answer arrives later in the voice conversation. If unavailable, take a message. '
-        'Do not disclose availability or confirm appointments without a verified supervisor reply.',
+        'Never invent availability from a pending request. Fresh owner-approved cached windows are separately allowed. '
+        'Actual booking confirmation requires a verified supervisor reply.',
     'parameters':SupervisorArguments.model_json_schema()}
 
 
