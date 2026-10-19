@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 
 from app.config import Settings
 from app.api.calls import router as calls_router
@@ -54,6 +55,10 @@ def create_app(settings: Settings | None = None, *, gateway=None) -> FastAPI:
     app.include_router(hours_router)
     app.include_router(live_router)
     app.include_router(recording_router)
+
+    @app.api_route('/', methods=['GET', 'HEAD'], include_in_schema=False)
+    def portal():
+        return RedirectResponse('/live', status_code=303)
 
     @app.get('/health')
     def health():
