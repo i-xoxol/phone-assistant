@@ -1,6 +1,7 @@
 import asyncio
 import json
 import pytest
+from types import SimpleNamespace
 from datetime import timedelta
 
 from app.calling.context import utcnow
@@ -8,6 +9,8 @@ from app.calling.knowledge import ContactUpdate,FactUpdate
 from app.calling.lookup import Selection
 from app.calling.prompts import session_config
 from tests.test_calls import service
+from app.calling.live_session import MediaBridge
+from tests.test_live import FakeConnection
 
 
 @pytest.mark.parametrize('variant',['unknown','closed','resume'])
@@ -34,6 +37,25 @@ def setup(m):
     m.knowledge.contact(contact)
     cid=m.db.create_inbound('CA_PREFLIGHT','+12025550101',5,10,'concierge')
     return cid,contact
+
+
+@pytest.mark.parametrize('already_speaking',['neither','caller','assistant'])
+def test_silent_start_gets_only_one_phone_safe_greeting_nudge(service,monkeypatch,already_speaking):
+    _,m,_=service;cid,_=setup(m);m.settings.assistant_name='Rocky'
+    connection=FakeConnection();sent=[]
+    async def append(**kwargs): sent.append(kwargs)
+    connection.session.commentary=SimpleNamespace(append=append)
+    bridge=MediaBridge(None,connection,m,cid,'MZ_TEST')
+    bridge.caller_spoke=already_speaking=='caller';bridge.assistant_spoke=already_speaking=='assistant'
+    monkeypatch.setattr('app.calling.live_session.GREETING_NUDGE_SECONDS',0)
+    async def exercise():
+        await bridge.nudge_greeting();await bridge.nudge_greeting()
+    asyncio.run(exercise())
+    assert len(sent)==(1 if already_speaking=='neither' else 0)
+    if sent:
+        assert 'Привіт' in sent[0]['content'] and 'Rocky' in sent[0]['content']
+        assert 'мама' not in sent[0]['content'].lower() and 'Mama' not in sent[0]['content']
+        assert sent[0]['delegation_id'] is None
 
 
 def test_luna_prepares_context_before_media_and_never_changes_pickup_delay(service):

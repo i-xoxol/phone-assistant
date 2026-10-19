@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     openai_live_model: str = 'gpt-live-1'
     openai_voice: str = 'marin'
     caller_name: str = 'Alex'
+    assistant_name: str = Field(default='Assistant',min_length=1,max_length=80)
     callback_number: str = ''
     database_path: Path = ROOT / 'data/calls.sqlite3'
     mcp_enabled: bool = False
@@ -51,6 +52,7 @@ class Settings(BaseSettings):
     call_recording_enabled: bool = False
     recording_notice_directory: Path = ROOT / 'data/recording-notices'
     inbound_missed_call_context: bool = False
+    missed_call_notifications_enabled: bool = False
 
     @field_validator('webhook_url')
     @classmethod

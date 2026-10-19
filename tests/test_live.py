@@ -6,7 +6,7 @@ import pytest
 from starlette.websockets import WebSocketDisconnect
 from twilio.request_validator import RequestValidator
 
-from app.calling.live_session import MediaBridge, BridgeFailure, valid_stream_start, start_session, has_speech
+from app.calling.live_session import MediaBridge, BridgeFailure, valid_stream_start, start_session, has_speech,prepared_connection
 from app.calling.prompts import session_config, voice_prompt
 from app.storage.models import CallRequest
 from tests.test_calls import create, service, callback
@@ -76,6 +76,27 @@ class FakeClient:
 
     async def __aexit__(self, *args):
         pass
+
+
+def test_inbound_socket_and_duration_cap_overlap_without_starting_session(service,monkeypatch):
+    _,manager,gateway=service
+    async def exercise():
+        socket_ready=asyncio.Event();cap_ready=asyncio.Event()
+        class Connection(FakeConnection):
+            async def __aenter__(self):
+                socket_ready.set()
+                await asyncio.wait_for(cap_ready.wait(),1)
+                return self
+        connection=Connection()
+        async def cap(*_):
+            cap_ready.set()
+            await asyncio.wait_for(socket_ready.wait(),1)
+        gateway.prepare_inbound=cap
+        monkeypatch.setattr('app.calling.live_session.live_client',lambda _:FakeClient(connection))
+        async with prepared_connection(manager.settings,manager,{
+                'direction':'inbound','twilio_call_sid':'CA_TEST','max_duration_minutes':5}) as actual:
+            assert actual is connection and connection.config is None
+    asyncio.run(exercise())
 
 
 def stream_headers(path, scheme='https', suffix=''):

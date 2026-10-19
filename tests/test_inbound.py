@@ -118,8 +118,8 @@ def test_setup_failure_does_not_start_unbounded_voice(service,monkeypatch):
     from twilio.base.exceptions import TwilioRestException
     async def fail(*args): raise TwilioRestException(400,'private-provider-url',msg='provider-secret',code=21220)
     gateway.prepare_inbound=fail
-    def no_live(*args): raise AssertionError('Live must not start before duration cap')
-    monkeypatch.setattr('app.calling.live_session.live_client',no_live)
+    connection=FakeConnection()
+    monkeypatch.setattr('app.calling.live_session.live_client',lambda _:FakeClient(connection))
     path='/twilio/media/'+record['call_id']
     with client.websocket_connect(path,headers=stream_headers(path)) as ws:
         ws.send_json({'event':'start','start':{'accountSid':'AC123','callSid':SID,'streamSid':'MZ_INBOUND',
@@ -129,6 +129,7 @@ def test_setup_failure_does_not_start_unbounded_voice(service,monkeypatch):
     record=manager.db.get(record['call_id'])
     assert record['status']=='failed' and 'provider-secret' not in json.dumps(record)
     assert record['voice_events'][-1]['twilio_error_code']==21220
+    assert connection.config is None  # A socket may warm up; no paid voice session starts.
 
 
 def test_messages_persist_correct_and_read_without_duplicate(service):
@@ -281,7 +282,6 @@ def test_signed_incoming_media_uses_live_and_retains_caller_text(service,monkeyp
     connection=FakeConnection()
     def connected_client(_):
         assert manager.db.get(cid)['status']=='in_progress'
-        assert gateway.incoming_preparations==[(SID,5)]
         return FakeClient(connection)
     monkeypatch.setattr('app.calling.live_session.live_client',connected_client)
     with client.websocket_connect('/twilio/media/'+cid,headers=stream_headers('/twilio/media/'+cid,'wss')) as ws:
@@ -296,6 +296,7 @@ def test_signed_incoming_media_uses_live_and_retains_caller_text(service,monkeyp
         ws.send_json({'event':'stop','streamSid':'MZ_INCOMING'})
         assert ws.receive_json()['event']=='clear'
     assert connection.config['delegation']['type']=='responses'
+    assert gateway.incoming_preparations==[(SID,5)]
     caller = manager.incoming_context(manager.db.get(cid))['caller']
     for prompt in (connection.config['instructions'],
                    connection.config['delegation']['responses']['instructions']):

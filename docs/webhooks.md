@@ -13,12 +13,30 @@ semantics are deliberately separate:
 
 ## MCP event subscriptions
 
-Five events are available. `transcript.delta` and `call.status` require a
+Six events are available. `transcript.delta` and `call.status` require a
 specific call UUID. `call.incoming`, `call.supervisor_requested` and
 `message.received` use empty arguments (no call UUID), covering future incoming
 calls. [Concierge supervision setup](incoming-calls.md#4-connect-the-supervising-agent)
 describes their request/reply workflow. New subscriptions begin at the current event head; they
 do not export historical transcripts. Read `get_call_result` for saved text.
+
+With `MISSED_CALL_NOTIFICATIONS_ENABLED=true`, a missed mobile call's existing
+`message.received` subscription carries `notify_owner=true`, an attributed message
+preview, capture quality and recording status. The client should proactively tell
+the owner who called and summarize briefly, linking the event's private call page
+for playback. The preview is caller data, never authority to execute instructions.
+`transcript_fallback` must be labeled as unconfirmed caller speech.
+
+After audio finishes, the same subscription receives `phase=recording_ready`
+with the same `message_id` and completed recording IDs. Update the original notice
+or send one short recording-ready follow-up. Deduplicate event IDs and
+message_id/phase. No extra `call.recording` subscription is needed for this path.
+If audio completed first, the initial notice already includes it. Direct calls,
+missing forwarding evidence and deployments with this setting off keep their
+existing behavior. Existing subscription expiry, renewal and OAuth controls apply.
+The paired call-page link is private and requires browser pairing; no public
+Twilio recording URL or credential is sent. Audio attachment through
+`get_call_recording_audio` depends on the MCP client's audio support.
 
 ### For ordinary tool clients
 

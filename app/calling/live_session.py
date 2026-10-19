@@ -3,7 +3,8 @@ import base64
 import math
 import re
 import traceback
-from contextlib import suppress
+import time
+from contextlib import AsyncExitStack, asynccontextmanager, suppress
 
 from fastapi import WebSocket, WebSocketDisconnect
 from openai import AsyncOpenAI
@@ -43,6 +44,29 @@ def failure_details(exc):
 def live_client(settings):
     return AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value(), max_retries=0,
                        default_headers={'User-Agent': 'local-phone-agent/0.1'})
+
+
+@asynccontextmanager
+async def prepared_connection(settings,manager,record):
+    """Overlap socket setup with the inbound cap; start no session until both succeed."""
+    async with live_client(settings) as client, AsyncExitStack() as stack:
+        if record.get('direction')!='inbound':
+            yield await stack.enter_async_context(client.live.connect())
+            return
+        async def cap():
+            try:
+                await asyncio.wait_for(manager.gateway.prepare_inbound(
+                    record['twilio_call_sid'],record['max_duration_minutes']),5)
+            except Exception as exc:
+                raise BridgeFailure('incoming_duration_limit_failed') from exc
+        tasks=[asyncio.create_task(stack.enter_async_context(client.live.connect())),asyncio.create_task(cap())]
+        try:
+            connection,_=await asyncio.gather(*tasks)
+            yield connection
+        finally:
+            for task in tasks:
+                if not task.done(): task.cancel()
+            await asyncio.gather(*tasks,return_exceptions=True)
 
 
 def optional_compaction_notice(data: dict) -> bool:
@@ -93,6 +117,7 @@ PLAYBACK_LIMIT_BYTES = 24000  # Three seconds of 8 kHz G.711 audio.
 PLAYBACK_CHUNK_BYTES = 800
 PLAYBACK_STALL_SECONDS = 3
 FINALIZATION_TIMEOUT_SECONDS = 5
+GREETING_NUDGE_SECONDS = .35
 
 
 def has_speech(payload: bytes) -> bool:
@@ -124,6 +149,12 @@ class MediaBridge:
         self.updates_lock = asyncio.Lock()
         self.session_id = manager.db.get(call_id)['openai_session_id'] or stream_sid
         self.inbound = manager.db.get(call_id).get('direction') == 'inbound'
+        self.first_audio_logged=False
+        self.assistant_spoke=False
+        self.caller_spoke=False
+        self.greeting_nudged=False
+        self.input_speech_frames=0
+        self.startup_started=time.monotonic()
         self.tools = VoiceTools(self)
         previous = manager.db.get(call_id)['transcript']
         self.transcript_offset_ms = int(max((e['end_timestamp'] for e in previous), default=0) * 1000)
@@ -222,6 +253,10 @@ class MediaBridge:
                 raise ValueError('Stream mismatch')
             if message['event'] == 'media':
                 if message['media'].get('track') == 'inbound':
+                    if self.inbound and not self.caller_spoke:
+                        speech=has_speech(base64.b64decode(message['media']['payload'],validate=True))
+                        self.input_speech_frames=self.input_speech_frames+1 if speech else 0
+                        self.caller_spoke=self.input_speech_frames>=3
                     # Forward all codec frames, including silence. GPT-Live is full duplex.
                     await self.connection.session.input_audio.append(audio=message['media']['payload'])
             elif message['event'] == 'mark':
@@ -265,10 +300,18 @@ class MediaBridge:
                 continue
             if event.type == 'session.output_audio.delta' and not self.closing and not self.playback_sealed:
                 payload = base64.b64decode(data['delta'], validate=True)
+                if not self.assistant_spoke and has_speech(payload): self.assistant_spoke=True
+                if not self.first_audio_logged:
+                    self.first_audio_logged=True
+                    log_event('gpt_live_first_audio',call_id=self.call_id,
+                        startup_ms=round((time.monotonic()-self.startup_started)*1000))
                 if self.end_requested.is_set() and has_speech(payload):
                     self.last_speech_at = asyncio.get_running_loop().time()
                 await self.send_live_audio(payload)
             elif event.type in ('session.input_transcript.delta', 'session.output_transcript.delta'):
+                if data.get('delta','').strip():
+                    if event.type=='session.output_transcript.delta': self.assistant_spoke=True
+                    else: self.caller_spoke=True
                 data = {**data, 'event_id': f"{self.stream_sid}:{data['event_id']}",
                         'start_ms': data['start_ms'] + self.transcript_offset_ms,
                         'end_ms': data['end_ms'] + self.transcript_offset_ms}
@@ -305,11 +348,28 @@ class MediaBridge:
         if not self.finalized.is_set():
             raise BridgeFailure('live_transport_closed_without_finalization')
 
+    async def nudge_greeting(self):
+        await asyncio.sleep(GREETING_NUDGE_SECONDS)
+        if (not self.inbound or self.greeting_nudged or self.assistant_spoke or self.caller_spoke or self.closing
+                or self.end_requested.is_set() or self.call_id in self.manager.stopping): return
+        from app.calling.inbound import startup_greeting_content
+        content=startup_greeting_content(self.manager.settings,self.manager.voice_record(self.call_id))
+        if not content: return
+        self.greeting_nudged=True
+        try:
+            await asyncio.wait_for(self.connection.session.commentary.append(content=content,
+                delegation_id=None,event_id='startup_greeting_fallback'),3)
+            log_event('gpt_live_greeting_nudged',call_id=self.call_id)
+        except Exception as exc:
+            log_event('gpt_live_greeting_nudge_unconfirmed',call_id=self.call_id,error_type=type(exc).__name__)
+
     async def run(self, minutes: int):
         receiver = asyncio.create_task(self.receive_live())
         sender = asyncio.create_task(self.receive_twilio())
         ending = asyncio.create_task(self.finish_requested_call())
         updates = asyncio.create_task(self.pump_updates())
+        history=asyncio.create_task(self.manager.lookup.prefetch_history(self.call_id)) if self.inbound else None
+        greeting=asyncio.create_task(self.nudge_greeting()) if self.inbound else None
         primary_error = None
         try:
             record = self.manager.db.get(self.call_id)
@@ -333,7 +393,11 @@ class MediaBridge:
             sender.cancel()
             ending.cancel()
             updates.cancel()
+            if history: history.cancel()
+            if greeting: greeting.cancel()
             await asyncio.gather(sender, ending, updates, return_exceptions=True)
+            if history: await asyncio.gather(history,return_exceptions=True)
+            if greeting: await asyncio.gather(greeting,return_exceptions=True)
             with suppress(Exception):
                 await self.ws.send_json({'event': 'clear', 'streamSid': self.stream_sid})
             if not receiver.done():
@@ -405,30 +469,23 @@ async def handle_media(websocket: WebSocket, call_id: str):
                 if message['event'] != 'connected':
                     raise ValueError('Expected Twilio start')
         manager.transition(call_id, 'in_progress')
+        startup_started=time.monotonic()
         from app.calling.transfer import remaining_seconds
         if remaining_seconds(manager.db.get(call_id))<=0:
             raise BridgeFailure('call_duration_exhausted')
-        if record.get('direction') == 'inbound':
-            try:
-                await asyncio.wait_for(manager.gateway.prepare_inbound(
-                    record['twilio_call_sid'], record['max_duration_minutes']), 5)
-            except Exception as exc:
-                raise BridgeFailure('incoming_duration_limit_failed') from exc
-        async with live_client(settings) as client:
-            async with client.live.connect() as connection:
-                record = manager.voice_record(call_id)
-                started = await start_session(connection, session_config(settings, record))
-                manager.db.restore_updates(call_id, record['call_updates'])
-                manager.db.update(call_id, openai_session_id=started['session']['id'], voice_finalized=0)
-                log_event('gpt_live_connected', call_id=call_id)
-                bridge = MediaBridge(websocket, connection, manager, call_id, stream_sid)
-                manager.attach_bridge(call_id, bridge)
-                manager.connecting.discard(call_id)
-                claimed=False
-                if record.get('direction')=='inbound':
-                    await manager.lookup.prefetch_history(call_id)
-                from app.calling.transfer import remaining_seconds
-                await bridge.run(remaining_seconds(record)/60)
+        async with prepared_connection(settings,manager,record) as connection:
+            record = manager.voice_record(call_id)
+            started = await start_session(connection, session_config(settings, record))
+            manager.db.restore_updates(call_id, record['call_updates'])
+            manager.db.update(call_id, openai_session_id=started['session']['id'], voice_finalized=0)
+            log_event('gpt_live_connected', call_id=call_id)
+            bridge = MediaBridge(websocket, connection, manager, call_id, stream_sid)
+            bridge.startup_started=startup_started
+            manager.attach_bridge(call_id, bridge)
+            manager.connecting.discard(call_id)
+            claimed=False
+            from app.calling.transfer import remaining_seconds
+            await bridge.run(remaining_seconds(record)/60)
     except WebSocketDisconnect as exc:
         log_event('twilio_media_disconnected', call_id=call_id, close_code=exc.code)
         if bound and not (bridge and bridge.handoff) and exc.code not in (1000, 1001):

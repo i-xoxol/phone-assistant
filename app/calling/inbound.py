@@ -36,6 +36,31 @@ MESSAGE_TOOL = {'type':'function', 'name':'save_message', 'strict':True,
     'parameters':MessageArguments.model_json_schema()}
 
 
+def startup_greeting_content(settings,record):
+    """Phone-safe words for a single silent-start fallback, never generated TTS."""
+    if record.get('transcript') or record.get('closed_announcement'): return None
+    context=record.get('incoming_context',{});caller=context.get('caller',{})
+    contacts=caller.get('saved_contacts',[]) if caller.get('number')==record['phone_number'] else []
+    contact=contacts[0] if settings.caller_id_trust_saved_contacts and len(contacts)==1 else {}
+    language=contact.get('preferred_language') or 'en'
+    if language not in ('en','uk'): return None
+    familiar=contact.get('conversation_style')=='familiar'
+    nickname=contact.get('preferred_name') or contact.get('name','')
+    if nickname.casefold() in ('mama','mom','mother','мама'): nickname=''
+    owner=bool(contact and record['phone_number']==settings.owner_transfer_number)
+    missed=bool(context.get('forwarding',{}).get('missed_call_context') and not owner)
+    name=settings.caller_name;assistant=settings.assistant_name
+    if language=='uk':
+        opening=('Привіт'+(', '+nickname if nickname else '')+'!' if familiar else f'Вітаю! Це офіс {name}.')
+        middle=f' На жаль, {name} не зміг відповісти на ваш дзвінок.' if missed else ''
+        return opening+middle+f' Я {assistant}, '+('твій помічник.' if owner else f'помічник {name}.')+' Чим можу допомогти?'
+    opening=('Hi'+(', '+nickname if nickname else '')+'!' if familiar else
+             "Hello, you've reached "+(context.get('office_name') or 'the office of '+name)+'.')
+    middle=(f" Sorry you couldn't reach {name}." if familiar else " Sorry you couldn't reach them.") if missed else ''
+    role='your assistant.' if owner else 'their assistant.' if missed else name+"'s assistant."
+    return opening+middle+f" I'm {assistant}, "+role+' How can I help?'
+
+
 CONTEXT_TOOL = {'type':'function','name':'get_call_context','strict':True,
     'description':'Read the current owner-approved role, phone-safe facts, unexpired anticipated-call notes and '
         'fresh free windows. Local cache only; never calendar credentials or private event titles. '
@@ -82,7 +107,10 @@ Do not delegate to the backend when:
 Use fresh local context without requiring Rocky. Only request_supervisor needs a live supervising agent.
 Wait for the backend result before stating availability, saving success or booking confirmation.
 Never guess a backend result. Ask useful clarification while work is pending.'''
-    instructions = f'''You answer incoming calls as {name}'s polite personal assistant.
+    instructions = f'''You are {settings.assistant_name}, {name}'s personal assistant answering incoming calls.
+Speak warmly and naturally, with conversational rhythm and contractions. Be professional but approachable.
+Use short, varied replies, usually one or two sentences, then listen. Avoid stiff, rehearsed announcements,
+repeated "Understood" or "Certainly", exaggerated cheerfulness, and forced laughter or filler.
 Introduce yourself as their assistant, without an upfront digital/AI label; never claim to be human.
 If asked whether you are AI, answer honestly. You can take a message for {name}.
 Ask one short question at a time. Follow the caller's language where possible; English by default.
@@ -327,16 +355,19 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             'do not give an office announcement or address friends/family with formal titles. ')
     else:
         office=record.get('incoming_context',{}).get('office_name') or 'the office of '+name
-        style=('CONVERSATION STYLE: Formal. Use a polite, professional office tone throughout. '
+        style=('CONVERSATION STYLE: Formal. Use a warm, courteous professional office tone, like a helpful receptionist. '
             'For new callers introduce the line as '+office+'. '
             'Do not use familiar nicknames or presume friendship. Keep questions clear and courteous.')
-        greeting=('Greet the caller professionally. Say the equivalent of "Hello, you\'ve reached '
-            +office+'. How can I help you?" ')
+        greeting=('Greet the caller naturally and briefly. For example: "Hello, you\'ve reached '
+            +office+". I'm "+settings.assistant_name+", "+name+"'s assistant. How can I help?\" "
+            'Use conversational phrasing and intonation; the example is not a script to recite mechanically. ')
     caller_policy+='\n'+style+'\n'
     routing=record.get('incoming_context',{}).get('forwarding',{})
     if routing.get('missed_call_context'):
-        greeting+=(f'This call was forwarded from {name}\'s mobile under the owner-configured missed/declined-call setup. '
-            f'Briefly and naturally mention that {name} could not take the call, then offer help or message-taking. '
+        greeting+=(f'This is a missed mobile call: {name} could not take the call. '
+            f'Work this into the same short greeting, for example "Sorry you couldn\'t reach {name}. '
+            f"I'm {settings.assistant_name}, their assistant. How can I help?\" "
+            'Do not deliver a normal greeting and then a second introduction. Offer message-taking naturally if useful. '
             'Keep the configured familiar/formal style. If the caller is the owner, simply acknowledge they reached '
             'their assistant; do not tell them they missed their own call. ')
     if not record.get('transcript') and not record.get('closed_announcement'):

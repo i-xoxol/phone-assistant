@@ -40,6 +40,8 @@ validation is not a lookup proving a number exists or belongs to a person.
 | `WEBHOOK_SECRET` | Empty | Separate random HMAC secret; required when `WEBHOOK_URL` is set |
 | `INBOUND_ENABLED` | `false` | Enables signed incoming voice admission; configure the owned number separately |
 | `INBOUND_MODE` | `messages` | `messages` or `concierge`; concierge can request a trusted supervisor |
+| `ASSISTANT_NAME` | `Assistant` | Spoken personal-assistant name, such as Rocky; no change to owner identity |
+| `MISSED_CALL_NOTIFICATIONS_ENABLED` | `false` | Enrich missed-mobile-call message events and deliver recording-ready updates through the existing message subscription |
 | `INBOUND_MAX_DURATION_MINUTES` | `5` | Provider-enforced incoming duration, 1–15 minutes |
 | `INBOUND_MAX_CALLS_PER_HOUR` | `10` | Incoming admission limit, 1–100; one incoming conversation at a time |
 | `SUPERVISOR_WAIT_SECONDS` | `45` | Request deadline, 10–120 seconds; then message-taking fallback |

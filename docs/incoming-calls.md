@@ -93,13 +93,27 @@ digits or using caller ID as a verified callback.
 
 If the caller disconnects before a confirmed save, available caller transcript
 is retained as **unconfirmed transcript fallback**, never a fabricated summary.
-The inbox distinguishes this from a tool-saved message. Audio is not recorded.
+The inbox distinguishes this from a tool-saved message. Optional audio recording
+and private playback are described in [recordings](recordings.md).
 Saving means durable storage, not that the owner read it or received a notification.
 
 ## 4. Connect the supervising agent
 
+The live assistant uses `ASSISTANT_NAME` and a brief, warm receptionist greeting.
+Familiar contacts keep their informal style and chosen language. Socket connection
+setup overlaps inbound duration-limit confirmation; no voice session starts before
+that limit succeeds. History lookup runs after audio forwarding starts. The short
+recording announcement stays a reused clip. Model/network startup still contributes
+latency; logs include `gpt_live_first_audio.startup_ms` from media start, without
+logging conversation text. Use `python -m scripts.check_silent_greeting --forwarded`
+for a bounded real-model greeting probe that never dials a phone.
+If both sides remain silent after startup, the bridge sends one short greeting
+through GPT-Live commentary after 350 ms. It skips this fallback if the caller or
+assistant has started speaking, or the call is resumed/closed. It uses the saved
+contact language/style and generates no separate TTS request or new audio file.
+
 Refresh/rescan the private MCP plugin after deployment. The server exposes
-twenty-nine tools, including call history, saved context, availability, curated directory, office hours,
+tools for call history, saved context, availability, curated directory, recordings, office hours,
 voice selection and screened owner contact (see voice-and-owner-contact.md).
 Discover these native MCP Events for future calls:
 
