@@ -42,7 +42,8 @@ function showCall() {
 function showRecordings() {
   const data=call?.audio_recording;
   $('forwardingState').textContent=call?.direction==='inbound'?
-    (call.forwarding?.detected?'Forwarded call · Caller ID: '+(call.phone_number || 'unavailable'):
+    (call.forwarding?.forwarded_from_owner_mobile?'Missed call · Forwarded from your mobile · Caller ID: '+(call.phone_number || 'unavailable'):
+      call.forwarding?.detected?'Forwarded call · Caller ID: '+(call.phone_number || 'unavailable'):
       'Incoming call · Carrier forwarding details not supplied. Caller ID: '+(call.phone_number || 'unavailable')):'';
   $('stopRecording').hidden=!data?.policy || !!data.policy.stop_requested_at || !call || terminal.has(call.status);
   const key=JSON.stringify([call?.call_id,data]);

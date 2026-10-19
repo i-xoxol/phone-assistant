@@ -188,15 +188,41 @@ def test_recording_mcp_retrieves_private_audio_and_metadata(service,tmp_path):
 @pytest.mark.parametrize('forwarded,expected',[(None,None),('+12025550109',True),('anonymous',True)])
 def test_forwarding_preserves_original_caller_and_never_leaks_owner_number(service,forwarded,expected):
     client,m,_=service;m.settings.inbound_missed_call_context=True;m.settings.inbound_mode='concierge'
+    m.settings.owner_transfer_number='+12025550109'
     extra={'ForwardedFrom':forwarded} if forwarded is not None else {}
     incoming(client,m,From='+12025550101',**extra)
     cid=m.db.by_twilio_sid(SID)['call_id'];record=m.voice_record(cid)
     assert record['phone_number']=='+12025550101'
     assert m.result(cid)['forwarding']['detected']==expected
     config=session_config(m.settings,record)
-    assert 'MISSED-CALL ASSISTANT' in config['instructions']
+    missed=forwarded==m.settings.owner_transfer_number
+    assert ('MISSED-CALL ASSISTANT' in config['instructions'])==missed
     assert '+12025550109' not in json.dumps(config)
-    assert 'declined, is busy' in config['instructions']
+    assert ('declined, is busy' in config['instructions'])==missed
+
+
+@pytest.mark.parametrize('forwarded,policy,arrival,missed',[
+    ('+12025550109',True,'forwarded_from_owner_mobile',True),
+    ('+12025550108',True,'forwarded_other',False),
+    (None,True,'direct_or_unreported',False),
+    ('anonymous',True,'forwarded_other',False),
+    ('+12025550109',False,'forwarded_from_owner_mobile',False)])
+def test_call_specific_missed_routing_reaches_voice_backend_and_opening(service,forwarded,policy,arrival,missed):
+    client,m,_=service;m.settings.inbound_mode='concierge'
+    m.settings.inbound_missed_call_context=policy;m.settings.owner_transfer_number='+12025550109'
+    incoming(client,m,**({'ForwardedFrom':forwarded} if forwarded else {}))
+    cid=m.db.by_twilio_sid(SID)['call_id'];record=m.voice_record(cid)
+    routing=record['incoming_context']['forwarding']
+    assert routing['arrival_type']==arrival and routing['missed_call_context']==missed
+    assert 'forwarded_from' not in routing
+    assert m.result(cid)['forwarding']['arrival_type']==arrival
+    config=session_config(m.settings,record)
+    for prompt in (config['instructions'],config['delegation']['responses']['instructions']):
+        assert ('MISSED-CALL ASSISTANT' in prompt)==missed
+        assert ('CALL ARRIVAL: '+arrival in prompt)==(not missed)
+    opening=config['input'][0]['content'][0]['text']
+    assert ('could not take the call' in opening)==missed
+    assert m.settings.owner_transfer_number not in json.dumps(config)
 
 
 def test_carrier_replacing_caller_with_forwarding_number_does_not_impersonate_owner(service):

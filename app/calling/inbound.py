@@ -333,22 +333,37 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
         greeting=('Greet the caller professionally. Say the equivalent of "Hello, you\'ve reached '
             +office+'. How can I help you?" ')
     caller_policy+='\n'+style+'\n'
+    routing=record.get('incoming_context',{}).get('forwarding',{})
+    if routing.get('missed_call_context'):
+        greeting+=(f'This call was forwarded from {name}\'s mobile under the owner-configured missed/declined-call setup. '
+            f'Briefly and naturally mention that {name} could not take the call, then offer help or message-taking. '
+            'Keep the configured familiar/formal style. If the caller is the owner, simply acknowledge they reached '
+            'their assistant; do not tell them they missed their own call. ')
     if not record.get('transcript') and not record.get('closed_announcement'):
         opening=greeting+'Speak '+language_name+' from the very first word. Do not volunteer historical private details or assume why they called.'
     instructions += caller_policy
     backend += caller_policy
-    if record.get('incoming_context',{}).get('forwarding',{}).get('missed_call_context'):
-        missed=f'''\nMISSED-CALL ASSISTANT: The owner has configured missed/declined mobile calls to reach this line.
-Incoming calls may therefore be forwarded missed calls, even when the carrier provides no forwarding metadata.
+    if routing.get('missed_call_context'):
+        missed=f'''\nMISSED-CALL ASSISTANT: Carrier metadata reports THIS call was forwarded from the owner's mobile.
+The owner configured this mobile to forward missed/declined calls to the assistant. Treat this as a missed mobile call.
 Continue behaving as {name}'s office or personal assistant, with the configured familiar/formal tone.
 Help within existing concierge permissions, ask the purpose and offer to take a message for the owner and supervising agent.
-Do not claim the owner deliberately declined, is busy, or saw this call; the carrier does not establish why it arrived.
+You may say {name} could not take the call. Do not claim the owner deliberately declined, is busy, or saw this call;
+declined versus unanswered is not known. Do not ask the caller to redial the mobile they just tried.
 Do not automatically ring the owner back just because the call was missed. Use existing escalation only when explicitly requested
 or actually needed, with agreement to hold. Do not substitute the forwarding number for the caller's callback number.
 Never reveal a forwarding number: it may be the owner's private mobile. If metadata says caller identity is ambiguous,
 ask their name and preferred callback; never assume the forwarding owner is the caller.
 If caller_identity_ambiguous is true, do not offer the presented number for callbacks: ask them to provide their own callback number.\n'''
         instructions+=missed;backend+=missed
+    else:
+        routing_policy=('\nCALL ARRIVAL: '+str(routing.get('arrival_type','direct_or_unreported'))+'. '
+            'Use the normal office/personal-assistant greeting. This call is not established as a missed call '
+            'from the owner mobile. Do not announce that the owner missed, declined or could not take this call. '
+            'Other-number forwarding does not establish owner availability. Without forwarding metadata the call '
+            'may be direct or unreported forwarding; do not assert a direct route as fact. '
+            'If the caller explains they could not reach the owner, acknowledge that and offer help or a message.\n')
+        instructions+=routing_policy;backend+=routing_policy
     if record.get('audio_recording',{}).get('policy'):
         from app.calling.recordings import STOP_TOOL,voice_recording_policy
         tools.append(STOP_TOOL)

@@ -15,6 +15,15 @@ did not answer. If `From` equals the reported forwarding number, contact recogni
 and number-based historical recall are withheld; the voice asks for a name and
 preferred callback rather than assuming the caller is the owner.
 
+`forwarding.arrival_type` distinguishes `forwarded_from_owner_mobile`,
+`forwarded_other`, and `direct_or_unreported` (or `outbound`). An exact match between
+`ForwardedFrom` and the configured `OWNER_TRANSFER_NUMBER` identifies the owner's
+mobile without exposing that number to the voice. With `INBOUND_MISSED_CALL_CONTEXT`
+enabled, only that matching route is treated as a missed mobile call: the greeting
+briefly says the owner could not take the call, then offers help/message-taking.
+It does not automatically ring the mobile again. Other arrivals use the normal
+greeting; absent metadata never becomes proof of a direct call.
+
 `get_call_result.forwarding` exposes private routing metadata to the owner.
 The forwarding number is excluded from voice/backend prompts. Normal caller ID
 remains visible and follows the owner's saved-contact policy. Your carrier might
@@ -25,7 +34,7 @@ missed/declined mobile calls. It keeps the configured office/familiar tone, help
 within concierge limits, and can save a message for the owner and supervising
 agent. It does not automatically ring the owner back. Ordinary supervision,
 booking limits, contact nicknames, office hours and language preferences remain.
-This is general line context, not an expiring anticipated-call note.
+This policy is applied from each call's routing evidence, not an expiring anticipated-call note.
 
 ## Enable recording
 

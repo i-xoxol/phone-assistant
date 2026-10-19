@@ -22,10 +22,16 @@ class IncomingRouting:
             row=db.execute('SELECT * FROM incoming_routing WHERE call_id=?',(record['call_id'],)).fetchone()
         reported=bool(row and row['forwarding_reported'])
         number=row['forwarded_from'] if row else ''
+        inbound=record.get('direction')=='inbound'
+        owner_mobile=self.m.settings.owner_transfer_number
+        via_owner=bool(inbound and reported and number and owner_mobile and number==owner_mobile)
+        arrival=('forwarded_from_owner_mobile' if via_owner else 'forwarded_other' if inbound and reported
+                 else 'direct_or_unreported' if inbound else 'outbound')
         ambiguous=bool(reported and number and number==record['phone_number'])
         result={'detected':True if reported else None,'source':'twilio_forwarded_from' if reported else 'not_supplied',
+            'arrival_type':arrival,'forwarded_from_owner_mobile':via_owner,
             'caller_identity_ambiguous':ambiguous,'forwarded_from_available':bool(number),
-            'missed_call_context':self.m.settings.inbound_missed_call_context and record.get('direction')=='inbound',
+            'missed_call_context':self.m.settings.inbound_missed_call_context and via_owner,
             'note':'Missing metadata does not prove a direct call. Carrier forwarding may preserve, replace or withhold caller ID. Declined versus unanswered is not known.'}
         # Forwarding metadata may contain the owner's private mobile.
         if not for_voice: result['forwarded_from']=number
