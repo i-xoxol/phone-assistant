@@ -36,6 +36,7 @@ def test_first_password_and_manager_compatible_forms(service):
     auth, token = paired(client)
     assert not auth.password_enabled()
     page = client.get('/live/password')
+    assert page.headers['referrer-policy'] == 'same-origin'
     assert 'autocomplete="username"' in page.text
     assert 'autocomplete="new-password"' in page.text
     assert 'current_password' not in page.text
@@ -45,12 +46,27 @@ def test_first_password_and_manager_compatible_forms(service):
     assert 'Password saved' in page.text and 'current_password' in page.text
     assert PASSWORD not in page.text
     login = client.get('/live/login')
+    assert login.headers['referrer-policy'] == 'same-origin'
     assert 'action="/live/password/login"' in login.text
     assert 'autocomplete="current-password"' in login.text
     assert 'id="pairing-login"' in login.text
     js = client.get('/live/login.js').text
     assert "getElementById('pairing-login')" in js
     assert "document.querySelector('form')" not in js
+
+
+@pytest.mark.parametrize('origin', [None, 'null', 'https://evil.test', 'https://example.test.evil.test'])
+def test_form_origin_check_stays_strict(service, origin):
+    client, _, _ = service
+    auth, token = paired(client)
+    headers = {'Origin': origin} if origin is not None else {}
+    csrf = auth.session(token)['csrf']
+    result = client.post('/live/password', data={'csrf': csrf, 'new_password': PASSWORD,
+        'confirm_password': PASSWORD}, headers=headers, follow_redirects=False)
+    assert result.status_code == 403
+    assert not auth.password_enabled()
+    assert client.post('/live/password/login', data={'username': 'owner', 'password': PASSWORD},
+                       headers=headers).status_code == 403
 
 
 def test_password_login_persists_and_does_not_need_a_pairing_code(service):

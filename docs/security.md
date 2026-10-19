@@ -94,8 +94,11 @@ setup requires an already paired owner. Host-only recovery is documented in the
 
 Sessions use Secure, HttpOnly,
 SameSite=Strict cookies. Writes verify the configured origin and CSRF token.
-The monitor sends a restrictive CSP, no-store caching, no-referrer, and anti-frame
+The monitor sends a restrictive CSP, no-store caching, a same-origin referrer policy, and anti-frame
 headers. A paired browser can generate a code for another device.
+The referrer policy withholds referrers from external destinations while allowing
+normal password form POSTs to carry a valid Origin. Missing, `null`, and foreign
+origins remain rejected; CSRF validation is unchanged.
 
 The app has a small browser-login failure throttle and high-entropy pairing
 codes; it does not implement a full edge abuse/WAF/rate-limiting service. Only

@@ -15,7 +15,9 @@ from app.web_auth import SESSION_SECONDS
 router = APIRouter()
 COOKIE = '__Host-phone-owner'
 ASSETS = Path(__file__).resolve().parents[1] / 'web'
-HEADERS = {'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
+# Normal HTML form POSTs need their real Origin. `no-referrer` makes it "null"
+# in browsers; same-origin still withholds referrers from external destinations.
+HEADERS = {'Cache-Control': 'no-store', 'Referrer-Policy': 'same-origin',
     'X-Frame-Options': 'DENY', 'X-Content-Type-Options': 'nosniff',
     'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; media-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"}
 

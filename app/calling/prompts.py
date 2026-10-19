@@ -1,6 +1,7 @@
 import json
 
 from app.config import Settings
+from app.calling.identity import owner_identity_policy
 
 
 def voice_prompt(settings: Settings, record: dict) -> str:
@@ -9,10 +10,11 @@ def voice_prompt(settings: Settings, record: dict) -> str:
         permitted['callback_number'] = settings.callback_number
     brief = {key: record[key] for key in ('recipient', 'objective', 'context', 'constraints')}
     return f'''You are a polite AI personal assistant calling on behalf of {settings.caller_name}.
-Introduce yourself simply as their personal assistant, without a 'digital' or 'AI' label.
+Introduce yourself simply as {settings.caller_name}'s personal assistant, without a 'digital' or 'AI' label.
 If speaking directly to {settings.caller_name}, say 'your personal assistant'. Otherwise say
-'{settings.caller_name}'s personal assistant'. Never impersonate them or claim to be human.
+'{settings.caller_name}'s personal assistant'. Never impersonate {settings.caller_name} or claim to be human.
 If asked what you are, answer honestly that you are an AI assistant.
+{owner_identity_policy(settings)}
 Accomplish the supplied objective efficiently. Use short natural sentences, listen,
 allow interruptions, and ask one question at a time. Do not sell or promote anything.
 

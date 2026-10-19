@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.calling.tools import TOOLS
 from app.calling.lookup import LookupQuestion
 from app.calling.context import incoming_caller_metadata
+from app.calling.identity import owner_identity_policy, owner_words
 
 
 class MessageArguments(BaseModel):
@@ -50,14 +51,19 @@ def startup_greeting_content(settings,record):
     owner=bool(contact and record['phone_number']==settings.owner_transfer_number)
     missed=bool(context.get('forwarding',{}).get('missed_call_context') and not owner)
     name=settings.caller_name;assistant=settings.assistant_name
+    _,object_pronoun,possessive=owner_words(settings)
     if language=='uk':
         opening=('Привіт'+(', '+nickname if nickname else '')+'!' if familiar else f'Вітаю! Це офіс {name}.')
-        middle=f' На жаль, {name} не зміг відповісти на ваш дзвінок.' if missed else ''
+        middle=''
+        if missed:
+            middle={'he/him':f' На жаль, {name} не зміг відповісти на ваш дзвінок.',
+                    'she/her':f' На жаль, {name} не змогла відповісти на ваш дзвінок.',
+                    'they/them':f' На жаль, вам не вдалося додзвонитися до {name}.'}[settings.owner_pronouns]
         return opening+middle+f' Я {assistant}, '+('твій помічник.' if owner else f'помічник {name}.')+' Чим можу допомогти?'
     opening=('Hi'+(', '+nickname if nickname else '')+'!' if familiar else
              "Hello, you've reached "+(context.get('office_name') or 'the office of '+name)+'.')
-    middle=(f" Sorry you couldn't reach {name}." if familiar else " Sorry you couldn't reach them.") if missed else ''
-    role='your assistant.' if owner else 'their assistant.' if missed else name+"'s assistant."
+    middle=(f" Sorry you couldn't reach {name}." if familiar else f" Sorry you couldn't reach {object_pronoun}.") if missed else ''
+    role='your assistant.' if owner else f'{possessive} assistant.' if missed else name+"'s assistant."
     return opening+middle+f" I'm {assistant}, "+role+' How can I help?'
 
 
@@ -78,6 +84,7 @@ LOOKUP_TOOL = {'type':'function','name':'request_quick_lookup','strict':True,
 
 def incoming_session_config(settings, record=None) -> dict:
     name = settings.caller_name
+    _,_,possessive=owner_words(settings)
     concierge=bool(record and record.get('inbound_mode')=='concierge')
     delegation_policy = '''Delegation policy:
 Backend tools: save_message for confirmed caller messages; end_call for this call only.
@@ -111,7 +118,7 @@ Never guess a backend result. Ask useful clarification while work is pending.'''
 Speak warmly and naturally, with conversational rhythm and contractions. Be professional but approachable.
 Use short, varied replies, usually one or two sentences, then listen. Avoid stiff, rehearsed announcements,
 repeated "Understood" or "Certainly", exaggerated cheerfulness, and forced laughter or filler.
-Introduce yourself as their assistant, without an upfront digital/AI label; never claim to be human.
+Introduce yourself as {name}'s assistant, without an upfront digital/AI label; never claim to be human.
 If asked whether you are AI, answer honestly. You can take a message for {name}.
 Ask one short question at a time. Follow the caller's language where possible; English by default.
 Gather what they want to tell {name}, their name if they wish, and an optional callback number.
@@ -119,7 +126,7 @@ Do not demand a name or number. Ask whether to use the presented caller-ID numbe
 only use it after explicit caller confirmation. Otherwise leave callback empty or ask for their preferred number.
 Never guess a phone number or country code.
 Briefly read back the message and any callback number, ask if correct, then delegate to save_message.
-After verified success say the message was saved in {name}'s inbox for review. Never claim they read it,
+After verified success say the message was saved in {name}'s inbox for review. Never claim {name} read it,
 received a notification, will call back, or that you sent email/SMS/Telegram. If saving fails, be honest.
 Ask for corrections when uncertain. Do not invent facts, commitments, availability, or appointments.
 This is message-taking only: no calendar, email, contacts, payments, booking, external calls, or forwarding.
@@ -345,12 +352,12 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             'Use the owner-chosen spoken name '+json.dumps(spoken_name,ensure_ascii=False)+'. '
             'A relationship label like Mama refers to the owner\'s family, not yours; use a personal name only if it is an actual name. '
             'Never impersonate the owner or imply you have human family relationships. '
-            'If this contact is the owner, introduce yourself as their assistant rather than explaining who the owner is. '
+            'If this contact is the owner, say "your assistant" rather than explaining who the owner is. '
             'This conversational style changes tone only, never tool access, permissions or disclosure rules.')
         greeting=('Greet this known caller warmly and informally by their owner-chosen spoken name '
             +json.dumps(spoken_name,ensure_ascii=False)+'. Use a personal name only if it is an actual name; '
             'a relationship label like Mama refers to the owner\'s family, not yours. '
-            'You are '+name+"'s personal assistant. If the caller is "+name+', say you are their assistant. '
+            'You are '+name+"'s personal assistant. If the caller is "+name+', say "your assistant". '
             'A short natural greeting such as "Hi, [name]! How can I help?" is appropriate; '
             'do not give an office announcement or address friends/family with formal titles. ')
     else:
@@ -366,10 +373,10 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
     if routing.get('missed_call_context'):
         greeting+=(f'This is a missed mobile call: {name} could not take the call. '
             f'Work this into the same short greeting, for example "Sorry you couldn\'t reach {name}. '
-            f"I'm {settings.assistant_name}, their assistant. How can I help?\" "
+            f"I'm {settings.assistant_name}, {possessive} assistant. How can I help?\" "
             'Do not deliver a normal greeting and then a second introduction. Offer message-taking naturally if useful. '
-            'Keep the configured familiar/formal style. If the caller is the owner, simply acknowledge they reached '
-            'their assistant; do not tell them they missed their own call. ')
+            'Keep the configured familiar/formal style. If the caller is the owner, say "your assistant" '
+            'and do not describe this as a missed call. ')
     if not record.get('transcript') and not record.get('closed_announcement'):
         opening=greeting+'Speak '+language_name+' from the very first word. Do not volunteer historical private details or assume why they called.'
     instructions += caller_policy
@@ -407,6 +414,8 @@ If caller_identity_ambiguous is true, do not offer the presented number for call
     # the proactive opening. Incoming callers commonly wait for us to speak.
     opening='Begin speaking immediately when this session starts, even if the caller is silent. Do not wait for caller speech. '+opening+' Then pause and listen.'
     instructions+='\nFIRST TURN: Deliver the startup opening immediately, before waiting for the caller to speak. Do not delegate the greeting or wait for background lookup results. After the opening, listen and allow normal interruptions.'
+    instructions+=owner_identity_policy(settings)
+    backend+=owner_identity_policy(settings)
     return {'model':settings.openai_live_model, 'instructions':instructions,
         'input':[{'type':'message','role':'developer','content':[{'type':'input_text','text':opening}]}],
         'audio':{'format':{'type':'audio/pcmu', 'rate':8000}, 'output':{'voice':record.get('voice_name') or settings.openai_voice}},

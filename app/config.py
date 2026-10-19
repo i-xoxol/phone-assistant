@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     openai_live_model: str = 'gpt-live-1'
     openai_voice: str = 'marin'
     caller_name: str = 'Alex'
+    owner_pronouns: Literal['he/him', 'she/her', 'they/them'] = 'they/them'
     assistant_name: str = Field(default='Assistant',min_length=1,max_length=80)
     callback_number: str = ''
     database_path: Path = ROOT / 'data/calls.sqlite3'

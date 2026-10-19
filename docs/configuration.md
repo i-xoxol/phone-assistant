@@ -30,6 +30,7 @@ validation is not a lookup proving a number exists or belongs to a person.
 | `OPENAI_LIVE_MODEL` | `gpt-live-1` | Native Live API model; changing it requires compatible model access |
 | `OPENAI_VOICE` | `marin` | Built-in Live voice; no voice-cloning implementation |
 | `CALLER_NAME` | `Alex` | Fictional default; change to your approved identity |
+| `OWNER_PRONOUNS` | `they/them` | `he/him`, `she/her` or `they/them`; used for the owner in greetings and voice/tool instructions, separately from caller identity |
 | `CALLBACK_NUMBER` | Empty | Included in the voice prompt only if supplied; disclosure is then authorized |
 | `DATABASE_PATH` | `data/calls.sqlite3` | Relative paths resolve under the project root |
 | `MCP_ENABLED` | `false` | Mounts authenticated Streamable HTTP MCP and OAuth on this FastAPI app |

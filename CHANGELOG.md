@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Configurable owner pronouns used in incoming/outgoing voice instructions and missed-call greetings.
+- Fix browser password form submissions rejected because `no-referrer` suppressed their Origin header.
 - Password-manager-friendly portal sign-in, paired-owner password settings, session revocation and host-only recovery.
 - Optional noticed audio recording of incoming/outgoing calls, private monitor/MCP playback and recording opt-out.
 - Preserve carrier forwarding metadata separately from original caller ID; add missed-call assistant context without assuming a call was declined.
