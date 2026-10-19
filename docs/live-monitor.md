@@ -6,7 +6,27 @@ The monitor is a plain HTML/CSS/JS page at `/live`, designed for both phone and
 laptop screens. It displays recent calls, state, duration, and two-speaker
 captions, with a large fixed **Hang up call** button.
 
-## Pair a phone and laptop
+## Sign in on a phone and laptop
+
+The portal supports a reusable password and one-time pairing codes. To create
+the first password, pair one browser using the instructions below, then open
+**Password** in the monitor header. Choose a unique password of 12–256 characters
+and save it in your password manager. The username is **owner**. No email or
+provider account password is needed.
+
+On another device, or after cookies/session storage reset, open `/live/login`
+and sign in with **owner** and your saved password. Login and password settings
+use ordinary HTML forms with password-manager autocomplete fields. Password
+sign-in issues the same seven-day private session as pairing. It does not change
+MCP OAuth or REST authentication.
+
+To change your password, open **Password** and enter the current password plus
+the new one. Creating/changing a password revokes all earlier browser sessions
+and unused pairing codes; the saving browser receives a new session. Other
+browsers must sign in again. An open event stream checks session revocation on
+its next event/heartbeat.
+
+### Pair the first browser or another device
 
 On the machine running the service:
 
@@ -28,7 +48,22 @@ codes from `scripts.web_pairing` do not work on the MCP approval page.
 Use the configured HTTPS origin. The `__Host-` session cookie is Secure,
 HttpOnly, SameSite=Strict, and scoped to `/`. Local plain HTTP cannot provide
 the same login. Private browsing, clearing cookies, switching browsers, or an
-expired session requires pairing again. **Sign out** revokes that browser session.
+expired session requires signing in with your saved password or a new pairing
+code. **Sign out** revokes that browser session.
+
+### Forgotten password
+
+From your private terminal on the service host, run:
+
+```bash
+python -m scripts.web_pairing --reset-password
+```
+
+This clears the portal password, revokes all browser sessions and unused codes,
+and prints a fresh one-time pairing code. Pair once, then create a new password.
+It leaves call history, recordings, MCP connections and provider keys intact.
+There is no public password-reset endpoint. Ordinary pairing does not override
+an existing password's current-password requirement.
 
 ## Select and follow a call
 

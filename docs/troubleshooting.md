@@ -66,6 +66,14 @@ submitted keypad history, and sent/acknowledged updates seed the replacement
 session. If reconnection does not occur within the bounded wait, the operation
 is recorded unconfirmed and requests hangup. Do not blindly press the key again.
 
+## Portal session expired or password forgotten
+
+Sign in at `/live/login` with username **owner** and the password saved from
+**Password** in the monitor. You can use the same password on your phone and
+laptop. If no password has been created yet, pair one browser first. If it is
+forgotten, use the host-only reset command in the [monitor guide](live-monitor.md).
+After ten password attempts in one minute, wait a minute before trying again.
+
 ## Pairing code is invalid
 
 Check which kind of code you generated:

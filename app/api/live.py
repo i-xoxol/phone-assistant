@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse, JSONResponse
 from app.calling.voices import VoiceChoice
 from app.calling.transfer import ReachOwner
+from app.web_auth import SESSION_SECONDS
 
 router = APIRouter()
 COOKIE = '__Host-phone-owner'
@@ -22,7 +23,7 @@ HEADERS = {'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
 def owner(request: Request):
     session = request.app.state.web_auth.session(request.cookies.get(COOKIE, ''))
     if not session:
-        raise HTTPException(401, 'Pair this browser at /live/login')
+        raise HTTPException(401, 'Sign in at /live/login')
     return session
 
 
@@ -38,23 +39,49 @@ def write_owner(request: Request, session=Depends(owner)):
     return session
 
 
-def login_page(error=''):
+def login_page(error='', password_enabled=False, status_code=200):
+    password_form = '''<form method="post" action="/live/password/login" id="password-login">
+    <label for="username">Username</label>
+    <input id="username" name="username" value="owner" autocomplete="username" readonly>
+    <label for="password">Password</label>
+    <input id="password" type="password" name="password" required maxlength="256" autocomplete="current-password">
+    <button class="primary" type="submit">Sign in</button></form>''' if password_enabled else '''
+    <p>Pair this browser once, then choose <strong>Password</strong> in the monitor to set up reusable sign-in.</p>'''
     return HTMLResponse('''<!doctype html><html lang="en"><head><meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1"><title>Pair Phone Assistant</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign in · Phone Assistant</title>
     <link rel="stylesheet" href="/live/style.css"><script src="/live/login.js" defer></script></head><body><main class="login">
     <p class="eyebrow">PHONE ASSISTANT</p><h1>Your calls. In view.</h1>
-    <p>Pair this browser to watch live transcripts and end a call directly.</p>
-    <form method="post" action="/live/login"><label for="code">One-time pairing code</label>
-    <input id="code" name="code" required maxlength="32" autocomplete="one-time-code" spellcheck="false">
-    <button class="primary" type="submit">Open call monitor</button></form>
+    <p>Sign in to watch live transcripts, listen to recordings and manage calls.</p>''' + password_form + '''
     <p class="error" id="login-error" role="status">''' + html.escape(error) + '''</p>
+    <details class="pairing-login"''' + ('' if password_enabled else ' open') + '''><summary>Use a one-time pairing code</summary>
+    <form method="post" action="/live/login" id="pairing-login"><label for="code">One-time pairing code</label>
+    <input id="code" name="code" required maxlength="32" autocomplete="one-time-code" spellcheck="false">
+    <button class="primary" type="submit">Pair this browser</button></form></details>
     <p class="muted">Private to you. Codes expire in 15 minutes; this browser stays paired for 7 days.</p>
-    </main></body></html>''', headers=HEADERS)
+    </main></body></html>''', headers=HEADERS, status_code=status_code)
 
 
 @router.get('/live/login')
-def login():
-    return login_page()
+def login(request: Request):
+    return login_page(password_enabled=request.app.state.web_auth.password_enabled())
+
+
+def session_cookie(response, token):
+    response.set_cookie(COOKIE, token, max_age=SESSION_SECONDS, secure=True,
+                        httponly=True, samesite='strict', path='/')
+    return response
+
+
+@router.post('/live/password/login')
+async def password_login(request: Request):
+    same_origin(request)
+    form = await request.form()
+    token = await asyncio.to_thread(request.app.state.web_auth.password_login,
+        str(form.get('username', '')), str(form.get('password', '')))
+    if not token:
+        return login_page('Sign-in unsuccessful. Check your details or try again in a minute.',
+                          password_enabled=request.app.state.web_auth.password_enabled(), status_code=400)
+    return session_cookie(RedirectResponse('/live', status_code=303, headers=HEADERS), token)
 
 
 @router.post('/live/login')
@@ -65,15 +92,64 @@ async def pair(request: Request):
     if not token:
         if 'application/json' in request.headers.get('accept', ''):
             return JSONResponse({'detail': 'Code invalid, expired, or already used. Request a fresh code.'}, status_code=400, headers=HEADERS)
-        return login_page('Code invalid, expired, or already used. Request a fresh code.')
+        return login_page('Code invalid, expired, or already used. Request a fresh code.',
+                          password_enabled=request.app.state.web_auth.password_enabled())
     if 'application/json' in request.headers.get('accept', ''):
         response = JSONResponse({'authenticated': True}, headers=HEADERS)
     else:
         session = request.app.state.web_auth.session(token)
         page = (ASSETS / 'index.html').read_text(encoding='utf-8').replace('{{csrf}}', html.escape(session['csrf']))
         response = HTMLResponse(page, headers=HEADERS)
-    response.set_cookie(COOKIE, token, max_age=7 * 86400, secure=True, httponly=True, samesite='strict', path='/')
-    return response
+    return session_cookie(response, token)
+
+
+def password_page(session, enabled, error='', saved=False, status_code=200):
+    current = '''<label for="current-password">Current password</label>
+    <input id="current-password" name="current_password" type="password" required maxlength="256"
+      autocomplete="current-password">''' if enabled else ''
+    message = '<p class="success" role="status">Password saved. Other browsers have been signed out. Sign in with username <strong>owner</strong> on your phone or laptop.</p>' if saved else ''
+    return HTMLResponse('''<!doctype html><html lang="en"><head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1"><title>Password · Phone Assistant</title>
+    <link rel="stylesheet" href="/live/style.css"></head><body><main class="login">
+    <p class="eyebrow">PHONE ASSISTANT · PRIVATE ACCESS</p><h1>''' + ('Change' if enabled else 'Create') + ''' your password</h1>
+    <p>Save it in your password manager to sign back in whenever your browser session resets.</p>''' + message + '''
+    <form method="post" action="/live/password">
+    <input type="hidden" name="csrf" value="''' + html.escape(session['csrf'], quote=True) + '''">
+    <label for="username">Username</label><input id="username" name="username" value="owner" autocomplete="username" readonly>
+    ''' + current + '''<label for="new-password">New password</label>
+    <input id="new-password" name="new_password" type="password" required minlength="12" maxlength="256" autocomplete="new-password">
+    <label for="confirm-password">Confirm new password</label>
+    <input id="confirm-password" name="confirm_password" type="password" required minlength="12" maxlength="256" autocomplete="new-password">
+    <p class="muted">Use 12–256 characters. Saving signs out other browsers and invalidates unused pairing codes.</p>
+    <button class="primary" type="submit">Save password</button></form>
+    <p class="error" role="status">''' + html.escape(error) + '''</p><p><a href="/live">Back to call monitor</a></p>
+    </main></body></html>''', headers=HEADERS, status_code=status_code)
+
+
+@router.get('/live/password')
+def password_settings(request: Request, saved: bool = False):
+    try:
+        session = owner(request)
+    except HTTPException:
+        return RedirectResponse('/live/login', status_code=303, headers=HEADERS)
+    return password_page(session, request.app.state.web_auth.password_enabled(), saved=saved)
+
+
+@router.post('/live/password')
+async def save_password(request: Request, session=Depends(owner)):
+    same_origin(request)
+    form = await request.form()
+    if not secrets.compare_digest(str(form.get('csrf', '')).encode(), session['csrf'].encode()):
+        raise HTTPException(403, 'CSRF token required')
+    auth = request.app.state.web_auth
+    try:
+        if form.get('new_password') != form.get('confirm_password'):
+            raise ValueError('The new passwords do not match.')
+        token = await asyncio.to_thread(auth.set_password, request.cookies.get(COOKIE, ''),
+            str(form.get('current_password', '')), str(form.get('new_password', '')))
+    except ValueError as exc:
+        return password_page(session, auth.password_enabled(), error=str(exc), status_code=400)
+    return session_cookie(RedirectResponse('/live/password?saved=true', status_code=303, headers=HEADERS), token)
 
 
 @router.get('/live')

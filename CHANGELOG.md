@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Password-manager-friendly portal sign-in, paired-owner password settings, session revocation and host-only recovery.
 - Optional noticed audio recording of incoming/outgoing calls, private monitor/MCP playback and recording opt-out.
 - Preserve carrier forwarding metadata separately from original caller ID; add missed-call assistant context without assuming a call was declined.
 - Per-contact spoken nicknames and familiar/formal conversation styles; unknown callers use the configured office greeting.

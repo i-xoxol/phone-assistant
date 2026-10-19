@@ -235,7 +235,10 @@ python -m scripts.web_pairing
 Open `https://YOUR-PUBLIC-HOST/live` and enter that code. Generate a separate
 one-use code for each browser, or use **Pair mobile** from a paired laptop.
 Codes expire after 15 minutes; browser sessions last seven days. Browser pairing
-and MCP OAuth pairing are separate.
+and MCP OAuth pairing are separate. Once paired, choose **Password** to create
+a password (username **owner**). Save it in your password manager and use it on
+either device whenever a session expires. Pairing codes remain available for
+bootstrap and host-controlled recovery. [Sign-in and recovery →](docs/live-monitor.md)
 
 <p align="center">
   <img src="docs/assets/monitor.svg" alt="Illustrative call monitor with fictional live captions and a hangup control" width="760">

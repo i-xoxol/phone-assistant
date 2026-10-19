@@ -82,7 +82,17 @@ with `phone.calls` and an exact resource URL. Its approval page requires a code
 generated on the host. Approved clients have broad access to the one owner's
 calls; there are no per-client/per-call data partitions.
 
-Browser codes are one-use and short-lived. Sessions use Secure, HttpOnly,
+Browser codes are one-use and short-lived. A paired owner can create a reusable
+portal password for the fixed username `owner`. Only a random 16-byte salt and
+64-byte scrypt hash (N=32768, r=8, p=1) are stored; plaintext passwords are not
+stored or logged. Hashing runs off the async event loop. Password login has an
+aggregate SQLite-backed budget of ten attempts per minute that survives restarts.
+Changing a password requires the current password, revokes other browser sessions
+and unused codes, and rotates the saving browser's session and CSRF token. Initial
+setup requires an already paired owner. Host-only recovery is documented in the
+[monitor guide](live-monitor.md); it also revokes browser credentials/sessions.
+
+Sessions use Secure, HttpOnly,
 SameSite=Strict cookies. Writes verify the configured origin and CSRF token.
 The monitor sends a restrictive CSP, no-store caching, no-referrer, and anti-frame
 headers. A paired browser can generate a code for another device.
@@ -98,7 +108,7 @@ Arbitrary proxy headers do not become trusted signature origins.
 ## Storage and logs
 
 SQLite databases are **not encrypted** by this app. Pairing/session lookup
-values use hashes, and OAuth pairing codes use a salted slow hash. OAuth database
+values use hashes, portal passwords use salted scrypt, and OAuth pairing codes use a salted slow hash. OAuth database
 payloads and webhook signing secrets remain sensitive and may contain recoverable
 credential material. Do not assume all database contents are irreversibly hashed.
 Use owner-only filesystem permissions and private/encrypted backups as needed.
