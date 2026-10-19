@@ -182,6 +182,37 @@ class PhoneEvents(Extension):
             raise MCPError(code=-32602, message='No further event catalog pages')
         return {'events': definitions()}
 
+    async def renew_existing(self,name,call_id,ttl_minutes):
+        """Renew only active owned receivers; never export or replace their secrets."""
+        owner,client_id=self.principal()
+        if not self.provider.connection_active(client_id):
+            raise MCPError(code=-32001,message='Connection was revoked')
+        if name not in {'transcript.delta','call.status',*GLOBAL_EVENTS}:
+            raise MCPError(code=-32602,message='Unknown event name')
+        if (name in GLOBAL_EVENTS)!=(call_id is None):
+            raise MCPError(code=-32602,message='Line-wide events omit call_id; per-call events require it')
+        ttl=min(DEFAULT_TTL,max(60,ttl_minutes*60));renewed=[]
+        async with self.lock:
+            with self.manager.db.connect() as db:
+                rows=[dict(r) for r in db.execute('''SELECT * FROM mcp_event_subscriptions
+                    WHERE owner=? AND client_id=? AND name=? AND call_id IS ? AND active=1 AND expires_at>?''',
+                    (owner,client_id,name,call_id,time.time()))]
+            for row in rows:
+                await self.verify(owner,row['id'],Delivery(mode='webhook',url=row['url'],secret=row['secret']))
+                if not self.provider.connection_active(client_id):
+                    raise MCPError(code=-32001,message='Connection was revoked')
+                current=time.time();expiry=max(row['expires_at'],current+ttl)
+                with self.manager.db.connect() as db:
+                    changed=db.execute('''UPDATE mcp_event_subscriptions SET expires_at=?
+                        WHERE id=? AND owner=? AND active=1 AND expires_at>? AND url=? AND secret=?''',
+                        (expiry,row['id'],owner,current,row['url'],row['secret'])).rowcount
+                if changed:
+                    renewed.append({'id':row['id'],'name':name,'refreshBefore':datetime.fromtimestamp(expiry,timezone.utc).isoformat()})
+        self.manager.events.notify()
+        return {'renewed':renewed,'status':'renewed' if renewed else 'no_active_subscription',
+            'callback_verified':bool(renewed),'requires_native_resubscribe':not bool(renewed),
+            'note':'Existing receiver, secret, cursor and permissions preserved. Expired, disabled or revoked subscriptions are never revived.'}
+
     async def subscribe(self, ctx, params):
         owner, client_id = self.principal()
         sid, cid = self.identity(params, owner)
@@ -288,6 +319,8 @@ class PhoneEvents(Extension):
         return {'call_id': call_id, 'subscriptions': records, 'native_mcp_events_supported': True,
             'protocol_version': VERSION, 'event_names': sorted(GLOBAL_EVENTS) if call_id is None else ['transcript.delta', 'call.status'],
             'subscription_required': not any(r['active'] for r in records),
+            'renewal':{'tool':'subscribe_call_events','callback_url':'','signing_secret':'','ttl_minutes':1440,
+                'instruction':'Use the existing event_name and call_id. Both blank strings renew only this connection\'s active verified receivers. Renew before refreshBefore; expired subscriptions require a new native subscription.'},
             'setup': 'Use native MCP events/subscribe when the client offers it. Otherwise use '
                 'subscribe_call_events with an actual callback HTTPS URL and whsec_ signing secret. '
                 'A tool cannot create a client callback URLs. Do not invent one.',

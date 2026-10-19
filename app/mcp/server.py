@@ -373,7 +373,12 @@ def create_mcp(manager):
         Verifies a signed challenge first, then pushes Standard Webhooks events. Use once for each
         desired event type. This tool cannot generate a ChatGPT callback URL or establish a
         reply channel by itself; use respond_to_call_request for concierge replies, or send_call_update for
-        other owner updates. If no receiver is available, state that clearly."""
+        other owner updates. To renew an EXISTING active subscription without exporting its receiver or secret,
+        pass callback_url="" and signing_secret="" with the same event_name/call_id and ttl_minutes up to 1440.
+        This verifies and extends only existing owned receivers, preserving cursor/secret/permissions.
+        Expired, disabled or revoked subscriptions cannot be revived. If no receiver is available, state that clearly."""
+        if not callback_url and not signing_secret:
+            return await events.renew_existing(event_name,str(call_id) if call_id else None,ttl_minutes)
         result = await events.subscribe(None, Subscribe(name=event_name, arguments={'call_id': call_id} if call_id else {},
             delivery={'mode': 'webhook', 'url': callback_url, 'secret': signing_secret}, ttlMs=ttl_minutes*60000))
         return {**result, 'call_id': str(call_id) if call_id else None, 'event_name': event_name, 'callback_verified': True}

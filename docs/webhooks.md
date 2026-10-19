@@ -125,6 +125,14 @@ is 24 hours; ordinary tools default to one hour. A shorter TTL has a 60-second
 minimum. Refresh is idempotent; signing-key rotation has a five-minute overlap.
 The protocol cursor is null and there is no protocol history replay after expiry.
 
+An agent that cannot invoke native renewal can call `subscribe_call_events` with
+`callback_url=""`, `signing_secret=""`, its existing `event_name`/`call_id`, and
+`ttl_minutes=1440`. This renews only active receivers already owned by that OAuth
+connection, revalidating their callback challenge without exposing URL/secrets.
+It preserves delivery cursors and counters and never revives expired, disabled
+or revoked subscriptions. `get_call_event_subscriptions.renewal` describes this
+mode. The client must renew before `refreshBefore`; this is not an infinite lease.
+
 Consult the [official MCP Events guide](https://developers.openai.com/plugins/build/mcp-events)
 for the client's current capability requirements. In a supporting ChatGPT Work
 or dot flow, verify discovery, subscription, challenge, delivery, and observed

@@ -51,6 +51,45 @@ def delta(bridge, cid, eid='fragment'):
     return bridge.manager.db.events_after(0)[-1]
 
 
+def test_owned_subscription_renews_without_revealing_receiver_or_resetting_cursor(events):
+    bridge,params,received,_=events
+    async def exercise():
+        sub=await bridge.subscribe(None,params)
+        event=delta(bridge,str(params.arguments.call_id))
+        await bridge.deliver(sub['id'],event)
+        before=bridge.get(sub['id'])
+        bridge.verifications.clear()
+        result=await bridge.renew_existing('transcript.delta',str(params.arguments.call_id),1440)
+        after=bridge.get(sub['id'])
+        assert result['status']=='renewed' and result['callback_verified']
+        assert after['expires_at']>before['expires_at']
+        for key in ('url','secret','owner','client_id','cursor','delivered_events'):
+            assert after[key]==before[key]
+        assert SECRET not in json.dumps(result) and params.delivery.url not in json.dumps(result)
+        assert received[-1][0]['type']=='verification'
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize('reason',['expired','disabled','other_owner','revoked'])
+def test_renewal_cannot_revive_or_take_over_a_subscription(events,monkeypatch,reason):
+    bridge,params,received,_=events
+    async def exercise():
+        sub=await bridge.subscribe(None,params)
+        if reason=='revoked':
+            monkeypatch.setattr(bridge.provider,'connection_active',lambda _:False)
+            with pytest.raises(MCPError): await bridge.renew_existing('transcript.delta',str(params.arguments.call_id),1440)
+            return
+        with bridge.manager.db.connect() as db:
+            if reason=='expired': db.execute('UPDATE mcp_event_subscriptions SET expires_at=0 WHERE id=?',(sub['id'],))
+            if reason=='disabled': db.execute('UPDATE mcp_event_subscriptions SET active=0 WHERE id=?',(sub['id'],))
+            if reason=='other_owner': db.execute("UPDATE mcp_event_subscriptions SET owner='another-owner' WHERE id=?",(sub['id'],))
+        before=bridge.get(sub['id']);count=len(received)
+        result=await bridge.renew_existing('transcript.delta',str(params.arguments.call_id),1440)
+        assert result['status']=='no_active_subscription' and result['requires_native_resubscribe']
+        assert bridge.get(sub['id'])==before and len(received)==count
+    asyncio.run(exercise())
+
+
 def test_subscription_idempotence_verification_signatures_and_persistence(events):
     bridge, params, received, _ = events
     async def exercise():

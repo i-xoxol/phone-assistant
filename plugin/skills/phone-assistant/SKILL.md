@@ -163,3 +163,8 @@ message_id/phase. When available and supported, get_call_recording_audio can att
 private audio; otherwise provide the paired playback page. Do not claim an audio
 attachment was delivered when only a link was sent. Retain/renew the existing
 line-wide message.received subscription; its verification and expiry still apply.
+Before refreshBefore, renew an existing active subscription with
+subscribe_call_events(callback_url="", signing_secret="", event_name="message.received",
+ttl_minutes=1440). This uses only its existing verified receiver and secret and
+preserves cursors. If no_active_subscription is returned, establish a new native
+subscription; never invent a callback or promise renewal succeeded.
