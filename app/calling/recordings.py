@@ -70,9 +70,8 @@ class CallRecordings:
         # silently start recording if notice preparation was missed.
         language='en'
         if record['direction']=='inbound':
-            contacts=self.m.knowledge.matching_contacts(record['phone_number'])
-            if self.m.settings.caller_id_trust_saved_contacts and len(contacts)==1:
-                language='uk' if contacts[0]['preferred_language']=='uk' else 'en'
+            number='' if self.m.routing.get(record)['caller_identity_ambiguous'] else record['phone_number']
+            language='uk' if self.m.knowledge.language_for(number,cid)['language'].split('-')[0]=='uk' else 'en'
         path=self.m.settings.recording_notice_directory/(language+'.wav')
         if not path.is_file():
             # Keep the phone service usable, but never record silently.

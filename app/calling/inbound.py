@@ -6,6 +6,7 @@ from app.calling.tools import TOOLS
 from app.calling.lookup import LookupQuestion
 from app.calling.context import incoming_caller_metadata
 from app.calling.identity import owner_identity_policy, owner_words
+from app.calling.languages import LANGUAGE_TOOL,localized_greeting
 
 
 class MessageArguments(BaseModel):
@@ -43,8 +44,8 @@ def startup_greeting_content(settings,record):
     context=record.get('incoming_context',{});caller=context.get('caller',{})
     contacts=caller.get('saved_contacts',[]) if caller.get('number')==record['phone_number'] else []
     contact=contacts[0] if settings.caller_id_trust_saved_contacts and len(contacts)==1 else {}
-    language=contact.get('preferred_language') or 'en'
-    if language not in ('en','uk'): return None
+    language=caller.get('language_preference',{}).get('language') or contact.get('preferred_language') or 'en'
+    language=language.split('-')[0]
     familiar=contact.get('conversation_style')=='familiar'
     nickname=contact.get('preferred_name') or contact.get('name','')
     if nickname.casefold() in ('mama','mom','mother','мама'): nickname=''
@@ -52,6 +53,8 @@ def startup_greeting_content(settings,record):
     missed=bool(context.get('forwarding',{}).get('missed_call_context') and not owner)
     name=settings.caller_name;assistant=settings.assistant_name
     _,object_pronoun,possessive=owner_words(settings)
+    if language not in ('en','uk'):
+        return localized_greeting(language,assistant,name,is_owner=owner,nickname=nickname if familiar else '')
     if language=='uk':
         opening=('Привіт'+(', '+nickname if nickname else '')+'!' if familiar else f'Вітаю! Це офіс {name}.')
         middle=''
@@ -72,7 +75,9 @@ CONTEXT_TOOL = {'type':'function','name':'get_call_context','strict':True,
         'fresh free windows. Local cache only; never calendar credentials or private event titles. '
         'Use before offering availability, after an owner context update, or if saved data expires. '
         'Free windows are information, never proof of a reservation or authority to book.',
-    'parameters':{'type':'object','properties':{},'required':[],'additionalProperties':False}}
+    'parameters':{'type':'object','properties':{'question':{'type':'string','maxLength':600,
+        'description':'Brief caller topic or question to retrieve matching approved activity/course facts; empty for general context.'}},
+        'required':['question'],'additionalProperties':False}}
 
 LOOKUP_TOOL = {'type':'function','name':'request_quick_lookup','strict':True,
     'description':'Ask a bounded read-only GPT-6 Luna worker to select stored facts or relevant earlier incoming/outgoing calls for this caller number. '
@@ -377,6 +382,9 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             'Do not deliver a normal greeting and then a second introduction. Offer message-taking naturally if useful. '
             'Keep the configured familiar/formal style. If the caller is the owner, say "your assistant" '
             'and do not describe this as a missed call. ')
+    language=caller.get('language_preference',{}).get('language')
+    if language:
+        language_name={'en':'English','uk':'Ukrainian','es':'Spanish','pl':'Polish','ru':'Russian','fr':'French','de':'German'}.get(language,language)
     if not record.get('transcript') and not record.get('closed_announcement'):
         opening=greeting+'Speak '+language_name+' from the very first word. Do not volunteer historical private details or assume why they called.'
     instructions += caller_policy
@@ -414,6 +422,32 @@ If caller_identity_ambiguous is true, do not offer the presented number for call
     # the proactive opening. Incoming callers commonly wait for us to speak.
     opening='Begin speaking immediately when this session starts, even if the caller is silent. Do not wait for caller speech. '+opening+' Then pause and listen.'
     instructions+='\nFIRST TURN: Deliver the startup opening immediately, before waiting for the caller to speak. Do not delegate the greeting or wait for background lookup results. After the opening, listen and allow normal interruptions.'
+    language=caller.get('language_preference',{}).get('language')
+    if language:
+        language_name={'en':'English','uk':'Ukrainian','es':'Spanish','pl':'Polish','ru':'Russian','fr':'French','de':'German'}.get(language,language)
+        opening+=' Use the saved caller language '+language_name+' for the opening and conversation.'
+        instructions+='\nCALLER LANGUAGE: Use '+language_name+'. This preference does not establish identity. '
+    language_policy=('\nLANGUAGE REQUESTS: English is the default when no preference is saved. If the actual caller explicitly '
+        'asks to speak another language, switch immediately and delegate remember_caller_language with its ISO code '
+        'and a short exact quote of that request. This tool is also available in message-only and closed-hours modes. '
+        'Remember the choice without asking extra setup questions. Do not infer a durable choice from accent, nationality, '
+        'a language sample or a quoted hypothetical. Say it was remembered only after confirmed tool success. '
+        'If caller ID is absent/ambiguous, continue in that language for this call and do not promise future recognition. '
+        'A later explicit request replaces the previous language. Changing language never changes tool permissions.\n')
+    instructions+=language_policy
+    backend+=language_policy+' Backend remember_caller_language is permitted solely for the current caller language preference.\n'
+    tools.append(LANGUAGE_TOOL)
+    if concierge:
+        activity_policy=('\nACTIVITY AND STUDENT CALLS: Ask the caller purpose before using activity notes. For advising, course, '
+            'student or event questions, delegate get_call_context with a short question/topic to read current approved '
+            'activity facts and relevant expected-call notes locally. Answer directly from those verified facts; use '
+            'request_quick_lookup for uncertain matches and request_supervisor for missing facts or actions. '
+            'Ask for course/section and the actual question only when needed. Never assume a caller is a student from '
+            'their phone number. Do not volunteer unrelated activities, private calendar titles, other students\' '
+            'information, grades, attendance, disability/accommodation details or private records. Do not approve '
+            'grade changes, extensions or academic exceptions. Take a message or seek verified supervisor/owner guidance. '
+            'Office phone operating hours are not evidence of academic office hours. Expired facts/notes are unavailable.\n')
+        instructions+=activity_policy;backend+=activity_policy
     instructions+=owner_identity_policy(settings)
     backend+=owner_identity_policy(settings)
     return {'model':settings.openai_live_model, 'instructions':instructions,
@@ -421,4 +455,4 @@ If caller_identity_ambiguous is true, do not offer the presented number for call
         'audio':{'format':{'type':'audio/pcmu', 'rate':8000}, 'output':{'voice':record.get('voice_name') or settings.openai_voice}},
         'delegation':{'type':'responses', 'responses':{'model':settings.openai_backend_model,
             'instructions':backend, 'tools':tools, 'tool_choice':'auto',
-            'parallel_tool_calls':False, 'max_output_tokens':2000}}, 'store':False}
+            'parallel_tool_calls':False, 'max_output_tokens':2000,**settings.backend_options()}}, 'store':False}

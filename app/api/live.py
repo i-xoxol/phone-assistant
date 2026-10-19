@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response, Streamin
 from app.calling.voices import VoiceChoice
 from app.calling.transfer import ReachOwner
 from app.web_auth import SESSION_SECONDS
+from app.calling.languages import OwnerLanguage
 
 router = APIRouter()
 COOKIE = '__Host-phone-owner'
@@ -188,6 +189,11 @@ def bootstrap(request: Request, call_id: UUID | None = None):
     availability=saved['availability']
     try:
         return {'cursor': cursor, 'calls': db.recent_calls(), 'call': request.app.state.manager.result(str(call_id)) if call_id else None,
+                'caller_book':request.app.state.manager.knowledge.caller_book(),
+                'models':{'voice':request.app.state.settings.openai_live_model,
+                    'backend':request.app.state.settings.openai_backend_model,
+                    'backend_fast':request.app.state.settings.openai_backend_fast,
+                    'subscription_lookup_fast':request.app.state.settings.subscription_lookup_fast},
                 'voice':request.app.state.manager.voices.get(),
                 'owner_contact_enabled':request.app.state.settings.owner_transfer_enabled and bool(request.app.state.settings.owner_transfer_number),
                 'inbox':db.list_messages(limit=20),
@@ -235,6 +241,15 @@ def events(request: Request, cursor: int = 0, session=Depends(owner)):
         raise HTTPException(400, 'Invalid event cursor') from None
     return StreamingResponse(stream_events(request.app.state.manager, cursor, session['expires'], request),
         media_type='text/event-stream', headers={**HEADERS, 'X-Accel-Buffering': 'no'})
+
+
+@router.put('/live/caller-language',dependencies=[Depends(write_owner)])
+async def caller_language(body:OwnerLanguage,request:Request):
+    manager=request.app.state.manager
+    try: result=manager.knowledge.set_language(body.phone_number,body.language)
+    except ValueError as exc: raise HTTPException(409,str(exc)) from None
+    await manager.caller_language_changed(body.phone_number,body.language)
+    return JSONResponse(result,headers=HEADERS)
 
 
 @router.post('/live/calls/{call_id}/hangup', dependencies=[Depends(write_owner)])

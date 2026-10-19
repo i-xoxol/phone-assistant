@@ -64,14 +64,16 @@ class CallManager:
                 record['closed_announcement']=self.hours.closed_announcement()
         return record
 
-    def incoming_context(self,record):
-        context=self.context.for_call(record)
+    def incoming_context(self,record,question=''):
+        context=self.context.for_call(record,question=question)
         if record.get('direction') == 'inbound':
             context['caller'] = incoming_caller_metadata(record)
             context['forwarding']=self.routing.get(record,for_voice=True)
             matches = self.knowledge.matching_contacts(context['caller']['number'])
             if context['forwarding']['caller_identity_ambiguous']: matches=[]
             context['caller']['saved_contacts'] = matches
+            context['caller']['language_preference'] = self.knowledge.language_for(
+                '' if context['forwarding']['caller_identity_ambiguous'] else context['caller']['number'],record.get('call_id'))
             context['caller']['identity_verified'] = bool(len(matches)==1 and self.settings.caller_id_trust_saved_contacts)
             context['caller']['identity_basis'] = ('owner_trusted_saved_number' if context['caller']['identity_verified']
                                                    else 'presented_number')
@@ -79,6 +81,9 @@ class CallManager:
             office=self.hours.policy().office_name
             context['office_name']=office if office!='The office' else 'the office of '+self.settings.caller_name
             context['greeting_preparation'] = self.greetings.snapshot(record)
+            if question and record.get('inbound_mode')=='concierge':
+                context['knowledge']=self.knowledge.search(question,
+                    caller_number='' if context['forwarding']['caller_identity_ambiguous'] else context['caller']['number'],limit=6)
         if self.settings.call_history_enabled:
             context['call_history']=self.memory.overview(record)
         return context
@@ -94,6 +99,19 @@ class CallManager:
                             'delegate to get_call_context for the current snapshot. Existing authorization limits still apply.'))
             except ValueError:
                 log_event('context_refresh_not_injected',call_id=cid)
+
+    async def caller_language_changed(self,number,language):
+        """Apply an owner's preference edit to a matching live caller without changing identity."""
+        for cid,bridge in list(self.bridges.items()):
+            if not bridge.inbound or bridge.closing or bridge.handoff or bridge.end_requested.is_set(): continue
+            record=self.db.get(cid)
+            if record['phone_number']!=number or self.routing.get(record)['caller_identity_ambiguous']: continue
+            try:
+                await self.send_call_update(cid,CallUpdateRequest(mode='instructions',update_id=uuid4(),
+                    content='The owner set this caller language preference to '+language+'. Continue in that language. '
+                            'This changes language only, not identity, permissions or disclosure limits.'))
+            except (ValueError,RuntimeError):
+                log_event('language_refresh_not_injected',call_id=cid)
 
     async def request_supervisor(self, call_id: str, question: str) -> dict:
         if call_id in self.stopping:

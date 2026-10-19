@@ -169,6 +169,7 @@ Twilio also receives a provider-enforced connected-call duration limit, at most
 | `call_updates` | Idempotent update records and injection acknowledgments |
 | `call_events` | Durable ordered event log for replay/delivery |
 | `web_sessions`, `web_pairing`, `web_password`, `web_login_attempts` | Browser sessions, pairing, salted password credential and short-lived login budget |
+| `caller_languages`, `call_languages` | Number-level language preference/source and per-call language for blocked/ambiguous callers |
 | `webhook_state` | Generic sender delivery cursor |
 | `mcp_event_subscriptions` | OAuth-owned subscriptions, secrets, cursors, expiry, counters |
 | `messages` | One confirmed incoming message per call, or labelled raw transcript fallback; read state |

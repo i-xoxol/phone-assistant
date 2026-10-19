@@ -76,6 +76,11 @@ class CallKnowledge:
                     preferred_name TEXT NOT NULL DEFAULT '',
                     conversation_style TEXT NOT NULL DEFAULT 'formal'
                         CHECK(conversation_style IN ('familiar','formal')));
+                CREATE TABLE IF NOT EXISTS caller_languages (
+                    phone_number TEXT PRIMARY KEY, language TEXT NOT NULL,
+                    source TEXT NOT NULL CHECK(source IN ('caller','owner')), updated_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS call_languages (
+                    call_id TEXT PRIMARY KEY REFERENCES calls(call_id), language TEXT NOT NULL, updated_at TEXT NOT NULL);
             ''')
 
     def matching_contacts(self, number):
@@ -103,6 +108,8 @@ class CallKnowledge:
                 conn.execute('INSERT INTO concierge_contact_preferences VALUES (?,?) ON CONFLICT(contact_id) '
                     'DO UPDATE SET preferred_language=excluded.preferred_language',
                     (str(body.contact_id),body.preferred_language))
+                if body.phone_number:
+                    self._set_language(conn,body.phone_number,body.preferred_language or 'en','owner',sync_contacts=False)
             if body.preferred_name is not None or body.conversation_style is not None:
                 conn.execute('INSERT OR IGNORE INTO concierge_contact_styles(contact_id) VALUES (?)',(str(body.contact_id),))
                 if body.preferred_name is not None:
@@ -112,6 +119,58 @@ class CallKnowledge:
                     conn.execute('UPDATE concierge_contact_styles SET conversation_style=? WHERE contact_id=?',
                         (body.conversation_style,str(body.contact_id)))
         return {'contact_id': str(body.contact_id), 'status': 'saved'}
+
+    @staticmethod
+    def _set_language(conn, number, language, source, *, sync_contacts=True):
+        if (not conn.execute('SELECT 1 FROM caller_languages WHERE phone_number=?',(number,)).fetchone()
+            and conn.execute('SELECT count(*) FROM caller_languages').fetchone()[0]>=1000):
+            raise ValueError('Caller preference directory is full')
+        conn.execute('INSERT INTO caller_languages VALUES (?,?,?,?) ON CONFLICT(phone_number) DO UPDATE SET '
+                     'language=excluded.language,source=excluded.source,updated_at=excluded.updated_at',
+                     (number,language,source,utcnow().isoformat()))
+        # Update only language, never identity, names, style, or disclosure permissions.
+        matches=list(conn.execute('SELECT contact_id FROM concierge_contacts WHERE phone_number=?',(number,)))
+        if sync_contacts and len(matches)==1:
+            conn.execute('INSERT INTO concierge_contact_preferences VALUES (?,?) ON CONFLICT(contact_id) '
+                         'DO UPDATE SET preferred_language=excluded.preferred_language',(matches[0]['contact_id'],language))
+
+    def set_language(self, number, language, *, source='owner', call_id=None):
+        from app.calling.languages import LanguageCode
+        LanguageCode(language=language)
+        if number and not re.fullmatch(r'\+[1-9][0-9]{7,14}',number):
+            raise ValueError('Valid presented phone number required')
+        with self.db.connect() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            if number:
+                self._set_language(conn,number,language,source)
+            if call_id:
+                conn.execute('INSERT INTO call_languages VALUES (?,?,?) ON CONFLICT(call_id) DO UPDATE SET '
+                             'language=excluded.language,updated_at=excluded.updated_at',(call_id,language,utcnow().isoformat()))
+        return {'language':language,'remembered':bool(number),'status':'saved' if number else 'this_call_only'}
+
+    def language_for(self, number, call_id=None):
+        with self.db.connect() as conn:
+            saved=conn.execute('SELECT language,source,updated_at FROM caller_languages WHERE phone_number=?',(number,)).fetchone()
+            current=conn.execute('SELECT language,updated_at FROM call_languages WHERE call_id=?',(call_id,)).fetchone()
+        if current and (not saved or current['updated_at']>saved['updated_at']):
+            return {'language':current['language'],'source':'current_call'}
+        if saved:
+            return {'language':saved['language'],'source':saved['source']}
+        contacts=self.matching_contacts(number)
+        language=contacts[0]['preferred_language'] if len(contacts)==1 else ''
+        return {'language':language or 'en','source':'contact' if language else 'default'}
+
+    def caller_book(self):
+        with self.db.connect() as conn:
+            rows=[dict(row) for row in conn.execute('''SELECT c.name,c.contact_id,c.phone_number,
+                COALESCE(l.language,NULLIF(p.preferred_language,''),'en') AS language,
+                COALESCE(l.source,'owner') AS language_source
+                FROM concierge_contacts c LEFT JOIN concierge_contact_preferences p USING(contact_id)
+                LEFT JOIN caller_languages l USING(phone_number)
+                UNION ALL SELECT '',NULL,l.phone_number,l.language,l.source FROM caller_languages l
+                WHERE NOT EXISTS (SELECT 1 FROM concierge_contacts c WHERE c.phone_number=l.phone_number)
+                ORDER BY name,phone_number LIMIT 200''')]
+        return rows
 
     def fact(self, body: FactUpdate):
         with self.db.connect() as conn:
@@ -167,6 +226,7 @@ class CallKnowledge:
         result={'facts':[f for _,f in ranked[:limit]],'disclosure':'All facts approved for unverified callers; contact match is not authentication.'}
         if owner:
             result['contacts']=contacts
+            result['caller_preferences']=self.caller_book()
         return result
 
     def still_current(self, facts):

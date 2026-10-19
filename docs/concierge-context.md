@@ -15,6 +15,12 @@ restart is needed. When required information is missing or expired, it requests
 supervisor help, asks useful clarifying questions while waiting, and takes a
 message if help is unavailable. It must not fabricate progress or repeat filler.
 
+`get_call_context(question)` also retrieves up to six current, owner-approved
+knowledge facts for a caller's actual topic. This local read does not invoke
+Luna. A blank question reads general context. Exact-number expected-call notes
+are prioritized, followed by topic relevance, with three notes returned. For
+teaching/advising workflows, see the [student-call strategy](caller-memory-and-student-context.md).
+
 ## Owner tools
 
 | Tool | Purpose |

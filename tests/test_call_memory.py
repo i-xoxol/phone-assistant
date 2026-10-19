@@ -113,7 +113,7 @@ def test_message_only_can_recall_but_cannot_gain_supervisor_or_booking_tools(ser
     incoming(client,m)
     cid=m.db.by_twilio_sid(SID)['call_id']
     config=session_config(m.settings,m.voice_record(cid))
-    assert {t['name'] for t in config['delegation']['responses']['tools']}=={'save_message','end_call','request_quick_lookup'}
+    assert {t['name'] for t in config['delegation']['responses']['tools']}=={'save_message','end_call','request_quick_lookup','remember_caller_language'}
     assert 'message-taking only' in config['instructions']
     assert 'outbound/keypad, lookup, payment' not in config['delegation']['responses']['instructions']
 

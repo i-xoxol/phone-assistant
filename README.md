@@ -228,6 +228,11 @@ decision or be explicitly approved for an anticipated call.
 
 ## Your phone as a live control panel
 
+The **Caller book · Languages** panel shows saved language preferences and lets
+the owner edit them. Explicit caller requests are remembered for the next call;
+unknown callers default to English. Rocky can manage preferences and approved
+teaching/activity context. [Language memory, student-call strategy and Luna Fast →](docs/caller-memory-and-student-context.md)
+
 ```bash
 python -m scripts.web_pairing
 ```

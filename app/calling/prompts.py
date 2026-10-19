@@ -131,6 +131,8 @@ def session_config(settings: Settings, record: dict) -> dict:
                 'parallel_tool_calls':False,'max_output_tokens':500}}
             instructions=instructions.replace('Delegate to the backend when: Never in this prototype.',
                 'Delegate to the backend when a participant asks to stop audio recording; use stop_call_recording only.')
+    if delegation['type']=='responses':
+        delegation['responses'].update(settings.backend_options())
     return {'model': settings.openai_live_model, 'instructions': instructions,
             'audio': {'format': {'type': 'audio/pcmu', 'rate': 8000},
                       'output': {'voice': record.get('voice_name') or settings.openai_voice}},

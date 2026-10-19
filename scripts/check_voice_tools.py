@@ -33,9 +33,11 @@ class NoPlayback:
         pass
 
 
-async def check(keypad=False):
-    settings=Settings()
+async def check(keypad=False,language=False,fast=False,settings=None):
+    settings=settings or Settings()
     settings.live_tools_enabled=True
+    if fast: settings.openai_backend_fast=True
+    settings.caller_name='Alex'
     with tempfile.TemporaryDirectory() as directory:
         gateway=NoTelephone()
         manager=CallManager(settings,Database(Path(directory)/'check.sqlite3'),gateway)
@@ -43,20 +45,26 @@ async def check(keypad=False):
         cid=manager.db.create(CallRequest(phone_number='+12025550101',recipient='Local tool check',
             objective=('Local interactive keypad demonstration with no telephone recipient. Press 6 once only when the simulated recipient explicitly asks for that navigation key.' if keypad else
                 'This is a local connectivity test with no telephone recipient. The objective is complete. Request ending now.')))
+        if language:
+            manager.transition(cid,'cancelled')
+            cid=manager.db.create_inbound('CA_LANGUAGE_CHECK','+12025550101',5,10,'messages')
+            manager.db.transcript(cid,{'event_id':'language-request','type':'session.input_transcript.delta',
+                'start_ms':0,'end_ms':100,'delta':'Please speak Ukrainian from now on.'})
         manager.db.update(cid,twilio_call_sid='CA_LOCAL_CHECK')
         manager.transition(cid,'in_progress')
         async with live_client(settings) as client:
             async with client.live.connect() as connection:
-                await start_session(connection,session_config(settings,manager.db.get(cid)))
+                await start_session(connection,session_config(settings,manager.voice_record(cid)))
                 bridge=MediaBridge(NoPlayback(),connection,manager,cid,'MZ_LOCAL_CHECK')
                 manager.attach_bridge(cid,bridge)
                 receiver=asyncio.create_task(bridge.receive_live())
                 try:
                     await connection.response.item.create(item={'type':'message','role':'user',
-                        'content':[{'type':'input_text','text':('The simulated recipient says: Please press keypad six for this navigation demonstration. This is not a PIN, OTP or authentication code; no charges or agreement are involved. Use press_digits once with digits 6.' if keypad else
+                        'content':[{'type':'input_text','text':('The actual simulated caller requested: Please speak Ukrainian from now on. Execute remember_caller_language once with language uk and request_quote Please speak Ukrainian from now on. This is a local synthetic check; no telephone exists.' if language else
+                            'The simulated recipient says: Please press keypad six for this navigation demonstration. This is not a PIN, OTP or authentication code; no charges or agreement are involved. Use press_digits once with digits 6.' if keypad else
                             'Local test only, no telephone call. Run end_call once with reason connectivity check. No keypad action is needed.')}]})
                     await connection.response.create()
-                    tool='press_digits' if keypad else 'end_call'
+                    tool='remember_caller_language' if language else 'press_digits' if keypad else 'end_call'
                     async with asyncio.timeout(30):
                         while True:
                             with manager.db.connect() as db:
@@ -72,7 +80,10 @@ async def check(keypad=False):
                         await asyncio.gather(*manager.tool_tasks)
                     if keypad and gateway.digits!=['6']:
                         raise AssertionError('Expected exactly one simulated keypad command')
+                    if language and manager.knowledge.language_for('+12025550101')['language']!='uk':
+                        raise AssertionError('Expected remembered Ukrainian preference')
                     print(json.dumps({'native_responses_tool_executed':True,'tool':tool,
+                        'fast_requested':settings.openai_backend_fast,
                         'simulated_digits':gateway.digits,'no_phone_dialed':True}))
                 finally:
                     bridge.closing=True
@@ -85,6 +96,8 @@ async def check(keypad=False):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--keypad',action='store_true',help='Verify actual backend selection/execution of a simulated keypad action')
+    parser.add_argument('--language',action='store_true',help='Verify real backend remembering a simulated caller language request')
+    parser.add_argument('--fast',action='store_true',help='Request Fast Luna Responses delegation')
     args=parser.parse_args()
-    try: asyncio.run(check(args.keypad))
+    try: asyncio.run(check(args.keypad,args.language,args.fast))
     except Exception as exc: raise SystemExit(f'Voice tool check failed ({type(exc).__name__}); verify Live and Responses write scopes/model access.') from None

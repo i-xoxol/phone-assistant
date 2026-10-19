@@ -20,6 +20,30 @@ async function api(path, options={}) {
   return response.status === 204 ? null : response.json();
 }
 function clock(seconds) { return Math.floor(seconds/60)+':'+String(Math.floor(seconds%60)).padStart(2,'0'); }
+function renderCallerBook(rows=[]) {
+  const target=$('callerBook'); target.replaceChildren();
+  if (!rows.length) {const note=document.createElement('p');note.textContent='No saved caller preferences yet.';target.append(note);return;}
+  rows.forEach((row,index)=>{
+    const entry=document.createElement('div');entry.className='caller-entry';
+    const title=document.createElement('strong');title.textContent=row.name || 'Incoming caller';
+    const number=document.createElement('p');number.className='caption-note';number.textContent=row.phone_number || 'No phone number';
+    const label=document.createElement('label');label.htmlFor='caller-language-'+index;label.textContent='Language code';
+    const input=document.createElement('input');input.id=label.htmlFor;input.value=row.language || 'en';
+    input.maxLength=12;input.pattern='[a-z]{2,3}(-[A-Z]{2})?';input.required=true;input.autocomplete='off';input.spellcheck=false;
+    input.setAttribute('aria-label','Language for '+(row.name || row.phone_number));
+    const button=document.createElement('button');button.className='quiet';button.textContent='Save';button.disabled=!row.phone_number;
+    button.onclick=async()=>{
+      if (!input.reportValidity()) return;
+      button.disabled=true;$('languageError').textContent='';
+      try {await api('/live/caller-language',{method:'PUT',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
+        body:JSON.stringify({phone_number:row.phone_number,language:input.value})});button.textContent='Saved';}
+      catch(error) {$('languageError').textContent=error.message;}
+      finally {button.disabled=!row.phone_number;}
+    };
+    const edit=document.createElement('div');edit.className='language-edit';edit.append(label,input,button);
+    entry.append(title,number,edit);target.append(entry);
+  });
+}
 function showCall() {
   showRecordings();
   $('status').textContent=call ? call.status.replaceAll('_',' ') : '—';
@@ -139,8 +163,9 @@ async function handleEvent(event) {
   lastSeen=Date.now(); connection('Live event stream connected',true);
   const data=JSON.parse(event.data);
   if (data.type.startsWith('call.supervisor_') || data.type==='call.context_update') {
-    const snapshot=await api('/live/bootstrap'); renderRequests(snapshot);
+    const snapshot=await api('/live/bootstrap'); renderRequests(snapshot);renderCallerBook(snapshot.caller_book);
   }
+  if (data.type==='caller.language_changed') renderCallerBook((await api('/live/bootstrap')).caller_book);
   if (data.type.startsWith('message.')) {
     await refreshInbox();
     if (data.type==='message.received' || data.type==='message.updated') $('inbox').open=true;
@@ -169,6 +194,7 @@ function applyEvent(data) {
 }
 async function start() {
   const data=await api('/live/bootstrap'); calls=data.calls;
+  renderCallerBook(data.caller_book);
   renderInbox(data.inbox);
   renderRequests(data);
   selected=selected || calls.find(c=>!terminal.has(c.status))?.call_id || calls[0]?.call_id;
@@ -248,6 +274,8 @@ function renderRequests(data) {
   }
 }
 function renderVoice(data) {
+  if (data.models) $('modelState').textContent='Voice: '+data.models.voice+' · Tools: '+data.models.backend+
+    (data.models.backend_fast?' Fast':' Standard')+' · Subscription lookups: '+(data.models.subscription_lookup_fast?'Fast':'Standard');
   ownerContactEnabled=!!data.owner_contact_enabled;
   if (!data.voice) return;
   if (!$('voiceChoice').options.length) {
@@ -290,5 +318,9 @@ $('pairMobile').onclick=async()=>{
   } catch(error) {connection(error.message);}
 };
 $('closePairing').onclick=()=>{$('pairing').hidden=true;$('pairCode').textContent='';};
+$('callerBookPanel').addEventListener('toggle',async()=>{
+  if (!$('callerBookPanel').open) return;
+  try {renderCallerBook((await api('/live/bootstrap')).caller_book);} catch(error) {$('languageError').textContent=error.message;}
+});
 setInterval(()=>{showCall(); if (lastSeen && Date.now()-lastSeen>12000) connection('No recent heartbeat · connection may be stale. Hang-up remains available.');},1000);
 start().catch(error=>connection(error.message));

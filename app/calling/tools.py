@@ -100,15 +100,20 @@ class VoiceTools:
         elif name == 'save_message' and inbound:
             from app.calling.inbound import MessageArguments
             args = MessageArguments.model_validate_json(item['arguments'])
+        elif name == 'remember_caller_language' and inbound:
+            from app.calling.languages import CallerLanguage
+            args=CallerLanguage.model_validate_json(item['arguments'])
         elif name == 'request_supervisor' and inbound:
             from app.calling.inbound import SupervisorArguments
             args = SupervisorArguments.model_validate_json(item['arguments'])
             if manager.db.get(self.bridge.call_id)['inbound_mode'] != 'concierge':
                 raise ValueError('Supervisor unavailable in message-only mode')
         elif name == 'get_call_context' and inbound:
-            if json.loads(item['arguments']) != {} or manager.db.get(self.bridge.call_id)['inbound_mode'] != 'concierge':
+            data=json.loads(item['arguments'])
+            if (not isinstance(data,dict) or set(data)-{'question'} or not isinstance(data.get('question',''),str)
+                    or len(data.get('question',''))>600 or manager.db.get(self.bridge.call_id)['inbound_mode'] != 'concierge'):
                 raise ValueError('Context lookup is unavailable')
-            args = None
+            args = data.get('question','')
         elif name == 'request_quick_lookup' and inbound:
             from app.calling.lookup import LookupQuestion
             args = LookupQuestion.model_validate_json(item['arguments'])
@@ -125,7 +130,7 @@ class VoiceTools:
                     or self.bridge.call_id in manager.stopping):
                 raise ValueError('Voice session is no longer current')
             # Read-only refreshes must not exhaust the side-effect operation budget.
-            return manager.incoming_context(manager.db.get(self.bridge.call_id))
+            return manager.incoming_context(manager.db.get(self.bridge.call_id),question=args)
         # Atomic claim survives duplicate events and media-session reconnects.
         if not manager.db.claim_tool(self.bridge.call_id, item['call_id'], name):
             return {'status': 'already_requested', 'instruction': 'Do not repeat. Check the recorded keypad/call status.'}
@@ -145,6 +150,9 @@ class VoiceTools:
                                               args.caller_name, args.callback_number)
             result = {'status':'saved', 'message_id':message['message_id'],
                       'instruction':'Saved in the private inbox for review. Do not claim the owner received a notification or read it.'}
+        elif name == 'remember_caller_language':
+            from app.calling.languages import remember_language
+            result=remember_language(manager,self.bridge.call_id,args)
         elif name == 'press_digits':
             result = await manager.press_digits(self.bridge.call_id, DigitsRequest(**args.model_dump()))
         else:

@@ -67,6 +67,11 @@ an existing password's current-password requirement.
 
 ## Select and follow a call
 
+The **Caller book · Languages** section lists curated contacts and remembered
+language choices from incoming numbers. The owner can edit an ISO language code
+(`en`, `uk`, `es`, etc.) and save it. This changes no name or identity permission.
+See [language memory and student context](caller-memory-and-student-context.md).
+
 The selector lists recent records. Choose a call, or open the `live_url`
 returned by `place_call`/`get_call_status` to select that call. **Follow live**
 keeps the transcript scrolled to recent content; uncheck it to review earlier

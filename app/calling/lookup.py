@@ -5,6 +5,7 @@ import os
 import shutil
 import signal
 import tempfile
+from functools import partial
 from datetime import timedelta
 from pathlib import Path
 from uuid import UUID, uuid4, uuid5
@@ -37,17 +38,20 @@ CONFIG_OVERRIDES=('forced_login_method="chatgpt"','model_reasoning_effort="low"'
     'skills.include_instructions=false','agents.enabled=false','history.persistence="none"')
 
 
-def cli_arguments(binary, folder, schema):
+def cli_arguments(binary, folder, schema, *, fast=False):
     args=[binary,'exec','--ignore-user-config','--ignore-rules','--ephemeral','--skip-git-repo-check',
         '--sandbox','read-only','--model','gpt-6-luna','--json','--output-schema',str(schema),'-C',str(folder)]
     for feature in DISABLED_FEATURES:
         args+=['--disable',feature]
     for value in CONFIG_OVERRIDES:
         args+=['-c',value]
+    args += ['--enable' if fast else '--disable', 'fast_mode']
+    if fast:
+        args += ['-c', 'service_tier="fast"']
     return args+['-']
 
 
-async def select_with_codex(question, facts, timeout):
+async def select_with_codex(question, facts, timeout, *, fast=False):
     """CLI owns its existing ChatGPT auth. Never extract tokens or fall back to API keys."""
     binary=shutil.which('codex')
     if not binary:
@@ -71,7 +75,7 @@ async def select_with_codex(question, facts, timeout):
         shape['required']=list(shape['properties'])
         for item in shape['properties'].values(): item.pop('default',None)
         schema.write_text(json.dumps(shape),encoding='utf-8')
-        proc=await asyncio.create_subprocess_exec(*cli_arguments(binary,folder,schema),
+        proc=await asyncio.create_subprocess_exec(*cli_arguments(binary,folder,schema,fast=fast),
             cwd=folder,env=env,stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,start_new_session=os.name=='posix')
         async def exchange():
@@ -115,7 +119,7 @@ class LookupService:
     def __init__(self, manager):
         self.manager=manager
         self.tasks={}
-        self.runner=select_with_codex
+        self.runner=partial(select_with_codex,fast=manager.settings.subscription_lookup_fast)
         with manager.db.connect() as conn:
             conn.executescript('''CREATE TABLE IF NOT EXISTS concierge_lookups (
                 request_id TEXT PRIMARY KEY, call_id TEXT NOT NULL REFERENCES calls(call_id),
@@ -174,7 +178,8 @@ class LookupService:
         self.tasks[request_id]=task
         task.add_done_callback(lambda _:self.tasks.pop(request_id,None))
         m.db.emit(call_id,'call.lookup_requested',{'request_id':request_id,'status':'pending'})
-        log_event('subscription_lookup_started',call_id=call_id,request_id=request_id,model='gpt-6-luna')
+        log_event('subscription_lookup_started',call_id=call_id,request_id=request_id,model='gpt-6-luna',
+                  speed='fast' if m.settings.subscription_lookup_fast else 'standard')
         return {'status':'pending','request_id':request_id,'deadline_seconds':m.settings.subscription_lookup_timeout_seconds,
                 'instruction':'Read-only lookup is running. Keep listening and ask useful clarification; the answer arrives as a context update. No booking authority.'}
 

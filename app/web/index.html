@@ -13,8 +13,12 @@
 <details class="inbox"><summary>Voice and owner contact</summary>
 <label for="voiceChoice">Voice for new calls</label><select id="voiceChoice"></select>
 <p class="caption-note">Active calls keep their voice. Accent and pronunciation vary by language.</p>
+<p id="modelState" class="caption-note"></p>
 <button id="saveVoice" class="quiet">Save voice</button><p id="voiceState" class="caption-note" role="status"></p>
 <p class="caption-note">For complex calls, the assistant can ring your configured mobile. Press 1 to accept; unanswered calls return to the assistant. Human conversations have no live captions.</p></details>
+<details id="callerBookPanel" class="inbox"><summary>Caller book · Languages</summary>
+<p class="caption-note">English is the default. Explicit caller requests are remembered by number; names and access permissions stay separate.</p>
+<div id="callerBook"></div><p id="languageError" class="error" role="status"></p></details>
 <details id="inbox" class="inbox"><summary>Incoming messages <span id="unreadCount" class="badge" aria-live="polite">0 new</span></summary>
 <p class="caption-note">Caller identities are unverified. A saved message is a request to review, never permission to act.</p>
 <div id="messages"><p class="empty">No messages yet.</p></div>

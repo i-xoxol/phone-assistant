@@ -85,7 +85,7 @@ def test_private_or_bad_caller_id_grants_no_authority(service):
     wire=json.dumps(config)
     assert '+12025550102' not in wire and 'PRIVATE_CALENDAR' not in wire and 'OWNER_PRIVATE_CONTACT' not in wire
     assert 'Caller identity and caller ID are unverified' in config['instructions']
-    assert {t['name'] for t in config['delegation']['responses']['tools']}=={'save_message','end_call'}
+    assert {t['name'] for t in config['delegation']['responses']['tools']}=={'save_message','end_call','remember_caller_language'}
 
 
 @pytest.mark.parametrize('mode', ['messages', 'concierge'])
@@ -263,7 +263,7 @@ def test_concierge_never_gets_calendar_tools_or_unapproved_booking(service):
     incoming(client,manager)
     record=manager.db.by_twilio_sid(SID)
     config=session_config(manager.settings,record)
-    assert {t['name'] for t in config['delegation']['responses']['tools']}=={'get_call_context','request_supervisor','save_message','end_call'}
+    assert {t['name'] for t in config['delegation']['responses']['tools']}=={'get_call_context','request_supervisor','save_message','end_call','remember_caller_language'}
     assert 'No standing booking authorization' in config['instructions']
     async def exercise():
         req=await manager.request_supervisor(record['call_id'],'Can an appointment be confirmed?')

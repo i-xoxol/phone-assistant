@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     oauth_database_path: Path = ROOT / 'data/oauth.sqlite3'
     live_tools_enabled: bool = False
     openai_backend_model: str = 'gpt-6-luna'
+    openai_backend_fast: bool = False
+    subscription_lookup_fast: bool = False
     webhook_url: str = ''
     webhook_secret: SecretStr = SecretStr('')
     inbound_enabled: bool = False
@@ -54,6 +56,13 @@ class Settings(BaseSettings):
     recording_notice_directory: Path = ROOT / 'data/recording-notices'
     inbound_missed_call_context: bool = False
     missed_call_notifications_enabled: bool = False
+
+
+    def backend_options(self) -> dict:
+        options = {'service_tier': 'priority'} if self.openai_backend_fast else {}
+        if self.openai_backend_model == 'gpt-6-luna':
+            options['reasoning'] = {'effort': 'low'}
+        return options
 
     @field_validator('webhook_url')
     @classmethod

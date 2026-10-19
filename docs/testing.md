@@ -9,6 +9,9 @@ for disclosure approval, contact scoping, expiry/retirement, duplicate work,
 capacity, unknown evidence, model failure, late answers and MCP retrieval.
 `python -m scripts.check_subscription_lookup` separately exercises the real
 ChatGPT-signed-in CLI with synthetic facts; it never dials.
+Use `--compare` for one Standard/Fast latency pair, and
+`python -m scripts.check_voice_tools --language --fast` for real delegated language
+tool execution with a temporary database and no telephone connection.
 
 ```bash
 python -m pip install -r requirements-dev.txt

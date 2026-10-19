@@ -91,7 +91,7 @@ def test_mcp_creation_and_retrieval(service):
                          'subscribe_call_events','get_call_event_subscriptions','unsubscribe_call_events','send_call_update',
                          'list_messages','get_message','mark_message_read','list_call_requests','respond_to_call_request',
                          'get_inbound_context','set_inbound_context','set_inbound_availability','expect_incoming_call','retire_expected_call',
-                         'search_call_knowledge','set_call_contact','set_call_fact','retire_call_fact',
+                         'search_call_knowledge','set_call_contact','set_caller_language','set_call_fact','retire_call_fact',
                          'get_voice_settings','set_voice','reach_owner','get_operating_hours','set_operating_hours','get_contact_call_history'}
         result = await mcp.call_tool('place_call', {'phone_number': '+12025550101', 'objective': 'Check status', 'ivr_mode': True})
         structured = json.loads(result.content[0].text)

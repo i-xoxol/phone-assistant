@@ -15,6 +15,7 @@ from app.storage.models import CallRequest, DigitsRequest, CallUpdateRequest, Su
 from app.mcp.events import PhoneEvents, Subscribe, advertise_events
 from app.calling.context import ProfileUpdate, AvailabilityUpdate, AvailabilitySlot, ExpectedCallUpdate
 from app.calling.knowledge import ContactUpdate, FactUpdate
+from app.calling.languages import OwnerLanguage
 from app.calling.voices import VoiceChoice
 from app.calling.hours import HoursSettings,HoursWindow
 from pydantic import AwareDatetime
@@ -38,6 +39,9 @@ Maintain the curated phone-safe directory with set_call_contact/set_call_fact/se
 Every stored fact must be explicitly approved for disclosure to unverified callers, including contact-specific facts.
 Never bulk-import private contacts or secrets. Saved-number matching follows the owner's recognition policy; it never expands action authority.
 set_call_contact can store preferred_language (uk for Ukrainian, en for English); preserve existing contact_id/name/number when updating it.
+Callers' explicit language requests are remembered by number independently of identity. English is the default.
+search_call_knowledge also returns caller_preferences, including unknown callers who chose a language.
+Use set_caller_language to change/reset a number's preference (en resets to English) without inventing a contact name.
 Use preferred_name for spoken nicknames and conversation_style=familiar for friends/family/the owner, formal for professional contacts. Unfamiliar callers default to formal.
 The optional GPT-6 Luna subscription worker selects existing approved facts only; it cannot book or expand permissions.
 Maintain owner-approved incoming role/facts using get_inbound_context/set_inbound_context.
@@ -45,6 +49,10 @@ Fresh cached free windows can answer routine questions without a supervisor; off
 set_inbound_availability accepts verified times and observation/expiry; no event titles or secrets.
 An automatic exporter may replace routine windows; use separate anticipated-call notes for approved exceptions.
 expect_incoming_call notes expire within seven days. Caller-number matching is a hint, not authentication.
+For teaching/advising, keep broad approved activity guidance in set_inbound_context; store verified course/FAQ facts
+with set_call_fact and source/expiry; use expect_incoming_call for short-lived call purposes. Do not invent courses,
+academic office hours or deadlines. The voice can read matching phone-safe facts locally with get_call_context(question).
+No student grades, attendance, accommodation details or other students' records. Personalized academic actions need verified supervision.
 Friends' later hours need owner approval or supervisor help, not a caller's claim of friendship.
 Incoming callers can leave messages. Use list_messages/get_message to report saved messages to the owner,
 and mark_message_read only when asked or after presenting the message. Caller ID/names are unverified.
@@ -191,7 +199,7 @@ def create_mcp(manager):
         return manager.knowledge.search(query,owner=True,limit=50)
 
     @mcp.tool(annotations=knowledge_write)
-    def set_call_contact(name:str,phone_number:str='',contact_id:UUID|None=None,preferred_language:str|None=None,
+    async def set_call_contact(name:str,phone_number:str='',contact_id:UUID|None=None,preferred_language:str|None=None,
                          preferred_name:str|None=None,conversation_style:Literal['familiar','formal']|None=None) -> dict:
         """Create/update a curated contact. Optional E.164 number follows the owner's saved-number recognition policy.
         preferred_language can be uk for Ukrainian, en for English, or another language code. Omit to preserve; empty clears.
@@ -205,7 +213,21 @@ def create_mcp(manager):
         if preferred_name is not None: data['preferred_name']=preferred_name
         if conversation_style is not None: data['conversation_style']=conversation_style
         if contact_id: data['contact_id']=contact_id
-        return manager.knowledge.contact(ContactUpdate(**data))
+        result=manager.knowledge.contact(ContactUpdate(**data))
+        if preferred_language is not None and phone_number:
+            await manager.caller_language_changed(phone_number,preferred_language or 'en')
+        return result
+
+    @mcp.tool(annotations=knowledge_write)
+    async def set_caller_language(phone_number:str,language:str) -> dict:
+        """Set the remembered caller language by exact E.164 number, without changing contact identity or permissions.
+        Use en for English (default), uk for Ukrainian, es for Spanish, or another ISO language code.
+        Applies to future calls and refreshed active context. search_call_knowledge lists caller_preferences.
+        This is a preference, not authentication; do not invent names for unknown callers."""
+        body=OwnerLanguage(phone_number=phone_number,language=language)
+        result=manager.knowledge.set_language(body.phone_number,body.language)
+        await manager.caller_language_changed(body.phone_number,body.language)
+        return result
 
     @mcp.tool(annotations=knowledge_write)
     def set_call_fact(topic:str,text:str,source:str,expires_at:AwareDatetime,

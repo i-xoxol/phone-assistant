@@ -107,6 +107,12 @@ remain in set_inbound_availability, not long-lived facts.
 Contacts support preferred_language, preferred_name (spoken nickname) and
 conversation_style (familiar for owner/friends/family, formal for professional contacts).
 Preserve existing ID/name/number on updates. Omitted preferences are preserved.
+Explicit caller language requests are now remembered by number, including unknown
+callers. English is the default; language never proves identity. Read
+search_call_knowledge().caller_preferences and use set_caller_language(number,
+language) to edit a preference without creating a contact; en resets to English.
+The existing set_call_contact preferred_language field also works. Preserve
+nicknames/style and do not create duplicate identities just to change a language.
 Do not classify every saved business contact as a friend. These settings refine
 tone at voice-session startup and grant no additional action authority.
 
@@ -116,6 +122,18 @@ voice and Responses delegation still use API billing. This worker cannot book, r
 your plugins or access your private files. No match/failure means supervisor help or
 a saved message. Inspect get_call_result.lookup_requests for evidence IDs, result
 and delivery state. A returned fact is not a booking or expanded authorization.
+
+For student/activity calls, maintain an approved general role/workflow with
+set_inbound_context, sourced expiring FAQ facts with set_call_fact, and short-lived
+anticipated topics with expect_incoming_call. Read existing context first and
+preserve unrelated instructions. The voice can retrieve matching facts locally
+with get_call_context(question), then seek Luna or supervision for missing facts.
+Verify actual courses, academic office hours and dates before storing them; do not
+infer them from phone-line hours or private calendar titles. No grades, attendance,
+accommodations, other students' records or academic decision authority belong in
+this phone-safe brief. No automatic private record imports. Retire stale notes.
+Fast mode uses more subscription allowance/API tokens at the published Fast rate;
+it does not give the read-only worker new tools or permissions.
 
 Use `get_voice_settings` and `set_voice` to change the default GPT-Live voice for
 new calls. Active calls keep their pinned voice, including when resumed after an

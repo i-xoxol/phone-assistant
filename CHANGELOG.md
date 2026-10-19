@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Remember explicit incoming caller language requests by number, with owner MCP/portal edits and English default.
+- Read approved student/activity facts locally by question; prioritize relevant anticipated-call context.
+- Optional Luna Fast for API delegation and all subscription-backed lookup/preparation/coaching paths.
 - Configurable owner pronouns used in incoming/outgoing voice instructions and missed-call greetings.
 - Fix browser password form submissions rejected because `no-referrer` suppressed their Origin header.
 - Password-manager-friendly portal sign-in, paired-owner password settings, session revocation and host-only recovery.

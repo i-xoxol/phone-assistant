@@ -54,7 +54,7 @@ def test_after_hours_announcement_and_optional_message_only_mode(service,behavio
         assert record['inbound_mode']=='messages' and not record['inbound_booking_allowed']
         config=session_config(m.settings,record)
         assert 'already played' in config['input'][0]['content'][0]['text']
-        assert {t['name'] for t in config['delegation']['responses']['tools']}=={'save_message','end_call'}
+        assert {t['name'] for t in config['delegation']['responses']['tools']}=={'save_message','end_call','remember_caller_language'}
 
 
 def test_mobile_reach_rule_blocks_before_any_paid_transfer(service):

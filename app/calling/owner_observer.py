@@ -6,6 +6,7 @@ import hashlib
 import json
 from datetime import datetime,timedelta
 from uuid import uuid4
+from functools import partial
 
 from twilio.twiml.voice_response import VoiceResponse
 
@@ -26,7 +27,7 @@ class TransferObserver:
         self.coaches={}
         self.attempts={}
         self.stream_states={}
-        self.runner=select_with_codex
+        self.runner=partial(select_with_codex,fast=manager.settings.subscription_lookup_fast)
         from app.calling.speech import synthesize
         self.speech = synthesize
         self.audio = {}

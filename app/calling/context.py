@@ -149,7 +149,7 @@ class ConciergeContext:
             conn.execute('UPDATE expected_calls SET active=0,updated_at=? WHERE context_id=?',(utcnow().isoformat(),context_id))
         return {'context_id':context_id,'status':'retired'}
 
-    def snapshot(self,*,caller_number=None):
+    def snapshot(self,*,caller_number=None,question=''):
         stamp=utcnow().isoformat()
         with self.db.connect() as conn:
             row=conn.execute('SELECT role,context,updated_at FROM concierge_profile WHERE id=1').fetchone()
@@ -165,13 +165,19 @@ class ConciergeContext:
             if caller_number is not None:
                 query+=" AND (phone_number='' OR phone_number=?)"
                 args.append(caller_number)
-            expected=[dict(r) for r in conn.execute(query+' ORDER BY updated_at DESC LIMIT ?',(*args,20 if caller_number is None else 3))]
+            expected=[dict(r) for r in conn.execute(query+' ORDER BY updated_at DESC LIMIT 20',args)]
+            if caller_number is not None:
+                terms=set(re.findall(r'[^\W_]{3,}',question.casefold()))
+                def relevance(note):
+                    note_words=set(re.findall(r'[^\W_]{3,}',(note['title']+' '+note['context']).casefold()))
+                    return (bool(note['phone_number'] and note['phone_number']==caller_number),len(terms & note_words))
+                expected=sorted(expected,key=relevance,reverse=True)[:3]
         return {'profile':profile,'availability':availability,'expected_calls':expected,
                 'disclosure':'Owner approved for incoming callers; caller ID matching is a routing hint, never authentication.',
                 'booking':'Free windows and anticipated notes do not prove a booking. Supervisor must complete and verify any booking.'}
 
-    def for_call(self,record):
+    def for_call(self,record,question=''):
         if record.get('direction')!='inbound' or record.get('inbound_mode')!='concierge':
             return {}
-        return self.snapshot(caller_number=record['phone_number'])
+        return self.snapshot(caller_number=record['phone_number'],question=question)
 

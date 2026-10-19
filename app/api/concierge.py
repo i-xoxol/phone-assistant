@@ -5,6 +5,7 @@ from fastapi import APIRouter,Depends,HTTPException,Request
 from app.api.calls import authenticated
 from app.calling.context import ProfileUpdate,AvailabilityUpdate,ExpectedCallUpdate
 from app.calling.knowledge import ContactUpdate,FactUpdate
+from app.calling.languages import OwnerLanguage
 
 router=APIRouter(prefix='/concierge',dependencies=[Depends(authenticated)])
 
@@ -16,9 +17,22 @@ def knowledge(request:Request,query:str=''):
 
 
 @router.put('/contacts')
-def contact(body:ContactUpdate,request:Request):
-    try: return request.app.state.manager.knowledge.contact(body)
+async def contact(body:ContactUpdate,request:Request):
+    manager=request.app.state.manager
+    try: result=manager.knowledge.contact(body)
     except ValueError as exc: raise HTTPException(409,str(exc)) from None
+    if body.preferred_language is not None and body.phone_number:
+        await manager.caller_language_changed(body.phone_number,body.preferred_language or 'en')
+    return result
+
+
+@router.put('/caller-language')
+async def caller_language(body:OwnerLanguage,request:Request):
+    manager=request.app.state.manager
+    try: result=manager.knowledge.set_language(body.phone_number,body.language)
+    except ValueError as exc: raise HTTPException(409,str(exc)) from None
+    await manager.caller_language_changed(body.phone_number,body.language)
+    return result
 
 
 @router.put('/facts')
