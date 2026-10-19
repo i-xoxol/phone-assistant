@@ -44,9 +44,14 @@ INBOUND_MISSED_CALL_CONTEXT=true
 ```
 
 Notices live in ignored `data/recording-notices/`, or the absolute directory in
-`RECORDING_NOTICE_DIRECTORY`. They contain your configured caller name, not phone
-numbers or secrets. Existing files are preserved; regenerate deliberately after
-changing the owner name or notice text. Do not commit generated audio.
+`RECORDING_NOTICE_DIRECTORY`. The notice is simply “This call is being recorded.”
+(Ukrainian: “Ця розмова записується.”). Preparation uses the configured owner speech
+model and voice once, with the spoken text separate from delivery instructions.
+It rejects generated audio if the model's output transcript adds or changes words.
+Every call replays the cached file without generating speech or spending model
+tokens for the notice.
+Existing files are preserved; run the command with `--replace` to regenerate after
+changing the notice text. Do not commit generated audio.
 
 The pre-answer ring delay runs first. The cached notice then plays, and
 `<Start><Recording>` records both audio tracks before connecting the voice model.

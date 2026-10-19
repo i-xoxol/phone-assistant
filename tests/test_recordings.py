@@ -17,6 +17,38 @@ from tests.test_inbound import incoming,SID
 RID='RE'+'a'*32
 
 
+@pytest.mark.parametrize('preamble',['', 'I will recite this exactly. '])
+def test_cached_notice_rejects_spoken_preambles(service,monkeypatch,preamble):
+    from scripts.prepare_recording_notices import render_notice
+    _,m,_=service;sent=[]
+    class Connection:
+        async def __aenter__(self): return self
+        async def __aexit__(self,*_): pass
+        async def send(self,data): sent.append(data)
+        def __aiter__(self): return self
+        async def __anext__(self):
+            event=next(self.events,None)
+            if event is None: raise StopAsyncIteration
+            return SimpleNamespace(model_dump=lambda:event)
+        events=iter([{'type':'session.updated'},
+            {'type':'response.output_audio.delta','delta':base64.b64encode(b'\0\0'*24000).decode()},
+            {'type':'response.output_audio_transcript.done','transcript':preamble+'This call is being recorded.'},
+            {'type':'response.done','response':{'status':'completed'}}])
+    class Client:
+        async def __aenter__(self): return self
+        async def __aexit__(self,*_): pass
+        realtime=SimpleNamespace(connect=lambda **_:Connection())
+    monkeypatch.setattr('scripts.prepare_recording_notices.live_client',lambda _:Client())
+    if preamble:
+        with pytest.raises(ValueError,match='transcript does not match'):
+            asyncio.run(render_notice(m.settings,'This call is being recorded.'))
+    else:
+        assert asyncio.run(render_notice(m.settings,'This call is being recorded.')).startswith(b'RIFF')
+    response=sent[1]['response']
+    assert response['input'][0]['content'][0]['text']=='This call is being recorded.'
+    assert 'This call is being recorded.' not in response['instructions']
+
+
 def enable(m,tmp_path):
     m.settings.call_recording_enabled=True
     m.settings.recording_notice_directory=tmp_path/'notices'

@@ -20,8 +20,8 @@ STOP_TOOL={'type':'function','name':'stop_call_recording','strict':True,
 
 def notice_text(settings,language):
     if language=='uk':
-        return 'Ця розмова записується для '+settings.caller_name+'. Скажіть помічнику, якщо ви не бажаєте запису.'
-    return 'This call will be recorded for '+settings.caller_name+'. Please tell the assistant if you prefer not to be recorded.'
+        return 'Ця розмова записується.'
+    return 'This call is being recorded.'
 
 
 def voice_recording_policy():
