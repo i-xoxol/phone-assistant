@@ -25,6 +25,10 @@
 <div class="call-meta"><span id="status" class="badge">—</span><span id="duration">0:00</span></div>
 <p id="objective" class="objective">Select a call to view its conversation.</p></section>
 <p id="transferState" class="caption-note" role="status"></p>
+<section class="inbox" aria-label="Call audio"><h2>Call recording</h2>
+<p id="forwardingState" class="caption-note"></p><div id="recordings"></div>
+<button id="stopRecording" class="quiet" hidden>Stop audio recording</button>
+<p class="caption-note">Private playback is available after the call. Stopping audio recording keeps live captions on.</p></section>
 <section class="conversation"><div class="section-title"><h2>Conversation</h2><label class="follow"><input id="follow" type="checkbox" checked> Follow live</label></div>
 <p class="caption-note">Live captions may trail speech or contain errors. Human-call captions can revise earlier text.</p>
 <div id="transcript" aria-label="Call transcript"><p class="empty">Waiting for conversation…</p></div></section>

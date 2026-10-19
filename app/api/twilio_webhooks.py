@@ -58,6 +58,7 @@ async def incoming(request: Request):
     except ValueError:
         return declined_incoming()
     record = manager.db.get(cid)
+    manager.routing.save(cid,form)
     if record['status'] in TERMINAL:
         response = VoiceResponse()
         response.hangup()
@@ -69,19 +70,19 @@ async def incoming(request: Request):
         response.say(manager.hours.closed_announcement())
         response.hangup()
         log_event('incoming_office_closed',call_id=cid)
-        return incoming_response(settings,str(response))
+        return incoming_response(settings,manager.recordings.initial_twiml(cid,str(response)))
     if closed:
         import xml.etree.ElementTree as ET
         response=VoiceResponse();response.say(manager.hours.closed_announcement())
         root=ET.fromstring(str(response))
         root.extend(list(ET.fromstring(stream_twiml(settings,cid))))
         log_event('incoming_office_closed_messages',call_id=cid)
-        return incoming_response(settings,ET.tostring(root,encoding='unicode'))
+        return incoming_response(settings,manager.recordings.initial_twiml(cid,ET.tostring(root,encoding='unicode')))
     # Twilio is still ringing while it fetches these instructions. Calls.update
     # rejects that state (21220). Establish the stream first; handle_media then
     # sets the provider duration cap before connecting any paid Live session.
     log_event('incoming_call_accepted', call_id=cid)
-    return incoming_response(settings,stream_twiml(settings,cid))
+    return incoming_response(settings,manager.recordings.initial_twiml(cid,stream_twiml(settings,cid)))
 
 
 @router.post('/incoming/status')
@@ -106,6 +107,27 @@ async def incoming_status(request: Request):
         manager.capture_inbound_fallback(record['call_id'])
     log_event('incoming_call_status', call_id=record['call_id'], status=state)
     return Response(status_code=204)
+
+
+@router.post('/recordings/{call_id}')
+async def recording_status(call_id:UUID,request:Request):
+    form=await validated_form(request)
+    try: request.app.state.manager.recordings.callback(str(call_id),form)
+    except KeyError: raise HTTPException(404,'Call not found') from None
+    except (ValueError,TypeError): raise HTTPException(400,'Invalid recording callback') from None
+    return Response(status_code=204)
+
+
+@router.get('/recording-notice/{language}.wav')
+def recording_notice(language:str,request:Request):
+    settings=request.app.state.settings
+    if language not in ('en','uk'): raise HTTPException(404,'Notice not found')
+    if not settings.twilio_auth_token.get_secret_value() or not RequestValidator(settings.twilio_auth_token.get_secret_value()).validate(
+        settings.public_url(request.url.path),{},request.headers.get('x-twilio-signature','')):
+        raise HTTPException(403,'Invalid Twilio signature')
+    path=settings.recording_notice_directory/(language+'.wav')
+    if not path.is_file(): raise HTTPException(404,'Notice not prepared')
+    return Response(path.read_bytes(),media_type='audio/wav',headers={'Cache-Control':'no-store'})
 
 
 @router.websocket('/media/{call_id}')
@@ -145,7 +167,8 @@ def bound_call(manager, call_id: str, form):
 async def voice(call_id: UUID, request: Request):
     form = await validated_form(request)
     bound_call(request.app.state.manager, str(call_id), form)
-    return Response(stream_twiml(request.app.state.settings, str(call_id)), media_type='application/xml')
+    xml=request.app.state.manager.recordings.initial_twiml(str(call_id),stream_twiml(request.app.state.settings,str(call_id)))
+    return Response(xml, media_type='application/xml')
 
 
 @router.post('/status/{call_id}')

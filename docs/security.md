@@ -52,7 +52,7 @@ implemented. Stronger approval mechanisms can be added in `CallManager` and
 | Data | Where it goes |
 |---|---|
 | Destination/caller numbers and telephone metadata | Twilio and local call records |
-| Voice audio | Twilio and OpenAI over their network connections; no local recording |
+| Voice audio | Twilio and OpenAI over their network connections; optional noticed audio recordings stored privately at Twilio |
 | Objective, context, constraints, approved identity | OpenAI Live prompt and local SQLite |
 | Delegated task context | Configured OpenAI Responses backend when enabled |
 | Transcript fragments | Local SQLite, paired monitor, authorized MCP/REST clients |
@@ -62,8 +62,13 @@ implemented. Stronger approval mechanisms can be added in `CallManager` and
 
 `store=False` is supplied to the Live session. It is **not** a promise of zero
 provider retention under all account policies. Review provider terms/data controls
-for your account. The repository contains no Twilio audio recording configuration;
-Calls API requests set `record=False`.
+for your account. Audio recording is off by default. When enabled, a prepared
+notice plays before TwiML starts the recording. Caller opt-out stops audio recording;
+if stopping cannot be confirmed, the service attempts to end the call. Speech
+processing/captions still operate unless the call ends. See [recordings](recordings.md).
+Calls API creation still sets `record=False` so it cannot start recording before
+the notice. The parent's recording covers its later handoff conversation; no
+separate recording is started on the owner's private coaching leg.
 
 Transcripts, reasons, and updates may contain personal information. Keep context
 minimal. Do not add passwords, payment details, whole email threads, full calendar

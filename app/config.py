@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     owner_speech_enabled: bool = False
     owner_speech_model: str = 'gpt-realtime-2.1-mini'
     owner_speech_voice: str = 'cedar'
+    call_recording_enabled: bool = False
+    recording_notice_directory: Path = ROOT / 'data/recording-notices'
+    inbound_missed_call_context: bool = False
 
     @field_validator('webhook_url')
     @classmethod

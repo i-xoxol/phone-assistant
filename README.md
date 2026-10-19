@@ -257,6 +257,7 @@ webhook, and its hangup button talks directly to the service.
 | [API reference](docs/api.md) | REST routes, MCP tool inputs, result fields, statuses, example requests |
 | [MCP and plugin setup](docs/mcp.md) | OAuth pairing, Codex, ChatGPT, plugin template, client compatibility |
 | [Live monitor](docs/live-monitor.md) | Phone/laptop pairing, SSE replay, captions, hangup behavior |
+| [Forwarded calls and recordings](docs/recordings.md) | Missed-call context, caller ID, recording notices, private playback and Rocky access |
 | [Webhooks](docs/webhooks.md) | Native MCP Events, ordinary subscription tools, receivers, signature formats |
 | [Deployment](docs/deployment.md) | Linux/systemd, persistent tunnels, reverse proxies, updates, backups |
 | [Security and privacy](docs/security.md) | Data flow, controls, prompt-policy limits, private deployments |
@@ -294,7 +295,7 @@ deploy/            Example systemd unit
 ## Current limits
 
 - Single owner and single worker; no multi-tenant isolation or production fleet management.
-- No voicemail detection, recording, direct calendar/email access, or independent booking by the voice model. Incoming concierge actions require a connected, authorized supervisor.
+- No voicemail detection, direct calendar/email access, or independent booking by the voice model. Incoming concierge actions require a connected, authorized supervisor. Audio recording is optional and requires prepared notices.
 - DTMF briefly reconnects the voice stream; it is not uninterrupted keypad injection.
 - Conversation permissions are mainly prompt-based. The exposed voice tools are restricted,
   but a prompt is not a deterministic guarantee of every spoken response.

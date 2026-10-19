@@ -6,6 +6,7 @@ let seen = new Set(), turns = [], buffered = [], loadVersion = 0;
 let inboxCursor = null;
 let ownerContactEnabled=false;
 let humanCaptions=new Map();
+let recordingRenderKey='';
 const csrf = document.querySelector('meta[name="csrf-token"]').content;
 function connection(text, healthy=false) { $('connectionText').textContent=text; $('connection').className='connection '+(healthy?'live':'warn'); }
 async function api(path, options={}) {
@@ -20,6 +21,7 @@ async function api(path, options={}) {
 }
 function clock(seconds) { return Math.floor(seconds/60)+':'+String(Math.floor(seconds%60)).padStart(2,'0'); }
 function showCall() {
+  showRecordings();
   $('status').textContent=call ? call.status.replaceAll('_',' ') : '—';
   $('status').className='badge'+(call && !terminal.has(call.status)?' active':'');
   $('objective').textContent=call?.objective || 'Select a call to view its conversation.';
@@ -35,6 +37,38 @@ function showCall() {
     let duration=call.duration_seconds;
     if (!terminal.has(call.status) && call.started_at) duration=Math.max(0,(Date.now()-Date.parse(call.started_at))/1000);
     $('duration').textContent=clock(duration);
+  }
+}
+function showRecordings() {
+  const data=call?.audio_recording;
+  $('forwardingState').textContent=call?.direction==='inbound'?
+    (call.forwarding?.detected?'Forwarded call · Caller ID: '+(call.phone_number || 'unavailable'):
+      'Incoming call · Carrier forwarding details not supplied. Caller ID: '+(call.phone_number || 'unavailable')):'';
+  $('stopRecording').hidden=!data?.policy || !!data.policy.stop_requested_at || !call || terminal.has(call.status);
+  const key=JSON.stringify([call?.call_id,data]);
+  if(key===recordingRenderKey) return;
+  recordingRenderKey=key;$('recordings').replaceChildren();
+  const rows=data?.recordings || [];
+  if(!rows.length) {
+    const p=document.createElement('p');p.className='caption-note';
+    p.textContent=data?.last_event?.state==='unavailable'?'Audio recording unavailable; the call can continue.':
+      data?.policy?'Recording requested. Waiting for the provider status.':'No audio recording for this call.';
+    $('recordings').append(p);
+  }
+  for(const r of rows) {
+    const p=document.createElement('p');p.className='caption-note';
+    p.textContent=r.status==='completed'?'Saved audio · '+clock(r.duration_seconds || 0):'Audio: '+r.status.replaceAll('-',' ');
+    $('recordings').append(p);
+    if(r.status==='completed' && /^RE[0-9a-fA-F]{32}$/.test(r.recording_id)) {
+      const audio=document.createElement('audio');audio.controls=true;audio.preload='none';
+      audio.src='/live/calls/'+encodeURIComponent(call.call_id)+'/recordings/'+r.recording_id+'/audio';
+      $('recordings').append(audio);
+    }
+  }
+  if(data?.policy?.stop_requested_at) {
+    const p=document.createElement('p');p.className='caption-note';
+    p.textContent=data.policy.stop_confirmed_at?'Audio recording stopped. Earlier audio may remain saved.':'Recording stop requested; confirmation pending.';
+    $('recordings').append(p);
   }
 }
 function showList() {
@@ -116,6 +150,10 @@ async function handleEvent(event) {
     showList();
   }
   if (data.call_id!==selected) return;
+  if(data.type==='call.recording') {
+    const snapshot=await api('/live/bootstrap?call_id='+encodeURIComponent(selected));
+    if(snapshot.call?.call_id===selected && call) {call.audio_recording=snapshot.call.audio_recording;showCall();}
+  }
   if (!call) {buffered.push(data);return;}
   applyEvent(data);
 }
@@ -141,6 +179,17 @@ async function start() {
   source.addEventListener('expired',()=>{source.close();connection('Pairing expired. Sign in again.');location.replace('/live/login');});
   source.onerror=()=>connection('Stream disconnected · reconnecting. Hang-up remains available.');
 }
+$('stopRecording').onclick=async()=>{
+  if(!call) return;
+  $('stopRecording').disabled=true;
+  try {
+    await api('/live/calls/'+encodeURIComponent(call.call_id)+'/recordings/stop',
+      {method:'POST',headers:{'X-CSRF-Token':csrf}});
+    const snapshot=await api('/live/bootstrap?call_id='+encodeURIComponent(selected));
+    if(snapshot.call?.call_id===selected && call) {call.audio_recording=snapshot.call.audio_recording;showCall();}
+  } catch(error) {connection(error.message);}
+  finally {$('stopRecording').disabled=false;}
+};
 
 function renderInbox(data, append=false) {
   $('unreadCount').textContent=data.unread_count+' new';

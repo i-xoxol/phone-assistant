@@ -62,6 +62,13 @@ class TwilioGateway:
         return await asyncio.to_thread(self.client().calls(sid).update,
             time_limit=minutes*60)
 
+    async def stop_recording(self,sid):
+        return await asyncio.to_thread(self.client().calls(sid).recordings('Twilio.CURRENT').update,status='stopped')
+
+    async def recording_audio(self,rid):
+        from app.calling.recordings import fetch_recording_audio
+        return await fetch_recording_audio(self.settings,rid)
+
     async def press_digits(self, sid: str, call_id: str, digits: str):
         return await asyncio.to_thread(self.client().calls(sid).update,
                                       twiml=stream_twiml(self.settings, call_id, digits))

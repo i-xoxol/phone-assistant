@@ -93,6 +93,9 @@ class VoiceTools:
             args=ReachOwner.model_validate_json(item['arguments'])
             if inbound and manager.db.get(self.bridge.call_id)['inbound_mode']!='concierge':
                 raise ValueError('Owner contact unavailable in message-only mode')
+        elif name == 'stop_call_recording':
+            if json.loads(item['arguments'])!={}: raise ValueError('Recording stop takes no arguments')
+            args=None
         elif name == 'save_message' and inbound:
             from app.calling.inbound import MessageArguments
             args = MessageArguments.model_validate_json(item['arguments'])
@@ -130,6 +133,8 @@ class VoiceTools:
             raise ValueError('Voice session is no longer current')
         if name == 'reach_owner':
             result=await manager.transfer.request(self.bridge.call_id,args.reason,source='voice_backend')
+        elif name == 'stop_call_recording':
+            result=await manager.recordings.stop(self.bridge.call_id)
         elif name == 'request_quick_lookup':
             result = await manager.lookup.request(self.bridge.call_id, args.question)
         elif name == 'request_supervisor':

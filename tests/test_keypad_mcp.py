@@ -85,6 +85,8 @@ def test_mcp_creation_and_retrieval(service):
     mcp, _ = create_mcp(manager)
     async def exercise():
         names = {t.name for t in await mcp.list_tools()}
+        assert {'get_call_recordings','get_call_recording_audio','stop_call_recording'}<=names
+        names-={'get_call_recordings','get_call_recording_audio','stop_call_recording'}
         assert names == {'place_call','get_call_status','get_call_result','press_digits','hangup_call',
                          'subscribe_call_events','get_call_event_subscriptions','unsubscribe_call_events','send_call_update',
                          'list_messages','get_message','mark_message_read','list_call_requests','respond_to_call_request',

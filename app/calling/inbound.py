@@ -337,6 +337,22 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
         opening=greeting+'Speak '+language_name+' from the very first word. Do not volunteer historical private details or assume why they called.'
     instructions += caller_policy
     backend += caller_policy
+    if record.get('incoming_context',{}).get('forwarding',{}).get('missed_call_context'):
+        missed=f'''\nMISSED-CALL ASSISTANT: The owner has configured missed/declined mobile calls to reach this line.
+Incoming calls may therefore be forwarded missed calls, even when the carrier provides no forwarding metadata.
+Continue behaving as {name}'s office or personal assistant, with the configured familiar/formal tone.
+Help within existing concierge permissions, ask the purpose and offer to take a message for the owner and supervising agent.
+Do not claim the owner deliberately declined, is busy, or saw this call; the carrier does not establish why it arrived.
+Do not automatically ring the owner back just because the call was missed. Use existing escalation only when explicitly requested
+or actually needed, with agreement to hold. Do not substitute the forwarding number for the caller's callback number.
+Never reveal a forwarding number: it may be the owner's private mobile. If metadata says caller identity is ambiguous,
+ask their name and preferred callback; never assume the forwarding owner is the caller.
+If caller_identity_ambiguous is true, do not offer the presented number for callbacks: ask them to provide their own callback number.\n'''
+        instructions+=missed;backend+=missed
+    if record.get('audio_recording',{}).get('policy'):
+        from app.calling.recordings import STOP_TOOL,voice_recording_policy
+        tools.append(STOP_TOOL)
+        instructions+=voice_recording_policy();backend+=voice_recording_policy()
     prepared=record.get('incoming_context',{}).get('greeting_preparation',[])
     if prepared:
         instructions+='\nPrepared background for this caller: '+json.dumps(prepared,ensure_ascii=False)+\

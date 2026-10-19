@@ -34,6 +34,10 @@ class CallManager:
         from app.calling.hours import OperatingHours
         self.hours=OperatingHours(database)
         self.knowledge = CallKnowledge(database)
+        from app.calling.forwarding import IncomingRouting
+        from app.calling.recordings import CallRecordings
+        self.routing=IncomingRouting(self)
+        self.recordings=CallRecordings(self)
         from app.calling.memory import CallMemory
         self.memory=CallMemory(self)
         self.lookup = LookupService(self)
@@ -46,12 +50,14 @@ class CallManager:
 
     def result(self, call_id):
         return {**self.db.get(call_id),'lookup_requests':self.lookup.list_for_call(call_id),
-                'owner_transfer':self.transfer.for_call(call_id),'owner_coaching':self.observer.history(call_id)}
+                'owner_transfer':self.transfer.for_call(call_id),'owner_coaching':self.observer.history(call_id),
+                'forwarding':self.routing.get(self.db.get(call_id)),'audio_recording':self.recordings.snapshot(call_id)}
 
     def voice_record(self,call_id):
         record=self.db.get(call_id)
         record['voice_name']=self.voices.pin(record)
         record['owner_transfer']=self.transfer.for_call(call_id)
+        record['audio_recording']=self.recordings.snapshot(call_id)
         if record.get('direction')=='inbound':
             record['incoming_context']=self.incoming_context(record)
             if record['inbound_mode']=='messages' and not self.hours.state()['office_open']:
@@ -62,7 +68,9 @@ class CallManager:
         context=self.context.for_call(record)
         if record.get('direction') == 'inbound':
             context['caller'] = incoming_caller_metadata(record)
+            context['forwarding']=self.routing.get(record,for_voice=True)
             matches = self.knowledge.matching_contacts(context['caller']['number'])
+            if context['forwarding']['caller_identity_ambiguous']: matches=[]
             context['caller']['saved_contacts'] = matches
             context['caller']['identity_verified'] = bool(len(matches)==1 and self.settings.caller_id_trust_saved_contacts)
             context['caller']['identity_basis'] = ('owner_trusted_saved_number' if context['caller']['identity_verified']

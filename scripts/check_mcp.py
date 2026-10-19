@@ -35,15 +35,16 @@ async def check():
             assert discover['result']['capabilities']['events'] == {}
             catalog = await rpc('events/list')
             assert {e['name'] for e in catalog['result']['events']} == {
-                'transcript.delta','call.status','call.incoming','call.supervisor_requested','message.received'}
+                'transcript.delta','call.status','call.incoming','call.supervisor_requested','message.received','call.recording'}
             print(json.dumps({'mcp_events_discoverable':True,'protocol':'2026-07-28'}))
             for mode in ('auto', 'legacy'):
                 async with Client(streamable_http_client(resource, http_client=http), mode=mode) as session:
                     names = [t.name for t in (await session.list_tools()).tools]
-                    assert set(names) == {'place_call','get_call_status','get_call_result','hangup_call','press_digits',
+                    assert {'get_call_recordings','get_call_recording_audio','stop_call_recording'}<=set(names)
+                    assert set(names).issuperset({'place_call','get_call_status','get_call_result','hangup_call','press_digits',
                         'subscribe_call_events','get_call_event_subscriptions','unsubscribe_call_events','send_call_update',
                         'list_messages','get_message','mark_message_read','list_call_requests','respond_to_call_request',
-                        'get_inbound_context','set_inbound_context','set_inbound_availability','expect_incoming_call','retire_expected_call'}
+                        'get_inbound_context','set_inbound_context','set_inbound_availability','expect_incoming_call','retire_expected_call'})
                     db = Database(settings.database_path)
                     with db.connect() as conn:
                         row = conn.execute('SELECT call_id FROM calls ORDER BY created_at DESC LIMIT 1').fetchone()

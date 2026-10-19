@@ -159,8 +159,10 @@ class TransferObserver:
                 gather=response.gather(input='dtmf',num_digits=1,timeout=8,action_on_empty_result=True,
                     action=self.path(row,'accept'),method='POST')
                 options=('Press 1 to accept with private Luna coaching, or ' if self.m.settings.subscription_lookup_enabled else '')
+                recording=self.m.recordings.snapshot(row['call_id'])['policy']
                 gather.say('Your phone assistant has a caller who needs you. '+row['reason']+
-                    ' Both acceptance options keep transcription on. '+options+
+                    ' Both acceptance options keep transcription on. '+
+                    ('Audio recording is enabled for this call. ' if recording and not recording['stop_requested_at'] else '')+options+
                     'press 3 to accept without coaching. Press 2 to decline.')
                 response.hangup();return str(response)
             if not row['decision']:

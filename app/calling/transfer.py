@@ -188,7 +188,9 @@ class OwnerTransfer:
             self.update(tid,status='screening')
             gather=response.gather(input='dtmf',num_digits=1,timeout=8,action_on_empty_result=True,
                 action=self.manager.settings.public_url('/twilio/owner-transfer/'+tid+'/accept'),method='POST')
+            recording=self.manager.recordings.snapshot(row['call_id'])['policy']
             gather.say('Your phone assistant has a caller who needs you. '+row['reason']+
+                       (' Audio recording is enabled for this call.' if recording and not recording['stop_requested_at'] else '')+
                        ' Press 1 to accept and speak to the caller, or 2 to decline.')
             response.hangup()
         return str(response)

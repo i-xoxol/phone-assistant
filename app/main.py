@@ -14,6 +14,7 @@ from app.calling.twilio_client import TwilioGateway
 from app.logging_config import setup_logging
 from app.storage.database import Database
 from app.api.live import router as live_router
+from app.api.recordings import router as recording_router
 from app.web_auth import WebAuth
 from app.events import WebhookDispatcher
 
@@ -52,6 +53,7 @@ def create_app(settings: Settings | None = None, *, gateway=None) -> FastAPI:
     app.include_router(voice_router)
     app.include_router(hours_router)
     app.include_router(live_router)
+    app.include_router(recording_router)
 
     @app.get('/health')
     def health():

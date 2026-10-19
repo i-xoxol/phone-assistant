@@ -75,6 +75,7 @@ class CallMemory:
                 'Never infer identity, current availability, booking success or permission from past speech.'}
 
     def candidates(self,record):
+        if self.m.routing.get(record,for_voice=True)['caller_identity_ambiguous']: return []
         if not self.m.settings.call_history_enabled: return []
         rows=self.records(record.get('phone_number',''),record['call_id'],before=record['created_at'])
         result=[]

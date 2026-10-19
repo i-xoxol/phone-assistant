@@ -81,6 +81,22 @@ def test_subscription_idempotence_verification_signatures_and_persistence(events
     asyncio.run(exercise())
 
 
+def test_linewide_recording_status_delivers_metadata_not_audio(events):
+    bridge,params,received,_=events
+    async def run():
+        subscription=await bridge.subscribe(None,Subscribe(name='call.recording',arguments={},delivery=params.delivery))
+        cid=str(params.arguments.call_id)
+        bridge.manager.db.emit(cid,'call.recording',{'state':'completed','recording_id':'RE'+'a'*32,'duration_seconds':12})
+        event=bridge.manager.db.events_after(0)[-1]
+        await bridge.deliver(subscription['id'],event)
+        value=received[-1][0]
+        assert value['name']=='call.recording' and value['data']['state']=='completed'
+        schema=next(d for d in definitions() if d['name']=='call.recording')['payloadSchema']
+        validate(value['data'],schema)
+        assert 'audio' not in value['data'] and 'recording_url' not in value['data']
+    asyncio.run(run())
+
+
 def test_worker_filtering_push_without_polling(events):
     bridge, params, received, _ = events
     async def exercise():
@@ -244,8 +260,8 @@ def test_authenticated_mcp2_discovery_events_and_legacy_tools(tmp_path):
         assert discover['result']['supportedVersions'] == [VERSION]
         assert discover['result']['capabilities']['events'] == {}
         assert [e['name'] for e in rpc('events/list').json()['result']['events']] == [
-            'transcript.delta','call.status','call.incoming','call.supervisor_requested','message.received']
-        assert len(rpc('tools/list').json()['result']['tools']) == 29
+            'transcript.delta','call.status','call.incoming','call.supervisor_requested','message.received','call.recording']
+        assert len(rpc('tools/list').json()['result']['tools']) == 32
         cid = app.state.manager.db.create(CallRequest(phone_number='+12025550101', objective='Protocol test'))
         challenges = []
         async def receiver(url, body, headers):

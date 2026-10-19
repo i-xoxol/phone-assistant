@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Optional noticed audio recording of incoming/outgoing calls, private monitor/MCP playback and recording opt-out.
+- Preserve carrier forwarding metadata separately from original caller ID; add missed-call assistant context without assuming a call was declined.
 - Per-contact spoken nicknames and familiar/formal conversation styles; unknown callers use the configured office greeting.
 - Restore immediate incoming greetings after caller personalization, including a real-provider silent-caller check in English and Ukrainian.
 - Prepare caller context with Luna during pre-answer ringing, without extending the pickup delay.

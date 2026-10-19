@@ -16,7 +16,7 @@ COOKIE = '__Host-phone-owner'
 ASSETS = Path(__file__).resolve().parents[1] / 'web'
 HEADERS = {'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
     'X-Frame-Options': 'DENY', 'X-Content-Type-Options': 'nosniff',
-    'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"}
+    'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; media-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"}
 
 
 def owner(request: Request):
@@ -187,6 +187,18 @@ def logout(request: Request):
     response = Response(status_code=204, headers=HEADERS)
     response.delete_cookie(COOKIE, path='/', secure=True, httponly=True, samesite='strict')
     return response
+
+
+@router.get('/live/calls/{call_id}/recordings/{recording_id}/audio',dependencies=[Depends(owner)])
+async def recording_audio(call_id:UUID,recording_id:str,request:Request):
+    from app.api.recordings import audio_response
+    return await audio_response(request,call_id,recording_id)
+
+
+@router.post('/live/calls/{call_id}/recordings/stop',dependencies=[Depends(write_owner)])
+async def stop_recording(call_id:UUID,request:Request):
+    try: return await request.app.state.manager.recordings.stop(str(call_id))
+    except KeyError: raise HTTPException(404,'Call not found') from None
 
 
 @router.get('/live/messages', dependencies=[Depends(owner)])

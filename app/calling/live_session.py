@@ -286,7 +286,7 @@ class MediaBridge:
                         delegation_id=data['delegation']['id'],
                         content='No external tools are available. Answer from known information or explain the limitation. To end this call yourself, say Thank you. Goodbye. in English, or Дякую. До побачення. in Ukrainian, then remain silent. Call ending is automatic and needs no delegation.')
             elif event.type == 'response.event':
-                if self.manager.settings.live_tools_enabled or self.inbound:
+                if self.manager.settings.live_tools_enabled or self.inbound or self.manager.settings.call_recording_enabled:
                     self.tools.handle(data)
             elif event.type == 'error':
                 if optional_compaction_notice(data):
