@@ -47,7 +47,8 @@ def test_owner_call_is_addressed_as_you():
     record['incoming_context']['caller'] = {'number': record['phone_number'], 'saved_contacts': [
         {'name': 'Alex', 'conversation_style': 'familiar', 'preferred_name': 'Alex'}]}
     greeting = startup_greeting_content(settings, record)
-    assert 'your assistant' in greeting and "couldn't reach" not in greeting
+    assert greeting=="Hi, Alex! What's up?"
+    assert "couldn't reach" not in greeting
 
 
 @pytest.mark.parametrize('pronouns,phrase', [('he/him', 'не зміг'), ('she/her', 'не змогла')])

@@ -8,6 +8,18 @@ can update its role, phone-safe facts, verified free windows and anticipated-cal
 notes. These persist in SQLite across calls and restarts. They are available in
 concierge mode only; outbound briefs and message-only calls remain separate.
 
+Greeting and tone preferences in the saved profile override the sample opening
+phrases. A recognized owner receives a short casual greeting without a repeated
+name/assistant/office introduction, including the silent-start fallback. Recognition
+requires the configured saved-number trust policy, one contact matching the
+presented caller number and a match to the configured owner mobile. A forwarding
+destination or someone merely saying the owner's name does not select this greeting.
+This changes tone only; recording notices, honesty and action limits still apply.
+`python -m scripts.check_owner_greeting` verifies the real voice model with a
+silent synthetic owner, both with and without the fallback (`--language uk` for
+Ukrainian). It uses the configured OpenAI API and incurs brief voice usage, but
+never creates a Twilio call or changes the real directory/context.
+
 The live backend has a read-only `get_call_context` function. It refreshes from
 SQLite before offering availability. Context changes notify active incoming
 sessions to fetch again, using the existing Live update channel. No voice-session

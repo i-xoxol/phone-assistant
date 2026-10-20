@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Honor casual owner greetings in both the voice prompt and silent-start fallback; skip repeated assistant introductions.
 - Remember explicit incoming caller language requests by number, with owner MCP/portal edits and English default.
 - Read approved student/activity facts locally by question; prioritize relevant anticipated-call context.
 - Optional Luna Fast for API delegation and all subscription-backed lookup/preparation/coaching paths.

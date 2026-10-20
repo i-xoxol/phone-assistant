@@ -24,9 +24,11 @@ GREETINGS={
 def localized_greeting(language,assistant,owner,*,is_owner=False,nickname=''):
     phrases=GREETINGS.get(language.split('-')[0])
     if not phrases:
-        return f"Hello, I'm {assistant}, "+('your assistant.' if is_owner else owner+"'s assistant.")+' How can I help?'
-    hello,intro,to_owner,about_owner,question=phrases
-    role=(to_owner if is_owner else about_owner).format(owner=owner)
+        if is_owner: return 'Hi, '+(nickname or owner)+"! What's up?"
+        return f"Hello, I'm {assistant}, "+owner+"'s assistant. How can I help?"
+    hello,intro,_,about_owner,question=phrases
+    if is_owner: return hello+', '+(nickname or owner)+'. '+question
+    role=about_owner.format(owner=owner)
     return hello+(', '+nickname if nickname else '')+'. '+intro.format(assistant=assistant,role=role)+' '+question
 
 

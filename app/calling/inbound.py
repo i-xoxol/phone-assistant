@@ -38,12 +38,22 @@ MESSAGE_TOOL = {'type':'function', 'name':'save_message', 'strict':True,
     'parameters':MessageArguments.model_json_schema()}
 
 
+def greeting_contact(settings,record):
+    """One trusted presented-number match, never the forwarding destination."""
+    context=record.get('incoming_context',{});caller=context.get('caller',{})
+    if (not settings.caller_id_trust_saved_contacts or
+        context.get('forwarding',{}).get('caller_identity_ambiguous') or
+        not caller.get('number') or caller.get('number')!=incoming_caller_metadata(record)['number']):
+        return {}
+    contacts=caller.get('saved_contacts',[])
+    return contacts[0] if len(contacts)==1 else {}
+
+
 def startup_greeting_content(settings,record):
     """Phone-safe words for a single silent-start fallback, never generated TTS."""
     if record.get('transcript') or record.get('closed_announcement'): return None
     context=record.get('incoming_context',{});caller=context.get('caller',{})
-    contacts=caller.get('saved_contacts',[]) if caller.get('number')==record['phone_number'] else []
-    contact=contacts[0] if settings.caller_id_trust_saved_contacts and len(contacts)==1 else {}
+    contact=greeting_contact(settings,record)
     language=caller.get('language_preference',{}).get('language') or contact.get('preferred_language') or 'en'
     language=language.split('-')[0]
     familiar=contact.get('conversation_style')=='familiar'
@@ -54,7 +64,11 @@ def startup_greeting_content(settings,record):
     name=settings.caller_name;assistant=settings.assistant_name
     _,object_pronoun,possessive=owner_words(settings)
     if language not in ('en','uk'):
-        return localized_greeting(language,assistant,name,is_owner=owner,nickname=nickname if familiar else '')
+        return localized_greeting(language,assistant,name,is_owner=owner,nickname=nickname if familiar or owner else '')
+    if owner:
+        spoken_name=nickname or name
+        return ('Привіт, '+spoken_name+'! Як справи?' if language=='uk' else
+                'Hi, '+spoken_name+"! What's up?")
     if language=='uk':
         opening=('Привіт'+(', '+nickname if nickname else '')+'!' if familiar else f'Вітаю! Це офіс {name}.')
         middle=''
@@ -62,11 +76,11 @@ def startup_greeting_content(settings,record):
             middle={'he/him':f' На жаль, {name} не зміг відповісти на ваш дзвінок.',
                     'she/her':f' На жаль, {name} не змогла відповісти на ваш дзвінок.',
                     'they/them':f' На жаль, вам не вдалося додзвонитися до {name}.'}[settings.owner_pronouns]
-        return opening+middle+f' Я {assistant}, '+('твій помічник.' if owner else f'помічник {name}.')+' Чим можу допомогти?'
+        return opening+middle+f' Я {assistant}, помічник {name}. Чим можу допомогти?'
     opening=('Hi'+(', '+nickname if nickname else '')+'!' if familiar else
              "Hello, you've reached "+(context.get('office_name') or 'the office of '+name)+'.')
     middle=(f" Sorry you couldn't reach {name}." if familiar else f" Sorry you couldn't reach {object_pronoun}.") if missed else ''
-    role='your assistant.' if owner else f'{possessive} assistant.' if missed else name+"'s assistant."
+    role=f'{possessive} assistant.' if missed else name+"'s assistant."
     return opening+middle+f" I'm {assistant}, "+role+' How can I help?'
 
 
@@ -300,7 +314,9 @@ Do not claim the owner personally remembers, received, acted on or approved some
     base = incoming_caller_metadata(record)
     if caller.get('number') != base['number']: caller = base
     contacts = caller.get('saved_contacts', [])
-    trusted = bool(settings.caller_id_trust_saved_contacts and len(contacts)==1)
+    contact=greeting_contact(settings,record)
+    trusted=bool(contact)
+    owner_caller=bool(trusted and record['phone_number']==settings.owner_transfer_number)
     caller['identity_verified'] = trusted
     language_name='English'
     caller_policy = f'''\nPARTICIPANT ROLES: The OWNER is {name}. The incoming caller is a separate person unless
@@ -347,8 +363,7 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             caller_policy += '\nBegin and continue this call in '+language_name+' by default. Follow the caller if they switch languages.\n'
     elif contacts:
         caller_policy += '\nSaved contact names are available as possible matches; do not claim identity is confirmed.\n'
-    contact=contacts[0] if trusted else {}
-    familiar=contact.get('conversation_style')=='familiar'
+    familiar=owner_caller or contact.get('conversation_style')=='familiar'
     spoken_name=contact.get('preferred_name') or contact.get('name','')
     if familiar:
         style=('CONVERSATION STYLE: Familiar. Keep the whole conversation warm, relaxed and informal, '
@@ -357,12 +372,11 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             'Use the owner-chosen spoken name '+json.dumps(spoken_name,ensure_ascii=False)+'. '
             'A relationship label like Mama refers to the owner\'s family, not yours; use a personal name only if it is an actual name. '
             'Never impersonate the owner or imply you have human family relationships. '
-            'If this contact is the owner, say "your assistant" rather than explaining who the owner is. '
             'This conversational style changes tone only, never tool access, permissions or disclosure rules.')
         greeting=('Greet this known caller warmly and informally by their owner-chosen spoken name '
             +json.dumps(spoken_name,ensure_ascii=False)+'. Use a personal name only if it is an actual name; '
             'a relationship label like Mama refers to the owner\'s family, not yours. '
-            'You are '+name+"'s personal assistant. If the caller is "+name+', say "your assistant". '
+            'You are '+name+"'s personal assistant. "
             'A short natural greeting such as "Hi, [name]! How can I help?" is appropriate; '
             'do not give an office announcement or address friends/family with formal titles. ')
     else:
@@ -373,15 +387,28 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
         greeting=('Greet the caller naturally and briefly. For example: "Hello, you\'ve reached '
             +office+". I'm "+settings.assistant_name+", "+name+"'s assistant. How can I help?\" "
             'Use conversational phrasing and intonation; the example is not a script to recite mechanically. ')
+    if owner_caller:
+        instructions=instructions.replace(
+            f"Introduce yourself as {name}'s assistant, without an upfront digital/AI label; never claim to be human.",
+            'You are speaking to the recognized owner. Skip self-introductions; never claim to be human.')
+        style+=(' OWNER GREETING: This caller is the recognized owner. Greet by the saved first name, '
+            'briefly and casually. Do not announce your name, role, the office or that you are their assistant. '
+            'Do not add a second introduction later. If asked who you are, answer honestly. '
+            'This changes the greeting only, not permissions or disclosure rules.')
+        greeting=('Greet the recognized owner casually by '+json.dumps(spoken_name or name,ensure_ascii=False)+'. '
+            'Use the saved owner-approved greeting preference from the profile context when present. '
+            'Otherwise a short opening such as "Hi, [name]! What\'s up?" is appropriate. '
+            'Skip all self-introduction and office announcements; then listen. ')
     caller_policy+='\n'+style+'\n'
     routing=record.get('incoming_context',{}).get('forwarding',{})
-    if routing.get('missed_call_context'):
+    if routing.get('missed_call_context') and not owner_caller:
         greeting+=(f'This is a missed mobile call: {name} could not take the call. '
             f'Work this into the same short greeting, for example "Sorry you couldn\'t reach {name}. '
             f"I'm {settings.assistant_name}, {possessive} assistant. How can I help?\" "
             'Do not deliver a normal greeting and then a second introduction. Offer message-taking naturally if useful. '
-            'Keep the configured familiar/formal style. If the caller is the owner, say "your assistant" '
-            'and do not describe this as a missed call. ')
+            'Keep the configured familiar/formal style. ')
+    greeting+=('Owner-approved profile instructions about greeting and conversational tone take precedence '
+        'over these sample phrases. They do not change identity honesty, notices or authorization limits. ')
     language=caller.get('language_preference',{}).get('language')
     if language:
         language_name={'en':'English','uk':'Ukrainian','es':'Spanish','pl':'Polish','ru':'Russian','fr':'French','de':'German'}.get(language,language)
@@ -389,7 +416,13 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
         opening=greeting+'Speak '+language_name+' from the very first word. Do not volunteer historical private details or assume why they called.'
     instructions += caller_policy
     backend += caller_policy
-    if routing.get('missed_call_context'):
+    if owner_caller:
+        routing_policy=('\nCALL ARRIVAL: The presented-number contact identifies the owner under the configured '
+            'recognition policy. Address the owner directly as you/your. Do not describe their own call '
+            'as a missed call to them or give them a receptionist introduction. '
+            'Recognition changes tone only; all action/disclosure limits still apply.\n')
+        instructions+=routing_policy;backend+=routing_policy
+    elif routing.get('missed_call_context'):
         missed=f'''\nMISSED-CALL ASSISTANT: Carrier metadata reports THIS call was forwarded from the owner's mobile.
 The owner configured this mobile to forward missed/declined calls to the assistant. Treat this as a missed mobile call.
 Continue behaving as {name}'s office or personal assistant, with the configured familiar/formal tone.
@@ -404,7 +437,7 @@ If caller_identity_ambiguous is true, do not offer the presented number for call
         instructions+=missed;backend+=missed
     else:
         routing_policy=('\nCALL ARRIVAL: '+str(routing.get('arrival_type','direct_or_unreported'))+'. '
-            'Use the normal office/personal-assistant greeting. This call is not established as a missed call '
+            'Use the configured caller greeting. This call is not established as a missed call '
             'from the owner mobile. Do not announce that the owner missed, declined or could not take this call. '
             'Other-number forwarding does not establish owner availability. Without forwarding metadata the call '
             'may be direct or unreported forwarding; do not assert a direct route as fact. '
