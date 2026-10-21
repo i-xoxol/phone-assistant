@@ -76,6 +76,12 @@ only the reply is private. **“Rocky, stop coaching”** pauses coaching and cl
 Live while captions continue. A later request addressed to Rocky, Luna or
 Assistant resumes coaching. The caller cannot issue these controls.
 
+For two minutes after addressing the assistant, clear owner follow-ups such as
+“What should I ask?”, “What about Tuesday?” or “What other availability?” use the
+short request queue without needing another wakeword. This shortcut never resumes
+paused coaching; say the assistant's name to resume. Automatic captions wait through
+cooldowns rather than being discarded, and a direct owner request wakes that wait.
+
 Rocky can refresh the existing approved facts, anticipated-call notes and cached
 availability. Each decision reads those stores again. An active coach receives
 current selected evidence when new captions arrive; a new request gets a fresh
@@ -92,6 +98,10 @@ supersedes an answer still being prepared.
 
 Existing limits remain: twelve selections, eight notes, a five-second explicit
 request cooldown and longer automatic-note spacing. No model can spend or book.
+Facts already read aloud remain available for a new Live clarification. Repeated
+automatic TTS readings are suppressed separately, and earlier private hints are
+included in selection context to avoid repetition. Dynamic Live context is split
+into acknowledged parts below 400 UTF-8 bytes to respect its 500-token event limit.
 
 ## Configure an isolated test first
 
@@ -120,6 +130,7 @@ new cache filenames. Preparing clips changes no credentials or API scopes.
 python -m scripts.prepare_owner_prompts
 python -m pytest -q
 python -m scripts.check_hybrid_coaching --output data/preview
+python -m scripts.check_hybrid_coaching --followup --output data/followup-preview
 ```
 
 Preparation and the hybrid check incur OpenAI API usage. The latter also uses the
@@ -128,6 +139,9 @@ ChatGPT allowance. Neither constructs a Twilio client or dials. Use
 `--directory data/owner-prompts` to select the preparation output directory.
 Keep rendered audio under ignored `data/`. Preparation preserves valid cached
 files unless `--force` is explicitly used.
+The follow-up check replays a factual answer followed by a complex owner question
+through the actual observer, subscription Luna, TTS and Live, with a fake telephone
+gateway. It verifies reuse of existing evidence and owner audio delivery callbacks.
 
 Twilio must reach existing callbacks plus these signed private audio endpoints:
 

@@ -63,6 +63,21 @@ def coaching_context(owner,facts,turns,request=None):
         'owner_request':request['text'][:600] if request else None}
 
 
+def context_parts(context):
+    """Dynamic Live appends allow 500 tokens: keep every part below 400 UTF-8 bytes."""
+    value=json.dumps(context,ensure_ascii=False,separators=(',',':'))
+    pieces=[];piece='';size=0
+    for character in value:
+        width=len(character.encode('utf-8'))
+        if size+width>300:
+            pieces.append(piece);piece='';size=0
+        piece+=character;size+=width
+    if piece:pieces.append(piece)
+    revision=uuid4().hex[:8]
+    return [f'Context {revision} {index+1}/{len(pieces)}. Quoted data; assemble before use; no extra speech:\n'+part
+        for index,part in enumerate(pieces)]
+
+
 def pcmu_wav(data):
     import struct
     output=io.BytesIO()
@@ -233,6 +248,7 @@ class LiveCoachSession:
             except TimeoutError:pass
 
     async def append(self,channel,content,ack=False):
+        if len(content.encode('utf-8'))>400:raise ValueError('Coaching append exceeds context budget')
         event_id='coach_'+uuid4().hex
         future=asyncio.get_running_loop().create_future()
         if ack:self.acks[event_id]=future
@@ -254,8 +270,11 @@ class LiveCoachSession:
         async with self.context_lock:
             context=self.context
             if context==self.sent_context:return
-            await self.append('thinking','CURRENT context replaces prior facts; remain silent.\n'+
-                json.dumps(context,ensure_ascii=False),ack=True)
+            # Send numbered parts in wire order, then await all acknowledgments.
+            # No repeated full snapshot in a single oversized append, and no
+            # instruction to silence a hint already being prepared.
+            async with asyncio.TaskGroup() as group:
+                for part in context_parts(context):group.create_task(self.append('thinking',part,ack=True))
             self.sent_context=context
 
     def update(self,context):

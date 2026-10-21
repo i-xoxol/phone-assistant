@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.calling.live_coaching import LiveCoachSession,CoachingSelection,coaching_context
+from app.calling.live_coaching import LiveCoachSession,CoachingSelection,coaching_context,context_parts
 from app.config import Settings
 
 
@@ -132,4 +132,28 @@ def test_unexpected_delegation_closes_coach_without_any_tool_execution():
             with pytest.raises(RuntimeError):await coach.speak(coach.context)
         finally:await coach.close()
         assert coach.provider_closed.is_set()
+    asyncio.run(run())
+
+
+def test_large_multilingual_context_is_lossless_and_every_append_is_bounded():
+    context={'CURRENT_APPROVED_FACTS':[{'text':'Перевірений контекст '*40}],
+        'recent_captions':[{'speaker':'owner','text':'請說明時間。'*50}]}
+    parts=context_parts(context)
+    assert len(parts)>1 and all(len(part.encode('utf-8'))<=400 for part in parts)
+    restored=''.join(part.split('\n',1)[1] for part in parts)
+    assert json.loads(restored)==context
+
+
+def test_large_context_update_is_acknowledged_before_another_hint():
+    async def run():
+        connection=FakeConnection();coach=session(connection)
+        try:
+            await coach.speak(coach.context)
+            updated={**coach.context,'recent_captions':[{'speaker':'owner','text':'A new preference. '*60}]}
+            coach.update(updated)
+            await coach.speak(updated)
+            assert len(connection.updates)>1
+            assert all(len(update['content'].encode('utf-8'))<=400 for update in connection.updates)
+            assert coach.sent_context==updated and not coach.acks
+        finally:await coach.close()
     asyncio.run(run())

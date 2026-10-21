@@ -63,6 +63,7 @@ These use your own configured account and may incur OpenAI usage:
 | Command | Check |
 |---|---|
 | `python -m scripts.check_hybrid_coaching --output data/preview` | Actual subscription Luna Fast and paid TTS/Live, changed context, short clips and confirmed close; no telephone client |
+| `python -m scripts.check_hybrid_coaching --followup` | Actual observer workflow: TTS answer then a complex owner follow-up, retained evidence and Live output with a fake telephone |
 | `python -m scripts.preflight --network` | Twilio auth/owned number, public health, Live start/finalization |
 | `python -m scripts.check_voice_hangup` | Actual Live farewell with simulated Twilio playback/ending |
 | `python -m scripts.check_voice_tools --keypad` | Actual delegated keypad request with a simulated telephone gateway |
