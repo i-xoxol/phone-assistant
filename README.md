@@ -21,6 +21,8 @@ Optional [observed handoffs](docs/voice-and-owner-contact.md) keep human-call
 transcription on, with a keypad choice of private Luna coaching or no coaching.
 Optional [natural private voice replies](docs/private-voice-coaching.md) let the owner
 ask Luna for current information during a handoff, with on-demand OpenAI speech.
+Optional [hybrid coaching](docs/hybrid-owner-coaching.md) uses short cached screening
+and brief GPT-Live help for complex questions, while factual hints stay on TTS.
 
 <p align="center">
   <a href="docs/getting-started.md">Set it up</a> ·
@@ -266,6 +268,7 @@ webhook, and its hangup button talks directly to the service.
 | [MCP and plugin setup](docs/mcp.md) | OAuth pairing, Codex, ChatGPT, plugin template, client compatibility |
 | [Live monitor](docs/live-monitor.md) | Phone/laptop pairing, SSE replay, captions, hangup behavior |
 | [Forwarded calls and recordings](docs/recordings.md) | Missed-call context, caller ID, recording notices, private playback and Rocky access |
+| [Hybrid owner coaching](docs/hybrid-owner-coaching.md) | Short screening, cached speech, TTS hints, temporary Live coaching, limits and acceptance tests |
 | [Webhooks](docs/webhooks.md) | Native MCP Events, ordinary subscription tools, receivers, signature formats |
 | [Deployment](docs/deployment.md) | Linux/systemd, persistent tunnels, reverse proxies, updates, backups |
 | [Security and privacy](docs/security.md) | Data flow, controls, prompt-policy limits, private deployments |

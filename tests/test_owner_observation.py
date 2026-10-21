@@ -46,7 +46,7 @@ def test_both_choices_keep_two_microphone_streams_and_pin_first_mode(service,dig
     assert '<Conference' in g.redirects[0][1] and 'track="inbound_track"' in g.redirects[0][1]
     assert 'startConferenceOnEnter="false"' in g.redirects[0][1]
     screen=cb(client,m,tid,'screen')
-    assert 'Press 1' in screen.text and 'press 3' in screen.text and 'Press 2' in screen.text
+    assert '1 for answer. 2, decline. 3, simple answer.' in screen.text
     accepted=cb(client,m,tid,'accept',Digits=digit)
     assert accepted.status_code==200 and '<Conference' in accepted.text and '<Start><Stream' in accepted.text
     assert 'startConferenceOnEnter="true"' in accepted.text and 'record="do-not-record"' in accepted.text

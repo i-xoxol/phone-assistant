@@ -14,7 +14,7 @@ CALLER_ID_TRUST_SAVED_CONTACTS=true
 
 This uses the supported token-billed Realtime model for text-to-speech. It receives
 only selected text, no microphone, tools or call history, and closes after generating
-audio. No GPT-Live session stays open during the human call. The old
+audio. In the default `tts` strategy, no GPT-Live session stays open during the human call. The old
 `gpt-4o-mini-tts` retires January 6, 2027 and is not used here. Owner acceptance
 announces that private AI voice coaching is on.
 
@@ -113,3 +113,8 @@ paid OpenAI speech with a synthetic fact and a fake phone. It never dials.
 For real playback, call from a second phone, accept with 1, request owner availability,
 and confirm only the owner hears the note. Repeat with 3 to verify coaching stays off.
 A fake telephone check does not prove real audio isolation.
+
+For a shorter screening menu, cached high-quality prompts and optional temporary
+Live coaching, see [Hybrid owner coaching](hybrid-owner-coaching.md). Choice 3 still
+keeps both coaching models off. Hybrid mode is opt-in and preserves the existing
+private participant playback path.

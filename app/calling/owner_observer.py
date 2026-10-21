@@ -33,6 +33,10 @@ class TransferObserver:
         self.audio = {}
         self.requests = {}
         self.dirty = set()
+        from app.calling.live_coaching import LiveCoaching,select_coaching
+        self.live=LiveCoaching(self)
+        self.coaching_runner=partial(select_coaching,fast=manager.settings.subscription_lookup_fast)
+        self.paused=set()
         with manager.db.connect() as db:
             db.execute('''CREATE TABLE IF NOT EXISTS owner_whispers (
                 whisper_id TEXT PRIMARY KEY,transfer_id TEXT NOT NULL REFERENCES owner_transfers(transfer_id),
@@ -41,6 +45,9 @@ class TransferObserver:
             db.execute('''CREATE TABLE IF NOT EXISTS owner_whisper_delivery (
                 whisper_id TEXT PRIMARY KEY REFERENCES owner_whispers(whisper_id),
                 evidence_ids TEXT NOT NULL, source_turn TEXT)''')
+            db.execute('''CREATE TABLE IF NOT EXISTS owner_coaching_outputs (
+                whisper_id TEXT PRIMARY KEY REFERENCES owner_whispers(whisper_id),
+                kind TEXT NOT NULL CHECK(kind='live'),evidence_snapshot TEXT NOT NULL)''')
 
     def task(self,coro):
         task=asyncio.create_task(coro)
@@ -67,7 +74,7 @@ class TransferObserver:
         if side=='caller':
             response.say('I will try to reach the owner. Please hold. The conversation will be transcribed.')
         else:
-            response.say('Connected. Transcription is on. '+('Private AI voice coaching is on. Address Assistant, Rocky or Luna for help.' if row['mode']=='whisper' else 'Private coaching is off.'))
+            self.m.screening.append_prompt(response,row,'connected-coaching' if row['mode']=='whisper' else 'connected-simple')
         response.start().stream(name='owner-'+side,url=self.m.settings.public_url(
             '/twilio/owner-media/'+row['transfer_id']+'/'+side,websocket=True),track='inbound_track')
         dial=response.dial(time_limit=max(1,remaining_seconds(r)),record='do-not-record',
@@ -159,17 +166,12 @@ class TransferObserver:
                 self.m.transfer.update(tid,status='screening')
                 gather=response.gather(input='dtmf',num_digits=1,timeout=8,action_on_empty_result=True,
                     action=self.path(row,'accept'),method='POST')
-                options=('Press 1 to accept with private Luna coaching, or ' if self.m.settings.subscription_lookup_enabled else '')
-                recording=self.m.recordings.snapshot(row['call_id'])['policy']
-                gather.say('Your phone assistant has a caller who needs you. '+row['reason']+
-                    ' Both acceptance options keep transcription on. '+
-                    ('Audio recording is enabled for this call. ' if recording and not recording['stop_requested_at'] else '')+options+
-                    'press 3 to accept without coaching. Press 2 to decline.')
+                self.m.screening.screen(gather,row)
                 response.hangup();return str(response)
             if not row['decision']:
                 digit=form.get('Digits','')
-                accepted=digit=='3' or (digit=='1' and self.m.settings.subscription_lookup_enabled)
-                mode=('whisper' if digit=='1' else 'transcript') if accepted else 'off'
+                accepted=digit in ('1','3')
+                mode=('whisper' if digit=='1' and self.m.settings.subscription_lookup_enabled else 'transcript') if accepted else 'off'
                 with self.m.db.connect() as db:
                     db.execute('UPDATE owner_transfers SET decision=?,accepted=?,mode=? WHERE transfer_id=? AND decision IS NULL',
                         ('accepted' if accepted else 'declined',int(accepted),mode,tid))
@@ -207,16 +209,7 @@ class TransferObserver:
                     FROM owner_whispers w LEFT JOIN owner_whisper_delivery d USING(whisper_id)
                     WHERE w.whisper_id=? AND w.transfer_id=?''',(wid,tid)).fetchone()
             if not whisper or whisper['expires_at']<=utcnow().isoformat(): return str(response)
-            # Revalidate exact approved evidence at delivery time, not just selection time.
-            facts=self.facts(row)
-            ids = json.loads(whisper['evidence_ids'])
-            current = {f['fact_id']: f for f in facts}
-            expected = ' '.join(current[fid]['text'] for fid in ids if fid in current)
-            if ids:
-                if not all(fid in current for fid in ids) or expected != whisper['text']: return str(response)
-            elif not (whisper['source_turn'] and whisper['text']==
-                    'I do not have current approved information for that request. Please ask Rocky to check or update the call context.'):
-                if not any(f['fact_id']==whisper['fact_id'] and f['text']==whisper['text'] for f in facts): return str(response)
+            if not self.evidence_current(row,whisper):return str(response)
             # Claim before returning audio/TwiML: repeated provider callbacks stay silent.
             with self.m.db.connect() as db:
                 claimed = db.execute("UPDATE owner_whispers SET state='fetched' WHERE whisper_id=? AND state='requested'",(wid,)).rowcount
@@ -264,7 +257,17 @@ class TransferObserver:
         row=self.m.transfer.get(tid)
         if row['mode']!='whisper' or not row['accepted'] or not self.current(row): return
         if speaker=='owner' and re.search(r'\b(assistant|rocky|luna|асистент|рокі|луна)\b', text, re.I):
+            if re.search(r'\b(stop (?:coaching|listening)|pause coaching|be quiet)\b',text,re.I):
+                self.paused.add(tid)
+                self.requests.pop(tid,None);self.dirty.discard(tid)
+                if task:=self.coaches.pop(tid,None):task.cancel()
+                self.task(self.live.close(tid))
+                self.m.db.emit(row['call_id'],'call.owner_coaching',{'state':'paused'})
+                return
+            self.paused.discard(tid)
             self.requests[tid] = {'turn_id': turn_id, 'text': text[:1200]}
+        if tid in self.paused:return
+        self.live.context_changed(tid)
         self.dirty.add(tid)
         if tid not in self.coaches or self.coaches[tid].done():
             task=self.task(self.coaching_loop(tid))
@@ -282,7 +285,7 @@ class TransferObserver:
         # Batch completed utterances; never start Luna in transcript-only mode.
         await asyncio.sleep(1 if tid in self.requests else 4)
         row=self.m.transfer.get(tid)
-        if row['mode']!='whisper' or not self.current(row) or not row['conference_sid']: return
+        if row['mode']!='whisper' or not self.current(row) or not row['conference_sid'] or tid in self.paused: return
         count,last=self.attempts.get(tid,(0,0))
         if count>=12: return
         request = self.requests.pop(tid, None)
@@ -311,10 +314,15 @@ class TransferObserver:
             ' '.join(t['speaker']+': '+t['text'] for t in turns)[-4000:] +
             ('\nCURRENT OWNER REQUEST: '+request['text'] if request else ''))
         try:
-            selected=await self.runner(question,facts,self.m.settings.subscription_lookup_timeout_seconds) if facts else None
+            hybrid=self.m.settings.owner_coaching_strategy=='hybrid' and self.m.settings.owner_speech_enabled
+            runner=self.coaching_runner if hybrid else self.runner
+            started=time.monotonic()
+            selected=await runner(question,facts,self.m.settings.subscription_lookup_timeout_seconds) if facts else None
             row=self.m.transfer.get(tid)
             if row['mode']!='whisper' or not self.current(row): return
-            ids = list(dict.fromkeys(selected.selected_ids))[:2] if selected and not selected.needs_supervisor else []
+            if hybrid and selected and selected.delivery=='none' and not selected.needs_supervisor:return
+            limit=(4 if selected and selected.delivery=='live' else 1) if hybrid else 2
+            ids = list(dict.fromkeys(selected.selected_ids))[:limit] if selected and not selected.needs_supervisor else []
             if any(fid not in {f['fact_id'] for f in facts} for fid in ids): raise ValueError('Unknown coaching evidence')
             fresh = {f['fact_id']:f for f in self.facts(row)}
             chosen = [f for fid in ids for f in facts if f['fact_id']==fid and fresh.get(fid)==f]
@@ -327,14 +335,35 @@ class TransferObserver:
             else:
                 fact={'fact_id':chosen[0]['fact_id'], 'text':' '.join(f['text'] for f in chosen),
                     'expires_at':min(f['expires_at'] for f in chosen)}
-            audio = await self.speech(self.m.settings, fact['text']) if self.m.settings.owner_speech_enabled else None
+            kind='tts'
+            if hybrid and chosen and selected.delivery=='live':
+                try:
+                    result=await self.live.speak(tid,ids,request)
+                    fact['text']=result['text'];audio=result['wav'];kind='live'
+                except Exception as exc:
+                    log_event('owner_live_coaching_fallback',call_id=row['call_id'],error_type=type(exc).__name__)
+                    self.task(self.live.close(tid))
+                    # No telephone announcement was requested. A single factual fallback is safe.
+                    chosen=chosen[:1];ids=ids[:1]
+                    fact={**chosen[0]}
+                    audio=await self.speech(self.m.settings,fact['text'])
+            else:
+                # Factual speech remains an exact reading, not a second model's answer.
+                if hybrid and len(fact['text'])>650:
+                    chosen=chosen[:2];ids=ids[:2]
+                    fact={'fact_id':chosen[0]['fact_id'],'text':' '.join(f['text'] for f in chosen),
+                        'expires_at':min(f['expires_at'] for f in chosen)}
+                audio=await self.speech(self.m.settings,fact['text']) if self.m.settings.owner_speech_enabled else None
+            if hybrid and kind=='tts' and audio:
+                from app.calling.owner_screening import valid_wav
+                if not valid_wav(audio,12):raise ValueError('Factual hint exceeds twelve seconds')
             # Wait for a quiet gap. Discard an outdated suggestion rather than interrupt.
             deadline=time.monotonic()+10
             while time.monotonic()-self.last_speech.get(tid,0)<1.2:
                 if time.monotonic()>deadline: return
                 await asyncio.sleep(.2)
             row=self.m.transfer.get(tid)
-            if row['mode']!='whisper' or not self.current(row): return
+            if row['mode']!='whisper' or not self.current(row) or tid in self.paused: return
             fresh = {f['fact_id']:f for f in self.facts(row)}
             if any(fresh.get(f['fact_id'])!=f for f in chosen): return
             if tid in self.requests: return  # A newer owner question superseded this answer.
@@ -346,10 +375,14 @@ class TransferObserver:
                 if not db.execute('SELECT 1 FROM owner_whispers WHERE whisper_id=?',(wid,)).fetchone(): return
                 db.execute('INSERT INTO owner_whisper_delivery VALUES (?,?,?)',
                     (wid,json.dumps(ids),request['turn_id'] if request else None))
+                if kind=='live':
+                    db.execute('INSERT INTO owner_coaching_outputs VALUES (?,?,?)',(wid,'live',json.dumps(chosen)))
             if audio:
                 self.audio[wid]={'transfer_id':tid,'wav':audio,'expires':time.monotonic()+60}
             await asyncio.wait_for(self.m.gateway.whisper(row['conference_sid'],row['child_sid'],self.path(row,'whisper-'+wid)),8)
-            self.m.db.emit(row['call_id'],'call.owner_coaching',{'state':'announcement_requested'})
+            self.m.db.emit(row['call_id'],'call.owner_coaching',{'state':'announcement_requested','kind':kind})
+            log_event('owner_coaching_prepared',call_id=row['call_id'],kind=kind,
+                elapsed_ms=round((time.monotonic()-started)*1000))
         except Exception as exc:
             # Never retry an ambiguous announcement, never interrupt the human call.
             log_event('owner_coaching_unavailable',call_id=row['call_id'],error_type=type(exc).__name__)
@@ -367,10 +400,25 @@ class TransferObserver:
                 FROM owner_whispers w LEFT JOIN owner_whisper_delivery d USING(whisper_id)
                 WHERE w.whisper_id=? AND w.transfer_id=?''',(wid,tid)).fetchone()
         if not whisper or whisper['state']!='fetched' or whisper['expires_at']<=utcnow().isoformat(): raise KeyError(wid)
-        ids=json.loads(whisper['evidence_ids']);facts={f['fact_id']:f for f in self.facts(row)}
-        if ids and (' '.join(facts[fid]['text'] for fid in ids if fid in facts)!=whisper['text']
-                    or not all(fid in facts for fid in ids)): raise KeyError(wid)
+        if not self.evidence_current(row,whisper):raise KeyError(wid)
         return asset['wav']
+
+    def evidence_current(self,row,whisper):
+        """Exact reading for TTS; exact source snapshot for a generated Live paraphrase."""
+        facts={f['fact_id']:f for f in self.facts(row)}
+        ids=json.loads(whisper['evidence_ids'])
+        with self.m.db.connect() as db:
+            output=db.execute('SELECT * FROM owner_coaching_outputs WHERE whisper_id=?',(whisper['whisper_id'],)).fetchone()
+        if output:
+            snapshot=json.loads(output['evidence_snapshot'])
+            return (bool(ids) and [f['fact_id'] for f in snapshot]==ids
+                and all(facts.get(f['fact_id'])==f for f in snapshot))
+        if ids:
+            return all(fid in facts for fid in ids) and ' '.join(facts[fid]['text'] for fid in ids)==whisper['text']
+        if whisper['source_turn'] and whisper['text']==(
+                'I do not have current approved information for that request. Please ask Rocky to check or update the call context.'):
+            return True
+        return any(f['fact_id']==whisper['fact_id'] and f['text']==whisper['text'] for f in facts.values())
 
     def history(self,cid):
         with self.m.db.connect() as db:
@@ -386,6 +434,12 @@ class TransferObserver:
             self.requests.pop(row['transfer_id'],None)
             self.dirty.discard(row['transfer_id'])
             self.audio={wid:a for wid,a in self.audio.items() if a['transfer_id']!=row['transfer_id']}
+            self.paused.discard(row['transfer_id'])
+            self.live.starts.pop(row['transfer_id'],None)
+            self.m.screening.discard(row['transfer_id'])
+            try:asyncio.get_running_loop()
+            except RuntimeError:pass
+            else:self.task(self.live.close(row['transfer_id']))
         if row and row['transfer_id'] in self.coaches: self.coaches[row['transfer_id']].cancel()
         if row and row['strategy']=='conference' and row['child_sid']:
             try: asyncio.get_running_loop()
@@ -415,3 +469,4 @@ class TransferObserver:
         tasks=list(self.tasks)+list(self.streams.values())
         for task in tasks: task.cancel()
         await asyncio.gather(*tasks,return_exceptions=True)
+        await self.live.stop()

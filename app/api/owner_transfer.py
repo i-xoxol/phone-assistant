@@ -7,6 +7,21 @@ router=APIRouter(prefix='/twilio/owner-transfer')
 media_router=APIRouter(prefix='/twilio/owner-media')
 
 
+@router.get('/{transfer_id}/prompt/{name}.wav')
+async def owner_prompt(transfer_id:UUID,name:str,request:Request):
+    m=request.app.state.manager
+    url=m.settings.public_url(request.url.path)
+    if request.url.query:url+='?'+request.url.query
+    token=m.settings.twilio_auth_token.get_secret_value()
+    if not token or not RequestValidator(token).validate(
+            url,{},request.headers.get('x-twilio-signature','')):
+        raise HTTPException(403,'Twilio signature required')
+    try:audio=m.screening.audio_for(str(transfer_id),name)
+    except KeyError:raise HTTPException(404,'Prompt unavailable') from None
+    return Response(audio,media_type='audio/wav',headers={'Cache-Control':'private, no-store',
+        'X-Content-Type-Options':'nosniff'})
+
+
 @router.get('/{transfer_id}/audio/{whisper_id}.wav')
 async def private_speech(transfer_id:UUID,whisper_id:UUID,request:Request):
     m=request.app.state.manager

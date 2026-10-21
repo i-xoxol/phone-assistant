@@ -45,6 +45,8 @@ class CallManager:
         self.greetings = GreetingPreparation(self)
         self.voices = VoicePreferences(database,settings)
         self.transfer = OwnerTransfer(self)
+        from app.calling.owner_screening import OwnerScreening
+        self.screening=OwnerScreening(self)
         from app.calling.owner_observer import TransferObserver
         self.observer = TransferObserver(self)
 
@@ -177,6 +179,7 @@ class CallManager:
                 'note':'Reply injection is not proof the caller heard it. Verify transcript; never repeat a booking on a delivery retry.'}
 
     async def stop_supervision(self):
+        await self.screening.stop()
         await self.observer.stop()
         await self.lookup.stop()
         tasks = list(self.supervisor_tasks.values())

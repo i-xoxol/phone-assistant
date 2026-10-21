@@ -90,6 +90,11 @@ coaching. Choice 3 keeps Luna off. See the provider costs and test instructions
 in the owner-contact guide. [Office hours](operating-hours.md) are stored in
 SQLite and managed by owner MCP tools or `/hours`, rather than environment variables.
 
+[Hybrid owner coaching](hybrid-owner-coaching.md) adds opt-in cached natural screening
+(`OWNER_SCREEN_SPEECH_ENABLED`) and `OWNER_COACHING_STRATEGY=hybrid`. Fixed prompt
+clips are prepared once; temporary Live sessions have explicit idle, lifetime,
+utterance and reconnect bounds. The default strategy remains `tts`.
+
 [Callback memory](call-memory.md) uses `CALL_HISTORY_ENABLED` (default false),
 `CALL_HISTORY_DAYS` (default 90, range 1–365), and the existing subscription worker.
 `INBOUND_ANSWER_DELAY_SECONDS` (default 0, range 0–30) delays pickup before answering;

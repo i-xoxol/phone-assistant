@@ -81,7 +81,8 @@ with Luna off**, and **2: decline**. Both accepted modes stream both people's
 microphones to dedicated OpenAI transcription sessions. The mobile monitor and
 MCP transcript events continue after handoff, labeling the owner separately.
 Partial captions replace earlier text with the same source event ID; the saved
-record contains the latest revision. No audio files are recorded.
+record contains the latest revision. These streams create no audio recordings;
+the separate recording policy still applies.
 
 Only whisper mode starts GPT-6 Luna. It selects one useful current phone-safe
 fact, anticipated-call note or fresh availability window from owner-maintained
@@ -97,7 +98,9 @@ an independent calendar/booking agent. There is no phone-page button required.
 
 Twilio conference and media-stream charges, two phone legs and OpenAI transcription
 charges apply. Luna uses subscription limits; Twilio supplies the announcement
-voice independently of the GPT-Live voice setting. Your original duration cap
+voice independently of the GPT-Live voice setting unless natural speech is enabled.
+The optional [hybrid flow](hybrid-owner-coaching.md) uses cached concise screening,
+TTS hints and brief caption-fed Live coaching. Your original duration cap
 still applies to both phones. Transcription is enabled in both modes, but network
 or provider failures can create gaps; the monitor reports `degraded`. Such a
 failure does not disconnect the human conversation or start Luna in captions-only mode.

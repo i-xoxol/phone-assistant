@@ -52,6 +52,15 @@ class Settings(BaseSettings):
     owner_speech_enabled: bool = False
     owner_speech_model: str = 'gpt-realtime-2.1-mini'
     owner_speech_voice: str = 'cedar'
+    owner_screen_speech_enabled: bool = False
+    owner_screen_speech_model: str = 'gpt-realtime-2.1'
+    owner_screen_speech_voice: str = 'cedar'
+    owner_prompt_directory: Path = ROOT / 'data/owner-prompts'
+    owner_coaching_strategy: Literal['tts','hybrid'] = 'tts'
+    owner_live_coaching_idle_seconds: int = Field(default=20,ge=5,le=60)
+    owner_live_coaching_max_seconds: int = Field(default=60,ge=10,le=120)
+    owner_live_coaching_max_sessions: int = Field(default=2,ge=1,le=4)
+    owner_live_coaching_max_utterance_seconds: int = Field(default=8,ge=3,le=12)
     call_recording_enabled: bool = False
     recording_notice_directory: Path = ROOT / 'data/recording-notices'
     inbound_missed_call_context: bool = False

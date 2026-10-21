@@ -28,6 +28,7 @@ CI validates Python 3.11, 3.12, and 3.14 in clean Linux environments.
 | Calls | Creation, invalid numbers, provider failure, busy/no-answer, completion, persistence, retrieval |
 | Provider callbacks | Signature/account/call checks, ordering, terminal states, signed media diagnostics |
 | Voice | Two-way relay, codec binding, transcript timing, finalization, large bursts, stalled playback, failure races |
+| Private coaching | Cached screening, signed owner-only audio, TTS/Live selection, context freshness, pause/resume, idle closure and reconnect budget |
 | Ending | Farewell recognition, final playback acknowledgment before hangup, owner audio-blocking behavior |
 | Keypad | Allowed inputs, current ownership, deliberate handoff, reconnection, uncertain-result behavior |
 | Updates | Byte limits, queueing, idempotency, acknowledgment, rejection, restored context, authorization limits |
@@ -61,6 +62,7 @@ These use your own configured account and may incur OpenAI usage:
 
 | Command | Check |
 |---|---|
+| `python -m scripts.check_hybrid_coaching --output data/preview` | Actual subscription Luna Fast and paid TTS/Live, changed context, short clips and confirmed close; no telephone client |
 | `python -m scripts.preflight --network` | Twilio auth/owned number, public health, Live start/finalization |
 | `python -m scripts.check_voice_hangup` | Actual Live farewell with simulated Twilio playback/ending |
 | `python -m scripts.check_voice_tools --keypad` | Actual delegated keypad request with a simulated telephone gateway |
