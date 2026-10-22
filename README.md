@@ -15,23 +15,15 @@
   Twilio connects the call. OpenAI GPT-Live handles the conversation. You keep control.
 </p>
 
-Owner agents can manage [office and mobile-reach hours](docs/operating-hours.md).
-Optional [callback memory and delayed pickup](docs/call-memory.md) help continue earlier conversations.
-Optional [observed handoffs](docs/voice-and-owner-contact.md) keep human-call
-transcription on, with a keypad choice of private Luna coaching or no coaching.
-Optional [natural private voice replies](docs/private-voice-coaching.md) let the owner
-ask Luna for current information during a handoff, with on-demand OpenAI speech.
-Optional [hybrid coaching](docs/hybrid-owner-coaching.md) uses short cached screening
-and brief GPT-Live help for complex questions, while factual hints stay on TTS.
-Optional [native Realtime coaching](docs/realtime-owner-coaching.md) uses full
-GPT-Realtime 2.1 to hear separately labelled owner/caller audio and stream brief
-proactive hints only to the owner's handset, without Luna or transcript-triggered replies.
-Its optional local audio bridge uses the two existing phone connections, mixes coaching
-only into the owner's earpiece audio, and falls back to a normal Twilio conference on connection loss.
-The optional [appointment upgrade](docs/appointments.md), disabled by default, adds
-exact calendar checks, consented ordinary booking, private repeat-caller confirmation,
-and direct read-only schedule tools for Realtime coaching. See its separate release
-and permission requirements before enabling it.
+Make outbound calls, answer incoming calls, take messages, and bring a supervising
+agent or the owner into the conversation. Follow live captions, send updates,
+and hang up from a private browser, MCP client, or authenticated REST API.
+
+The repository also implements opt-in recordings, expiring caller context,
+guarded calendar appointments, and several private owner-coaching modes.
+These require their own configuration and, where applicable, explicit owner grants.
+The public source is a single-owner prototype; it does not include a running
+service, credentials, or access to anyone's calls.
 
 <p align="center">
   <a href="docs/getting-started.md">Set it up</a> ·
@@ -48,60 +40,75 @@ phone menu, ask useful questions, and report what was actually said. Just as
 important, I wanted to see the conversation as it happened and stop it myself.
 
 This project grew from a minimal outbound-call experiment into a working private
-service. It has been tested on real telephone calls, including navigating a
-business phone menu and confirming an existing dental appointment. The public
-release contains the implementation and reproducible instructions, with fictional
-examples in place of personal details. It includes no real call transcripts,
-recordings, account credentials, or access to the author's deployment.
+service. The repository documents provider-mocked tests and consenting handset
+checks for calling, private coaching, and recovery. The public release contains
+the implementation and reproducible instructions, with fictional examples in
+place of personal details. It includes no real call transcripts, recordings,
+account credentials, or access to the author's deployment.
 
 ## What you can do
 
-| Capability | How it works |
+| Capability | Current behavior |
 |---|---|
-| **Place a real call** | Give an E.164 number, objective, context, constraints, and duration limit. Creation returns while the call continues. |
-| **Have a natural conversation** | GPT-Live listens and speaks over a continuous audio connection, with normal turn-taking and interruption support. |
-| **Choose a voice** | Set a documented Live voice for new calls from MCP or the private mobile monitor. |
-| **Reach the owner** | One screened attempt rings a fixed mobile; press 1 to connect. No answer/decline returns to the assistant. [Setup →](docs/voice-and-owner-contact.md) |
-| **Navigate phone menus** | Send real DTMF digits. Optionally let the in-service voice backend choose navigation keys from the menu it heard. |
-| **Update a call in progress** | Send new availability, corrected facts, or a short request without restarting the conversation. |
-| **Follow live captions** | Pair a phone or laptop browser with the private monitor. Transcripts stream through Server-Sent Events. |
-| **Stop the call** | Use MCP, REST, or the monitor's direct hangup button. The assistant can also initiate its farewell and disconnect. |
-| **Receive events** | Subscribe a verified HTTPS webhook to a call's transcript or status changes. |
-| **Read the result later** | SQLite preserves call state, transcript fragments, context updates, keypad history, and diagnostic events. |
-| **Answer incoming calls** | GPT-Live takes a confirmed message for a private inbox, with Rocky/MCP access. |
-| **Ask a supervisor for help** | An incoming concierge requests verified information over signed events; a connected agent replies into the call. |
-| **Use saved context and quick lookups** | Fresh free windows and anticipated notes work locally; optional subscription-backed GPT-6 Luna selects approved background facts. [Setup and boundaries →](docs/subscription-lookup.md) |
+| **Place outbound calls** | Supply an E.164 number, objective, context, constraints, and duration limit. Creation returns while the call continues; call completion does not prove the objective succeeded. |
+| **Talk and navigate menus** | GPT-Live handles audio, turn-taking, and interruptions. Send real DTMF digits yourself or enable the restricted in-service backend to choose keys. Keypad actions briefly reconnect the voice stream. |
+| **Answer incoming calls** | Choose message-taking or concierge mode on your owned Twilio number. Save a caller-confirmed message in a private inbox; incomplete captures are labelled unconfirmed. [Incoming calls →](docs/incoming-calls.md) |
+| **Supervise a conversation** | An actually subscribed MCP agent can receive a help request, use its own authorized tools, and return verified information before the request expires. Missing help falls back to message-taking. |
+| **Update and stop a call** | Send bounded context, spoken requests, or instructions within the initial authorization. Hang up through MCP, REST, or the paired monitor's direct control. |
+| **Watch and review** | Stream captions through browser SSE with reconnect replay. Read persisted transcripts, message quality, context updates, keypad actions, and diagnostics later. |
+| **Record with notice, then play privately** | Optional incoming/outgoing audio recording plays a prepared notice first. The monitor, authenticated REST, and MCP provide private playback and a stop control. Twilio holds audio; SQLite holds metadata. [Recordings →](docs/recordings.md) |
+| **Personalize calls** | Choose a voice for new calls; maintain contact language, spoken nickname, and familiar/formal style. Optional number-matched recall and pre-answer preparation help continue earlier conversations. Caller ID remains an unverified hint. [Caller context →](docs/caller-memory-and-student-context.md) |
+| **Use current approved facts** | Local phone-safe context, fresh free windows, and expiring anticipated-call notes work without a supervisor. Optional subscription Luna selects stored evidence; the server revalidates it before use. [Context →](docs/concierge-context.md) |
+| **Control routing and hours** | Receive direct or carrier-forwarded calls, keep caller and forwarding metadata separate, and enforce independent office and owner-reach schedules. Closed hours can announce closure or allow messages only. [Hours →](docs/operating-hours.md) |
+| **Reach the owner** | One screened attempt rings a configured fixed mobile. Decline/no answer returns to the assistant. Optional observed handoffs offer coaching or captions only. [Owner contact →](docs/voice-and-owner-contact.md) |
+| **Coach the owner privately** | Optional TTS, hybrid caption-fed Live, or native audio Realtime coaching sends hints to the owner channel. The native mode has two-leg bridge and managed-conference transports. [Coaching options below](#private-owner-coaching-options) |
+| **Discover and book ordinary appointments** | Disabled-by-default tools find a first verified slot within fourteen days or check an exact slot, then require current call authority and observed spoken consent. Confirmation follows an independent provider readback and private registry commit. [Appointments below](#guarded-appointments-and-calendar-adapters) |
+| **Confirm a repeat caller's meeting** | Optional private indexing returns minimal details only for an unambiguous ordinary appointment with current source evidence. Ambiguity or missing participant provenance goes to owner review. |
+| **Integrate with agents and events** | OAuth MCP, authenticated REST, signed per-call/line-wide events, and an operator-configured webhook share the same service. Event delivery requires a real receiver and renewal. [Events →](docs/webhooks.md) |
 
 > **Scope:** a small, single-owner service. Each person runs their own instance
-> with their own Twilio and OpenAI accounts. This is an MVP, not a hosted calling
-> platform. Post-call summaries are currently produced by the supervising agent
-> from the transcript; this service does not run an automatic summary model.
+> with their own Twilio and OpenAI accounts. Optional features are implemented
+> paths that must be enabled and validated for that deployment. Post-call summaries
+> are produced by a supervising agent from the transcript; this service does not
+> run an automatic summary model.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Client[ChatGPT / Codex / MCP client] -->|OAuth MCP| App[FastAPI + call manager]
-    App -->|Calls API| Twilio[Twilio]
-    Twilio <-->|Telephone audio| Person[Recipient]
-    Twilio <-->|Bidirectional WSS| Bridge[Voice bridge]
-    Bridge <-->|G.711 μ-law / 8 kHz| Live[OpenAI GPT-Live]
-    Live <-->|Optional delegation| Backend[Responses backend]
-    Backend -->|Allowed function requests| Bridge
-    Bridge -->|Bounded background lookup| Luna[GPT-6 Luna / private Codex subscription]
-    DB -->|Selected phone-safe facts| Luna
-    Luna -->|Evidence IDs only| App
-    App --> DB[(SQLite)]
-    Bridge --> DB
-    DB -->|SSE captions| Monitor[Private mobile monitor]
+    Client["ChatGPT / Codex / MCP client"] -->|OAuth MCP or REST| App["FastAPI + CallManager"]
+    App -->|Calls API| Twilio["Twilio"]
+    Twilio <-->|Telephone audio| Person["Caller / recipient"]
+    Twilio <-->|Bidirectional WSS| Voice["Voice bridge"]
+    Voice <-->|PCMU 8 kHz audio| Live["OpenAI GPT-Live"]
+    Live <-->|Optional delegation| Backend["Restricted Responses backend"]
+    Backend -->|Validated tool requests| App
+    App <--> DB[("Private SQLite records")]
+    Voice --> DB
+    DB -->|SSE captions| Monitor["Paired browser monitor"]
     Monitor -->|Direct hangup| App
-    DB -->|Signed events| Receiver[Verified webhook receiver]
+    App -->|Signed events| Supervisor["Subscribed supervisor"]
+    Supervisor -->|Authenticated replies| App
+    App -->|Optional guarded workflow| Booking["Appointment policy + private journal"]
+    Booking --> Adapter["CalendarProviderAdapter v1"]
+    Adapter --> Google["Google Calendar adapter"]
+    Mirror["Existing upstream mirror + health evidence"] --> Google
+    Coach["Optional private Realtime coach"] -->|Read-only owner schedule| Adapter
 ```
 
-The application owns permissions and tool execution. GPT-Live handles the spoken
-conversation; an optional Responses model handles delegated keypad and ending
-requests. The originating chat does not need to poll the transcript to execute
-those in-service tools. [Read the architecture walkthrough →](docs/architecture.md)
+FastAPI composes the REST, MCP, Twilio, and browser interfaces around one call
+manager. Twilio carries telephone audio; GPT-Live handles the assistant
+conversation. A delegated Responses backend can request only the functions
+exposed for the current call mode. Incoming concierge mode can include the
+optional bounded appointment functions; it has no arbitrary calendar or MCP access.
+
+SQLite persists call state, transcripts, updates, messages, and event cursors;
+appointments use a separate private registry/journal. In-process media sessions,
+locks, and listeners require **one Uvicorn worker**. Signed Twilio callbacks and
+media binding, authentication, tool validation, deadlines, and idempotency are
+application controls. Spoken interpretation and disclosure still depend partly
+on model behavior. [Architecture walkthrough →](docs/architecture.md) ·
+[Current appointment boundary →](app/appointments/contracts.py)
 
 ## Quick start
 
@@ -214,28 +221,133 @@ For ChatGPT, add your `/mcp` URL as a custom MCP plugin and select **OAuth**.
 Complete the owner approval page with the pairing code, install the plugin, and
 enable it in the conversation. Account/workspace availability varies.
 
-[Connection instructions and all twenty-nine tools →](docs/mcp.md)
+The current source registers **33 base MCP tools**, plus **9 appointment tools**
+when `APPOINTMENTS_ENABLED=true` (**42 total**). This count excludes voice-internal
+functions and native MCP Events methods. See the
+[base registrations](app/mcp/server.py), [optional registrations](app/appointments/mcp.py),
+and [connection guide](docs/mcp.md). Appointment tools require additional explicit
+`phone.appointments.read`, `phone.appointments.book`, or
+`phone.appointments.manage` grants; existing `phone.calls` tokens do not gain them
+automatically. `get_appointment_permissions` is a no-action setup check that can
+request owner approval on the existing connection.
 
 ## Incoming calls and concierge mode
 
-Call your Twilio number or later forward your busy personal line to it. The live
-assistant can take a caller-confirmed message, or request help from a supervising
-agent such as Rocky. The agent uses its own authorized tools and sends verified
-answers back into the conversation. Your paired monitor shows captions, inbox
-messages, pending requests and direct hangup.
+Call your Twilio number or configure conditional forwarding with your carrier.
+The service keeps presented caller ID and forwarding metadata separate; absent
+metadata cannot prove a direct call or distinguish declined from unanswered.
+Optional delayed pickup and missed-call context change the greeting without
+automatically ringing the owner again. [Forwarding behavior →](docs/recordings.md)
 
-Automatic supervision requires an actual, renewed client event subscription;
-installing the plugin alone does not keep an agent listening. Missing or delayed
-help falls back to taking a message. Booking confirmation is disabled by default
-and requires explicit owner authorization plus supervisor verification.
-[Incoming setup, routing, permissions and acceptance tests →](docs/incoming-calls.md)
+In concierge mode, the live assistant can save a caller-confirmed message or ask
+a supervising agent such as Rocky for verified help. Your paired monitor shows
+captions, inbox messages, pending requests, and direct hangup. Automatic
+supervision requires an actual renewed client event subscription; installing the
+plugin alone does not keep an agent listening. Missing or delayed help falls
+back to message-taking. A supervisor can confirm a booking only after an
+authorized action and verification. [Incoming setup and permissions →](docs/incoming-calls.md)
 
-Rocky can also maintain a saved role, phone-safe facts and anticipated-call notes.
-An optional calendar job refreshes free windows every five minutes; fresh local
-context lets the voice assistant answer routine questions while Rocky is offline
-or checking something else. Friends' later-hour options can remain a supervisor
-decision or be explicitly approved for an anticipated call.
-[Saved context and automatic availability →](docs/concierge-context.md)
+Office hours govern whether the line offers normal service, closure, or
+message-taking only. Owner-reach hours separately restrict new screened mobile
+attempts. Neither free/busy nor a caller's claim of urgency overrides those
+controls; accepted human conversations are not disconnected by a later hours
+change. [Routing and hours →](docs/operating-hours.md)
+
+### Context, memory, and expiry
+
+Owner tools maintain a saved role, phone-safe facts, verified free windows, and
+anticipated-call notes. The voice reads current local context without waiting
+for a supervisor; changes notify active incoming sessions. Optional Luna lookup
+selects evidence IDs from approved stored facts, and the server revalidates the
+sources before injecting their exact text.
+
+Availability expires and is withheld when stale; expected-call notes expire
+within seven days, and curated facts have explicit expiry. Optional exact-number
+call recall uses bounded historical excerpts, with source dates, as background.
+Old speech never becomes fresh availability or new authorization. Caller ID,
+saved-number recognition, names, and forwarding hints do **not** establish
+verified identity. Store only facts approved for the intended disclosure.
+[Saved context](docs/concierge-context.md) · [Lookup](docs/subscription-lookup.md) ·
+[Call memory](docs/call-memory.md)
+
+An optional Google job refreshes cached free windows every five minutes.
+**Offering a cached window is not reserving it**, and an absent cached window
+does not prove busy. The guarded appointment path below performs its own reads.
+
+## Guarded appointments and calendar adapters
+
+This is an implemented **opt-in workflow**, disabled by default. It needs separate
+feature/write settings, standing ordinary-booking authority, configured calendar
+and mirror evidence, and additional MCP grants for a supervising client.
+Enabling calling does not enable booking. [Setup, policy, and recovery →](docs/appointments.md)
+
+- **Discovery:** `find_first_available_slot` searches the next fourteen days,
+  honoring optional caller-stated bounds and collecting missing name, purpose,
+  duration, and arrangement. It verifies the whole search window, then runs the
+  ordinary exact check. A result is a proposal, never a reservation or consent.
+- **Eligibility:** the current implementation is an ordinary academic-office
+  workflow. The whole meeting must fit its academic-hours policy and an
+  owner-designated Office Hours occurrence, with fresh complete coverage,
+  recurrence/all-day handling, buffers, and the actual live request deadline.
+  Broad cached windows and event titles cannot designate booking authority.
+- **Consent and verification:** one server-owned concrete readback must be
+  observed, followed by fresh unambiguous caller agreement. Corrections,
+  withdrawal, pending audio, and expiry block a write. For routine near-term
+  local appointments, already established details allow a shorter confirmation;
+  flexible timing alone never approves an unseen slot.
+- **One durable operation:** one deterministic private create per call is followed
+  by independent source readback, an external-conflict check, and private registry
+  commit. Ambiguous writes are reconciled against the original identity, never
+  blindly created again. Calendar confirmation and whether the caller actually
+  heard it are tracked separately. No invitations, cancellation, or rescheduling
+  API is provided.
+- **Minimal disclosure:** private appointment records and bounded owner-provided
+  notices stay out of shared facts. Repeat-caller confirmation needs an
+  unambiguous ordinary meeting and current source/participant evidence; it is
+  not proof of caller identity. Existing curated-contact status is audience
+  restricted and expiring, not inferred from private event titles.
+
+The core uses a **provider-neutral `CalendarProviderAdapter` v1 contract** with
+canonical identities, intervals, coverage, revisions, and declared capabilities.
+**Google is the currently implemented real adapter**; another provider is exercised
+through a fake contract-test adapter, not a second live integration. Existing
+upstream calendar mirroring remains a separate dependency; this project adds no
+direct Microsoft Graph calendar or email access.
+[Contract](app/appointments/contracts.py) · [Google adapter](app/appointments/google.py)
+
+Fresh Google reads and mirror-health checks fail closed on incomplete or stale
+coverage. They cannot eliminate the upstream mirror's five-minute lag or lock
+external calendar editors; Google has no atomic free/busy-and-create operation.
+“No verified slot” means none was verified inside the bounded search window.
+The separately enabled private Realtime `get_owner_schedule` tool is read-only,
+owner-only, and bounded to seven days per lookup; it offers no booking tools.
+
+## Private owner-coaching options
+
+Screened handoff always uses a fixed configured destination. With observation
+enabled, **1** accepts with configured coaching, **2** declines, and **3** accepts
+with captions only and no coaching model. Basic transfer can also run without
+observation. These optional paths share current approved context and preserve
+the distinction between owner and caller.
+
+| Optional mode | Input and private delivery | Boundary |
+|---|---|---|
+| [TTS coaching](docs/private-voice-coaching.md) | Subscription Luna selects current evidence from captions/context; OpenAI generates a short clip for an owner-participant announcement. | No fresh calendar search or action tools in this worker. |
+| [Hybrid coaching](docs/hybrid-owner-coaching.md) | Luna chooses a factual TTS hint or a temporary GPT-Live coach fed selected facts and labelled captions. | Caption-fed, buffered short replies; no direct microphone input or action tools. |
+| [Native Realtime coaching](docs/realtime-owner-coaching.md) | Full GPT-Realtime 2.1 receives separately labelled raw owner/caller audio and streams brief hints to the owner channel, bypassing Luna. | Optional read-only schedule tool; no booking, dialing, payment, or permission-changing tools. |
+
+Native Realtime offers an opt-in **two-leg local bridge** that relays both humans
+and mixes hints only into audio sent to the owner's earpiece. Model failure leaves human
+forwarding running; media loss closes the streams into a preloaded ordinary
+Twilio conference with coaching off. Recovery may interrupt audio. The alternative
+**managed conference** transport needs a same-account TwiML App and an extra
+application connection, with corresponding concurrency and cost limits.
+
+Owner pause/resume and changed/expired evidence suppress late coaching; captions
+remain separate. Private output routing is implemented and documented handset
+checks exist, but a new deployment still needs its own consenting acceptance
+test. Speakerphone echo, caption errors, model interpretation, carrier behavior,
+and end-to-end latency remain practical limits.
 
 ## Your phone as a live control panel
 
@@ -276,7 +388,14 @@ webhook, and its hangup button talks directly to the service.
 | [API reference](docs/api.md) | REST routes, MCP tool inputs, result fields, statuses, example requests |
 | [MCP and plugin setup](docs/mcp.md) | OAuth pairing, Codex, ChatGPT, plugin template, client compatibility |
 | [Live monitor](docs/live-monitor.md) | Phone/laptop pairing, SSE replay, captions, hangup behavior |
+| [Incoming calls](docs/incoming-calls.md) | Message-taking, concierge supervision, routing, request deadlines |
+| [Context and availability](docs/concierge-context.md) | Phone-safe facts, expiring notes, local reads, optional Google refresh |
+| [Call memory](docs/call-memory.md) | Bounded number-matched history and optional delayed pickup |
+| [Operating hours](docs/operating-hours.md) | Office service, mobile-reach policy, closed-hours behavior |
+| [Appointments](docs/appointments.md) | Provider contract, bounded discovery, consent, verification, private registry and limits |
+| [Appointment evidence](docs/appointments-review.md) | Test evidence, failure/recovery coverage and remaining gaps |
 | [Forwarded calls and recordings](docs/recordings.md) | Missed-call context, caller ID, recording notices, private playback and Rocky access |
+| [Private TTS coaching](docs/private-voice-coaching.md) | Current-fact selection, natural private speech and saved-contact preferences |
 | [Hybrid owner coaching](docs/hybrid-owner-coaching.md) | Short screening, cached speech, TTS hints, temporary Live coaching, limits and acceptance tests |
 | [Native Realtime coaching](docs/realtime-owner-coaching.md) | Full Realtime 2.1, source-labelled audio, proactive owner-only streaming, setup and acceptance tests |
 | [Webhooks](docs/webhooks.md) | Native MCP Events, ordinary subscription tools, receivers, signature formats |
@@ -300,7 +419,8 @@ CI runs it on Python 3.11, 3.12, and 3.14. Manual provider checks are separate.
 ```text
 app/
   api/             REST, Twilio callbacks, live monitor
-  calling/         Twilio gateway, GPT-Live bridge, prompts, allowed tools
+  appointments/    Provider-neutral policy, Google adapter, consent, private journal
+  calling/         Twilio gateway, Live bridge, owner coaching, prompts, allowed tools
   mcp/             OAuth MCP interface and signed event subscriptions
   storage/         SQLite schema, call records, durable event log
   web/             Mobile-friendly monitor assets
@@ -315,18 +435,41 @@ deploy/            Example systemd unit
 
 ## Current limits
 
-- Single owner and single worker; no multi-tenant isolation or production fleet management.
-- No voicemail detection or direct email access. Calendar booking is an optional, disabled-by-default feature with separate grants and strict call-bound consent checks; see [appointment upgrade](docs/appointments.md). Audio recording is optional and requires prepared notices.
-- DTMF briefly reconnects the voice stream; it is not uninterrupted keypad injection.
-- Conversation permissions are mainly prompt-based. The exposed voice tools are restricted,
-  but a prompt is not a deterministic guarantee of every spoken response.
-- Assistant-initiated ending uses an English/Ukrainian farewell and playback acknowledgments.
-  Additional languages need their own tested ending phrase.
-- A process restart preserves records but does not restore an active conversation.
-- Webhook receipt is not proof that a chat or another model acted on an event.
+- **Single owner, single worker.** No multi-tenant isolation or fleet management.
+  A restart preserves records but does not restore an active AI conversation;
+  the native human bridge has its separate documented conference fallback.
+- **Provider-dependent and paid.** Telephone legs, audio models, transcription,
+  recordings/storage, and optional coaching have separate usage costs. A ChatGPT
+  subscription does not cover API billing. There is no voicemail detection or
+  direct email access.
+- **Bounded appointments.** Optional ordinary academic-office booking only;
+  no general-purpose calendar assistant, invitations, cancellation, or
+  rescheduling API. Mirror lag and external edits can still race checks.
+  Unknown/stale coverage must remain unknown, and legacy meetings without
+  approved participant metadata need owner review.
+- **Identity and speech are imperfect.** Caller ID and a stated name are not
+  authentication. Code restricts tool access and validates appointment evidence,
+  but prompts cannot guarantee every spoken response, interpretation, disclosure,
+  or resistance to malicious conversation text.
+- **Transport and captions have limits.** DTMF briefly reconnects voice. Captions
+  can lag or be wrong; generated private hints can be wrong too. Private channel
+  routing does not prevent physical speakerphone leakage. Handset quality,
+  latency, and recovery require deployment-specific tests.
+- **Recording is opt-in.** Prepared notices and a recording stop path are
+  implemented; audio opt-out does not stop speech processing/captions. Notice
+  dispatch is not proof it was heard. The app does not encrypt SQLite or schedule
+  automatic transcript/audio retention purges. Keep the service and backups private.
+- **Events are delivery, not completion.** A verified renewed receiver is needed.
+  Plugin installation, webhook acknowledgment, injected context, completed call,
+  and verified booking each mean different things; none alone proves a model
+  acted correctly or the caller heard the result.
+- **Ending is phrase-based.** Assistant-initiated ending uses tested
+  English/Ukrainian farewell phrases and playback acknowledgments; additional
+  languages need their own tested ending behavior.
 
-See [design notes](docs/design-notes.md) for the exact boundaries. Use a short,
-consenting test call before trusting a new deployment.
+See [security and privacy](docs/security.md), [appointment limits](docs/appointments.md),
+and [design notes](docs/design-notes.md) for the boundaries. Use short, consenting
+acceptance calls before relying on a new deployment.
 
 ## License and contributions
 
