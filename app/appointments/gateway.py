@@ -10,6 +10,7 @@ from app.appointments.evidence import complete_readback,caller_identified,uttera
 from app.appointments.disclosure import PrivateNotices
 from app.appointments.schemas import SlotRequest,BookRequest,AppointmentLookup,FirstAvailableRequest
 from app.appointments import confirmation
+from app.appointments.details import missing_arrangement,arrangement_clarification
 from app.logging_config import log_event
 from app.storage.models import TERMINAL,CallUpdateRequest
 
@@ -232,7 +233,9 @@ class AppointmentGateway:
                 else 'Nothing is booked. Clarify shorter exact details before checking again.'}
 
     async def first_available(self,call_id,args):
-        args=FirstAvailableRequest.model_validate(args);rid=self.request(call_id,args.request_id)
+        args=FirstAvailableRequest.model_validate(args)
+        if missing_arrangement(args.arrangement):return arrangement_clarification()
+        rid=self.request(call_id,args.request_id)
         result=await self.service.find_slot(call_id,rid,args.duration_minutes,args.not_before,args.not_after)
         if result['decision']!='available':
             return {**result,'request_id':rid,'readback_queued':False,'consent_observed':False,
@@ -246,7 +249,9 @@ class AppointmentGateway:
             'selection':'first_available_in_search_window'}
 
     async def check(self,call_id,args):
-        args=SlotRequest.model_validate(args);rid=self.request(call_id,args.request_id)
+        args=SlotRequest.model_validate(args)
+        if missing_arrangement(args.arrangement):return arrangement_clarification()
+        rid=self.request(call_id,args.request_id)
         draft=self.service.prepare(call_id,rid,args.appointment())
         result=await self.service.check(call_id,draft['draft_id'])
         if result['decision']=='busy':

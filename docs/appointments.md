@@ -93,6 +93,22 @@ are unavailable. The caller must hear and agree to the concrete proposal before
 booking; a flexible timing preference alone never authorizes a write. This tool
 uses the existing appointment read scope and preserves the request deadline.
 
+An arrangement must identify the room/address or how to connect remotely.
+Bare modes such as “in person,” “online” or “Zoom” return `needs_details` with
+only `arrangement` missing, before any calendar read or readback. Collect that
+detail once and reuse the rest of intake. An owner-approved office location may
+be proposed for agreement; never invent a room, callback number or meeting link.
+
+New private events have an owner-visible title naming the caller and a description
+with caller, purpose, meeting details and duration. Caller text is escaped as text,
+and raw transcripts and recordings are excluded. The Google adapter independently
+reads back the visible fields, private visibility and absence of guests before
+the booking is confirmed. Missing or altered details require owner review of the
+existing event; they never authorize another creation. Caller lookup still returns
+only the bounded date/time/location, and general availability does not read titles
+or descriptions. The hidden ownership/participant metadata remains intact for
+identity, reconciliation and private indexing.
+
 ## Calendar and consent rules
 
 Academic meetings must fit entirely within Monday/Thursday **10–12**, or Friday

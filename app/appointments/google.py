@@ -7,7 +7,8 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 import httpx
 from app.appointments.contracts import (CalendarIdentity,EventIdentity,CalendarEvent,Interval,
-    Capabilities,Coverage,ChangePage,ProviderFault)
+    Capabilities,Coverage,ChangePage,ProviderFault,Appointment)
+from app.appointments.details import calendar_title,calendar_description,require_arrangement
 
 UTC=timezone.utc
 SCOPE='https://www.googleapis.com/auth/calendar.events'
@@ -68,7 +69,7 @@ class MirrorHealth:
 class GoogleCalendarAdapter:
     capabilities=Capabilities(exact_reads=True,event_readback=True,create=True,deterministic_identity=True,
         suppress_invitations=True,private_events=True,change_cursors=True,recurrence_expansion=True,owner_agenda=True,guarded_write=True,
-        availability_search=True)
+        availability_search=True,human_readable_details=True)
     def __init__(self,http,token,identity,mirror,clock,*,zone='America/New_York',office_ids=(),mirror_source=None,max_pages=10):
         if identity.provider!='google':raise ValueError('Google adapter requires its own provider namespace')
         self.http,self.token,self.identity,self.mirror,self.clock=http,token,identity,mirror,clock
@@ -111,6 +112,14 @@ class GoogleCalendarAdapter:
                 aliases=(EventIdentity(self.mirror_source,private['outlookEventId'],occurrence),)
             owned=private.get('phoneAgentOwner')=='phone-assistant'
             ordinary=owned and private.get('phoneDisclosure')=='ordinary'
+            details_verified=False
+            if ordinary and 'summary' in event and 'description' in event:
+                try:
+                    value=Appointment(private.get('phoneFirst',''),private.get('phoneLast',''),private.get('phonePurpose',''),
+                        interval,event.get('location',''))
+                    details_verified=(event['summary']==calendar_title(value) and event['description']==calendar_description(value)
+                        and event.get('visibility')=='private' and not event.get('attendees'))
+                except ValueError:pass  # Malformed metadata cannot verify a booking, but its busy interval still counts.
             availability=event['id'] in self.office_ids or event.get('recurringEventId') in self.office_ids
             free=event.get('transparency')=='transparent' or event.get('eventType')=='workingLocation'
             all_day=(date.fromisoformat(event['start']['date']),date.fromisoformat(event['end']['date'])) if 'date' in event['start'] else None
@@ -121,7 +130,7 @@ class GoogleCalendarAdapter:
                 participant_first=private.get('phoneFirst','') if ordinary else '',
                 participant_last=private.get('phoneLast','') if ordinary else '',
                 disclosure='ordinary' if ordinary else 'unknown',ownership='phone-assistant' if owned else private.get('bridgeName',''),
-                purpose=private.get('phonePurpose','') if ordinary else '')
+                purpose=private.get('phonePurpose','') if ordinary else '',booking_details_verified=details_verified)
         except (KeyError,ValueError,TypeError):raise ProviderFault('invalid') from None
 
     async def read_interval(self,interval,exclude=None):
@@ -162,7 +171,8 @@ class GoogleCalendarAdapter:
 
     async def create(self,identity,value,*,authorize):
         if identity.calendar!=self.identity:raise ProviderFault('unauthorized')
-        body={'id':identity.event,'summary':'Private phone appointment','visibility':'private',
+        require_arrangement(value.location)
+        body={'id':identity.event,'summary':calendar_title(value),'description':calendar_description(value),'visibility':'private',
             'start':{'dateTime':value.interval.start.isoformat(),'timeZone':value.interval.zone},
             'end':{'dateTime':value.interval.end.isoformat(),'timeZone':value.interval.zone},'location':value.location,
             # No attendees/conference creation: sendUpdates alone is not a no-invitation guarantee.
@@ -173,7 +183,8 @@ class GoogleCalendarAdapter:
 
     async def read_event(self,identity):
         if identity.calendar!=self.identity:raise ProviderFault('unauthorized')
-        value=await self.request('GET',self.base+'/'+quote(identity.event,safe=''),params={'fields':FIELDS})
+        value=await self.request('GET',self.base+'/'+quote(identity.event,safe=''),
+            params={'fields':FIELDS+',summary,description,visibility,attendees'})
         return self.normalize(value) if value else None
 
     async def changes(self,cursor=None,*,interval=None):
