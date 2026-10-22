@@ -89,9 +89,9 @@ def caller_identified(turns,first,last):
         text=turn['text'].casefold().replace('’',"'").strip()
         text=re.sub(r'\b(first|last|family|given)[- ]?name\b',r'\1 name',text)
         if turn['speaker']=='assistant':
-            if re.search(r'full name|first and last name|your name|who am i speaking',text):question='full';given=surname=False
-            elif re.search(r'last name|surname|family name',text):question='last';surname=False
-            elif re.search(r'first name|given name',text):question='first';given=surname=False
+            if re.search(r'\byour (?:full name|first and last name|name)\b|\bwho am i speaking (?:with|to)\b',text):question='full';given=surname=False
+            elif re.search(r'\byour (?:last name|surname|family name)\b',text):question='last';surname=False
+            elif re.search(r'\byour (?:first name|given name)\b',text):question='first';given=surname=False
             else:question=None
             continue
         if turn['speaker']!='callee':continue
