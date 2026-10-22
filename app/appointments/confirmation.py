@@ -8,10 +8,14 @@ SHORT='Read this appointment time exactly once, without a preface, then wait:\n'
 COMPACT='Read these appointment details exactly once, without a preface, then wait:\n'
 
 
-def eligible(value,now,zone):
+def eligible(value,now,zone,turns=()):
     seconds=(value.interval.end-value.interval.start).total_seconds()
+    caller=' '.join(t['text'] for t in utterances(turns,join_sentences=True) if t['speaker']=='callee').casefold()
+    foreign_zone=re.search(r'\b(?:pacific|central|mountain|utc|gmt|pst|pdt|cst|cdt|mst|mdt|bst|cet|cest|my time)\b'
+        r'|\b(?:europe|asia|africa|australia|pacific)/|\bamerica/(?!new_york\b)\w+',caller)
     # One possible upcoming month/day, in the established office time zone.
-    return (value.interval.zone==zone and timedelta(0)<value.interval.start-now<timedelta(days=31)
+    # Explicit other-zone claims require speaking the full date/zone to resolve intent.
+    return (not foreign_zone and value.interval.zone==zone and timedelta(0)<value.interval.start-now<timedelta(days=31)
         and not (value.interval.start.second or value.interval.start.microsecond or seconds%60))
 
 

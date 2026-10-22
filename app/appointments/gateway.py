@@ -128,7 +128,7 @@ class AppointmentGateway:
         if accepted and accepted.get('end_ms') is not None:
             turns=[t for t in turns if t['start_ms']>=accepted['end_ms']]
         matcher=None
-        if accepted and confirmation.eligible(value,self.clock(),self.service.policy.zone):
+        if accepted and confirmation.eligible(value,self.clock(),self.service.policy.zone,self.transcript(draft['call_id'])):
             content=accepted['content']
             short=content==confirmation.SHORT+confirmation.time_text(value)+'. Is that correct?'
             compact=content==confirmation.COMPACT+confirmation.details_text(value)+'. Is that correct?'
@@ -178,7 +178,7 @@ class AppointmentGateway:
                 for prefix in (confirmation.SHORT,confirmation.COMPACT,'Read these quoted details exactly, without a preface, then wait:\n'):
                     if queued['content'].startswith(prefix):return prefix,queued['content'][len(prefix):]
         value=appointment(draft)
-        if confirmation.eligible(value,self.clock(),self.service.policy.zone):
+        if confirmation.eligible(value,self.clock(),self.service.policy.zone,self.transcript(draft['call_id'])):
             short=confirmation.established_details(self.transcript(draft['call_id']),value)
             prefix=confirmation.SHORT if short else confirmation.COMPACT
             text=(confirmation.time_text(value) if short else confirmation.details_text(value))+'. Is that correct?'
@@ -296,7 +296,7 @@ class AppointmentGateway:
         uid=uuid5(UUID(result['operation_id']),'verified-booking-result')
         with self.store.connect() as db:db.execute('INSERT INTO appointment_delivery VALUES(?,?,?,NULL)',(result['operation_id'],str(uid),cursor))
         draft=self.store.get('appointment_drafts','draft_id',result['draft_id']);value=appointment(draft)
-        text=('Confirmed. '+confirmation.time_text(value)+'.' if confirmation.eligible(value,self.clock(),self.service.policy.zone)
+        text=('Confirmed. '+confirmation.time_text(value)+'.' if confirmation.eligible(value,self.clock(),self.service.policy.zone,self.transcript(call_id))
             else 'Confirmed '+spoken_readback(value).removesuffix(' Is that correct?'))
         try:
             with self.store.measure('result_injection'):await self.m.send_call_update(call_id,CallUpdateRequest(mode='instructions',

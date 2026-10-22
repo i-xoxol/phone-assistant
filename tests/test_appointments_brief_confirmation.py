@@ -163,6 +163,20 @@ def test_omitted_year_zone_only_for_unique_near_term_office_date(service,tmp_pat
     assert confirmation.eligible(v,NOW,g.service.policy.zone)==expected
 
 
+@pytest.mark.parametrize('claim',['3:15 Pacific.','Three fifteen my time.','15:15 UTC.','America/Los_Angeles.','Europe/London.'])
+def test_explicit_other_timezone_cannot_use_an_implicit_office_timezone(service,tmp_path,claim):
+    client,m,p,g,cid,r=collected(service,tmp_path)
+    d=g.store.get('appointment_drafts','draft_id',r['draft_id']);v=appointment(d)
+    speech(m,cid,'callee',claim,9000)
+    assert not confirmation.eligible(v,NOW,g.service.policy.zone,m.db.get(cid)['transcript'])
+    prefix,text=g.readback_plan(d,fresh=True)
+    assert 'Eastern Time' in text and '2026' in text
+    with m.db.connect() as db:db.execute("update call_updates set status='acknowledged' where call_id=?",(cid,))
+    speech(m,cid,'assistant',r['readback'],11000);speech(m,cid,'callee','Okay.',12000)
+    with pytest.raises(ValueError):client.portal.call(g.book,cid,{'draft_id':r['draft_id'],'check_id':r['check_id'],'idempotency_key':'one'})
+    assert p.writes==0
+
+
 @pytest.mark.parametrize('status',['Okay, booking it now.','Booking it.','Okay, booking it.'])
 def test_delayed_preface_and_booking_status_do_not_discard_exact_assent(service,tmp_path,status):
     client,m,p,g,cid,r=prepare(service,tmp_path)
