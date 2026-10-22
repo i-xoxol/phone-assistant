@@ -53,7 +53,7 @@ async def transfer_callback(transfer_id:UUID,action:str,request:Request):
     tid=str(transfer_id)
     try:
         row=m.transfer.get(tid)
-        if row['strategy']=='conference':
+        if row['strategy'] in ('conference','bridge'):
             xml=await m.observer.callback(row,action,form)
             return Response(xml,media_type='application/xml')
         if action=='screen':

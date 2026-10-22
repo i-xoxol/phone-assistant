@@ -6,6 +6,7 @@ from app.api.twilio_webhooks import validated_form
 from app.logging_config import log_event
 
 router=APIRouter(prefix='/twilio/owner-coach')
+bridge_router=APIRouter(prefix='/twilio/owner-bridge')
 
 
 @router.post('/connect')
@@ -25,3 +26,8 @@ async def connect(request:Request):
 @router.websocket('/media/{transfer_id}')
 async def media(transfer_id:UUID,websocket:WebSocket):
     await websocket.app.state.manager.observer.realtime.media(websocket,str(transfer_id))
+
+
+@bridge_router.websocket('/{transfer_id}/{side}')
+async def bridge_media(transfer_id:UUID,side:str,websocket:WebSocket):
+    await websocket.app.state.manager.observer.audio_bridge.media(websocket,str(transfer_id),side)

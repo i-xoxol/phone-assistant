@@ -54,7 +54,7 @@ function showCall() {
   $('reachOwner').disabled=!ownerContactEnabled || !call || call.status!=='in_progress' || !!call.owner_transfer || pending;
   const transfer=call?.owner_transfer;
   $('transferState').textContent=transfer?'Owner contact: '+transfer.status.replaceAll('_',' ')+
-    (transfer.strategy==='conference'?' · Transcription: '+transfer.transcription_state+' · '+
+    (['conference','bridge'].includes(transfer.strategy)?' · Transcription: '+transfer.transcription_state+' · '+
       (transfer.mode==='whisper'?'Private coaching on':transfer.mode==='transcript'?'Coaching off':'Choose mode when answering'):
       ' · Captions pause during human conversation.')+(transfer.error_code?' · '+transfer.error_code.replaceAll('_',' '):''):'';
   if (call) {

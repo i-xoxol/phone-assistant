@@ -41,6 +41,8 @@ class TransferObserver:
         self.wakeups={}
         from app.calling.owner_realtime import OwnerRealtime
         self.realtime=OwnerRealtime(self)
+        from app.calling.owner_audio_bridge import OwnerAudioBridge
+        self.audio_bridge=OwnerAudioBridge(self)
         with manager.db.connect() as db:
             db.execute('''CREATE TABLE IF NOT EXISTS owner_whispers (
                 whisper_id TEXT PRIMARY KEY,transfer_id TEXT NOT NULL REFERENCES owner_transfers(transfer_id),
@@ -70,21 +72,23 @@ class TransferObserver:
     def room(self,row):
         return 'owner-'+row['transfer_id']
 
-    def conference_twiml(self,row,side):
+    def conference_twiml(self,row,side,*,fallback=False):
         r=self.m.db.get(row['call_id'])
         response=VoiceResponse()
         if not self.current(row) or remaining_seconds(r)<=0:
             response.hangup();return str(response)
-        if side=='caller':
+        if row['strategy']=='bridge' and not fallback:
+            return self.audio_bridge.twiml(row,side)
+        if side=='caller' and not fallback:
             response.say('I will try to reach the owner. Please hold. The conversation will be transcribed.')
-        else:
+        elif side=='owner' and not fallback:
             self.m.screening.append_prompt(response,row,'connected-coaching' if row['mode']=='whisper' else 'connected-simple')
         response.start().stream(name='owner-'+side,url=self.m.settings.public_url(
             '/twilio/owner-media/'+row['transfer_id']+'/'+side,websocket=True),track='inbound_track')
         dial=response.dial(time_limit=max(1,remaining_seconds(r)),record='do-not-record',
             action=self.path(row,'conference-finished'),method='POST')
         dial.conference(self.room(row),start_conference_on_enter=side=='owner',end_conference_on_exit=True,
-            max_participants=3 if self.realtime.available() else 2,beep=False,record='do-not-record',
+            max_participants=3 if row['strategy']!='bridge' and self.realtime.available() else 2,beep=False,record='do-not-record',
             status_callback=self.path(row,'conference-status'),status_callback_method='POST',
             status_callback_event='start end join leave')
         response.hangup()
@@ -124,6 +128,7 @@ class TransferObserver:
         if row['accepted'] or not self.current(row): return
         # Claim before network IO: duplicate callbacks must not create another stream.
         self.m.transfer.update(tid,status='returned_to_assistant',transcription_state='stopped')
+        await self.audio_bridge.end(tid)
         response=VoiceResponse()
         response.stop().stream(name='owner-caller')
         record=self.m.db.get(row['call_id'])
@@ -177,6 +182,7 @@ class TransferObserver:
                 accepted=digit in ('1','3')
                 coaching=(self.realtime.available() if self.m.settings.owner_coaching_strategy=='realtime'
                     else self.m.settings.subscription_lookup_enabled)
+                if row['strategy']=='bridge' and self.audio_bridge.in_fallback(tid):coaching=False
                 mode=('whisper' if digit=='1' and coaching else 'transcript') if accepted else 'off'
                 with self.m.db.connect() as db:
                     db.execute('UPDATE owner_transfers SET decision=?,accepted=?,mode=? WHERE transfer_id=? AND decision IS NULL',
@@ -184,6 +190,8 @@ class TransferObserver:
                 row=self.m.transfer.get(tid)
                 self.m.transfer.update(tid,status='accepted' if row['accepted'] else 'declined')
             if row['accepted']:
+                if row['strategy']=='bridge' and row['mode']=='transcript':
+                    await self.audio_bridge.fallback(tid,'simple_answer')
                 self.realtime.ensure(tid)
                 return self.conference_twiml(row,'owner')
             response.hangup();await self.resume(tid);return str(response)
@@ -497,8 +505,9 @@ class TransferObserver:
             else:
                 self.task(self.live.close(row['transfer_id']))
                 self.task(self.realtime.close(row['transfer_id']))
+                self.task(self.audio_bridge.end(row['transfer_id']))
         if row and row['transfer_id'] in self.coaches: self.coaches[row['transfer_id']].cancel()
-        if row and row['strategy']=='conference' and row['child_sid']:
+        if row and row['strategy'] in ('conference','bridge') and row['child_sid']:
             try: asyncio.get_running_loop()
             except RuntimeError: return
             self.task(self.close_owner(row['child_sid']))
@@ -523,6 +532,7 @@ class TransferObserver:
             error_code='transcription_unavailable' if aggregate=='degraded' else None)
 
     async def stop(self):
+        await self.audio_bridge.stop()
         await self.realtime.stop()
         tasks=list(self.tasks)+list(self.streams.values())
         for task in tasks: task.cancel()

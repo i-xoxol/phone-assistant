@@ -97,11 +97,15 @@ utterance and reconnect bounds. The default strategy remains `tts`.
 
 [Native Realtime coaching](realtime-owner-coaching.md) uses
 `OWNER_COACHING_STRATEGY=realtime`, `OWNER_SPEECH_ENABLED=true`,
-`OWNER_OBSERVATION_ENABLED=true` and a dedicated `OWNER_COACHING_APPLICATION_SID`.
+`OWNER_OBSERVATION_ENABLED=true`. Set `OWNER_REALTIME_TRANSPORT=bridge` for a local
+two-leg audio relay with private owner mixing and inline ordinary-conference fallback.
+This transport needs no TwiML App or additional coach call. The setting defaults to
+`conference` for compatibility; that transport requires a dedicated
+`OWNER_COACHING_APPLICATION_SID` and sufficient account concurrency.
 It uses full `gpt-realtime-2.1`, with a separate `OWNER_REALTIME_COACHING_VOICE`
 (default `cedar`). This mode does not require the subscription lookup worker.
 The Realtime model receives source-labelled native audio; captions remain an independent
-portal/control path. A missing application SID makes choice 1 captions-only.
+portal/control path. In conference transport, a missing application SID makes choice 1 captions-only.
 
 [Callback memory](call-memory.md) uses `CALL_HISTORY_ENABLED` (default false),
 `CALL_HISTORY_DAYS` (default 90, range 1–365), and the existing subscription worker.

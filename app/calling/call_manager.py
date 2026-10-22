@@ -225,6 +225,9 @@ class CallManager:
         record = self.db.get(call_id)
         if record.get('direction') == 'inbound':
             raise ValueError('Incoming message-taking calls cannot send keypad actions')
+        transfer=self.transfer.for_call(call_id)
+        if transfer and transfer['status'] not in ('returned_to_assistant','completed'):
+            raise ValueError('Keypad navigation is unavailable during an owner handoff')
         bridge = self.bridges.get(call_id)
         if record['status'] != 'in_progress' or not bridge or bridge.closing:
             raise ValueError('Keypad requires a connected voice stream')
@@ -328,7 +331,9 @@ class CallManager:
                 except Exception:
                     pass
         if record['status'] not in TERMINAL and record['twilio_call_sid']:
-            self.db.emit(call_id, 'call.hangup_requested', {'audio_muted': bool(bridge)})
+            transfer=self.transfer.for_call(call_id)
+            native_room=self.observer.audio_bridge.rooms.get(transfer['transfer_id']) if transfer else None
+            self.db.emit(call_id, 'call.hangup_requested', {'audio_muted': bool(bridge or native_room)})
             if hasattr(self.gateway, 'hangup_fast'):
                 call = await self.gateway.hangup_fast(record['twilio_call_sid'], record['status'])
             else:

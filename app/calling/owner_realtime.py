@@ -43,6 +43,7 @@ class Channel:
         self.audio_history=[]
         self.pending_audio=False
         self.held_owner_audio=None
+        self.transfer_id=None
 
 
 class OwnerRealtime:
@@ -64,11 +65,16 @@ class OwnerRealtime:
 
     def available(self):
         s=self.m.settings
-        return s.owner_coaching_strategy=='realtime' and s.owner_speech_enabled and bool(s.owner_coaching_application_sid)
+        return s.owner_coaching_strategy=='realtime' and s.owner_speech_enabled and (
+            s.owner_realtime_transport=='bridge' or bool(s.owner_coaching_application_sid))
+
+    def uses_bridge(self):
+        return self.available() and self.m.settings.owner_realtime_transport=='bridge'
 
     def active(self,tid):
         row=self.m.transfer.get(tid)
-        return self.available() and row['accepted'] and row['mode']=='whisper' and self.o.current(row)
+        return (self.available() and row['accepted'] and row['mode']=='whisper' and self.o.current(row)
+            and not (row['strategy']=='bridge' and self.o.audio_bridge.in_fallback(tid)))
 
     def record(self,tid):
         with self.m.db.connect() as db:
@@ -96,6 +102,7 @@ class OwnerRealtime:
             db.execute('INSERT INTO owner_realtime_coaches VALUES (?,?,?,?,NULL,NULL,?,NULL)',
                 (tid,str(uuid4()),uuid4().hex,utcnow().isoformat(),'preparing'))
         ch=self.channels[tid]=Channel()
+        ch.transfer_id=tid
         ch.session=self.factory(self.m.settings,lambda state,**v:self.state(tid,state,**v))
         ch.starter=self.o.task(self.start(tid,ch))
         ch.worker=self.o.task(self.work(tid,ch))
@@ -106,6 +113,11 @@ class OwnerRealtime:
         try:
             await asyncio.wait_for(ch.session.ready.wait(),12)
             if ch.session.closed.is_set():raise RuntimeError('Coach provider unavailable')
+            if self.m.transfer.get(tid)['strategy']=='bridge':
+                await self.o.audio_bridge.wait_ready(tid)
+                if not self.active(tid):return
+                ch.connected.set();self.update(tid,status='streaming');self.state(tid,'streaming')
+                return
             # Accepting the keypad prompt precedes the owner's <Dial><Conference>.
             # A room SID proves only that the caller joined, not that the owner is coachable.
             row=await self.wait_for_owner(tid)
@@ -336,6 +348,16 @@ class OwnerRealtime:
                 if not future.done():future.cancel()
             if ch.socket and ch.stream_sid:
                 with suppress(Exception):await ch.socket.send_json({'event':'clear','streamSid':ch.stream_sid})
+            if ch.transfer_id and self.m.transfer.get(ch.transfer_id)['strategy']=='bridge':
+                await self.o.audio_bridge.clear(ch.transfer_id)
+
+    def acknowledge(self,tid,wid):
+        ch=self.channels.get(tid)
+        future=ch.marks.get(wid) if ch else None
+        if not future or future.done():return
+        with self.m.db.connect() as db:db.execute("UPDATE owner_realtime_hints SET state='played' "
+            "WHERE hint_id=? AND transfer_id=? AND state='streamed'",(wid,tid))
+        future.set_result(None)
 
     async def pause(self,tid):
         ch=self.channels.get(tid)
@@ -433,6 +455,9 @@ class OwnerRealtime:
         row=self.m.transfer.get(tid)
         try:
             sid=record['participant_sid']
+            if row['strategy']=='bridge':
+                self.update(tid,status=record['status'] if record['status'] in ('failed','unconfirmed') else 'completed')
+                return
             if not sid and record['status'] in ('dialing','unconfirmed') and row['conference_sid']:
                 participant=await asyncio.wait_for(self.m.gateway.coach_participant(row['conference_sid'],'rt-'+record['coach_id']),4)
                 self.check_participant(row,record,participant);sid=participant.call_sid

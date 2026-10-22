@@ -31,6 +31,7 @@ CI validates Python 3.11, 3.12, and 3.14 in clean Linux environments.
 | Provider callbacks | Signature/account/call checks, ordering, terminal states, signed media diagnostics |
 | Voice | Two-way relay, codec binding, transcript timing, finalization, large bursts, stalled playback, failure races |
 | Private coaching | Cached screening, signed owner-only audio, TTS/Live selection, context freshness, pause/resume, idle closure and reconnect budget |
+| Local owner audio bridge | Two existing legs, bidirectional relay, private saturated PCMU mixing, bounded jitter buffers, audio before generation ends, source identity, independent captions, revoked hints, model failure, inline fallback and restart behavior |
 | Ending | Farewell recognition, final playback acknowledgment before hangup, owner audio-blocking behavior |
 | Keypad | Allowed inputs, current ownership, deliberate handoff, reconnection, uncertain-result behavior |
 | Updates | Byte limits, queueing, idempotency, acknowledgment, rejection, restored context, authorization limits |

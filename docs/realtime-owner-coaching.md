@@ -33,6 +33,26 @@ flowchart LR
   O --> T
 ```
 
+With `OWNER_REALTIME_TRANSPORT=bridge`, the private participant above is replaced by
+a local media relay:
+
+```mermaid
+flowchart LR
+  C[Caller microphone] --> B[Local PCM mixer]
+  R[Realtime coaching audio] --> B
+  B --> E[Owner earpiece]
+  O[Owner microphone] --> P[Caller earpiece]
+  C --> I[Separately labelled model inputs]
+  O --> I
+  I --> R
+```
+
+Twilio still carries both telephone calls. Each existing human leg uses one
+bidirectional `<Connect><Stream>` WebSocket. The server forwards the owner's microphone
+to the caller unchanged and mixes coaching only with caller audio sent to the owner's
+earpiece. It never feeds this mixed output back into either model microphone input.
+Physical speakerphone echo remains possible; use an earpiece/headset for private coaching.
+
 The two existing signed Twilio microphone streams are bound to the original call
 and the accepted owner's child call. Each microphone has its own raw-audio buffer.
 The application attaches an explicit **CALLER** or **OWNER** label to each audio item;
@@ -61,36 +81,77 @@ hangup remains available independently. Caller speech cannot resume paused coach
 ## Setup
 
 1. Complete normal Twilio/OpenAI setup and screened owner transfers first.
-2. In **Twilio Console → Voice → Manage → TwiML Apps**, create a dedicated application
-   in the same account. Its Voice Request URL must be
-   `https://YOUR_PUBLIC_HOST/twilio/owner-coach/connect`, method **POST**.
-   Keep cross-account/public Application Connect disabled. Existing phone-number webhooks
-   do not change.
-3. Copy its `AP...` SID into your private environment:
+2. For the two-leg local bridge, use:
 
    ```dotenv
    OWNER_OBSERVATION_ENABLED=true
    OWNER_SPEECH_ENABLED=true
    OWNER_COACHING_STRATEGY=realtime
-   OWNER_COACHING_APPLICATION_SID=AP_REPLACE_WITH_YOUR_APPLICATION_SID
+   OWNER_REALTIME_TRANSPORT=bridge
    OWNER_REALTIME_COACHING_MODEL=gpt-realtime-2.1
    OWNER_REALTIME_COACHING_VOICE=cedar
    OWNER_REALTIME_COACHING_MAX_HINTS=40
    OWNER_LIVE_COACHING_MAX_UTTERANCE_SECONDS=8
    ```
 
-   The example SID above is a placeholder; a real SID has `AP` followed by 32 hexadecimal characters.
    The older Live utterance setting also bounds the Realtime audio stream. Other
    `OWNER_LIVE_COACHING_*` session lifetime settings apply only to the older hybrid mode.
-4. Expose HTTPS `/twilio/owner-coach/connect` and WSS
-   `/twilio/owner-coach/media/{transfer_id}` alongside the existing microphone endpoints.
-5. Validate in an isolated staging app before restarting the production service.
+3. Expose WSS `/twilio/owner-bridge/{transfer_id}/caller` and
+   `/twilio/owner-bridge/{transfer_id}/owner`, plus the existing signed transfer,
+   prompt and fallback microphone endpoints. Existing number webhooks stay the same.
+4. Validate in an isolated staging app before restarting the production service.
+
+No TwiML App is needed for bridge transport. The bridge has per-transfer nonce and
+account/call/side binding, rejects duplicate streams, and never chooses new destinations.
+The original fixed-mobile screening and acceptance rules still apply. Choice 3 joins a
+normal two-person conference with captions and no coaching model.
+
+### Relay, mixing and recovery
+
+The mixer decodes 8 kHz mono G.711 PCMU, reduces the caller to 45% amplitude while a
+hint plays, adds coaching, saturates signed linear PCM and re-encodes PCMU. It forwards
+20 ms frames with a 40 ms initial jitter cushion. Human input queues hold at most
+200 ms; excess old audio is dropped rather than allowing delay to grow indefinitely.
+It never waits for OpenAI or a caption result to forward a human frame. Current context
+and pause state are rechecked before each mixed frame, and a clear removes pending
+private audio. Twilio playback marks acknowledge completion of an emitted hint.
+
+Each phone receives an **inline** ordinary two-person `<Dial><Conference>` after its
+`<Connect><Stream>`. If the relay fails or either media connection ends, the server
+closes both sockets and disables coaching; both phones advance into the same fallback
+room. These fallback instructions are already held by Twilio, so a new server response
+is not required. Recovery can include a brief interruption while connection loss is
+detected. A server restart preserves the fallback decision instead of rebuilding a
+previous live bridge. Captions in fallback require the server to be reachable again.
+
+An OpenAI/coaching error alone leaves the local human relay running. A server/network
+failure uses the conference fallback. Hanging up still terminates the telephone call;
+fallback does not redial. No extra dependencies, SIP server or GPU are required.
+DTMF received during the human bridge is not relayed to the other phone; existing
+assistant keypad navigation remains available before handoff or after a declined handoff.
+
+### Optional managed conference transport
+
+To let Twilio carry the human audio independently of the local relay, set
+`OWNER_REALTIME_TRANSPORT=conference` (the compatibility default). Create a dedicated
+same-account TwiML App with Voice Request URL
+`https://YOUR_PUBLIC_HOST/twilio/owner-coach/connect`, method POST. Keep public/cross-account
+Application Connect disabled. Set `OWNER_COACHING_APPLICATION_SID` to its `AP...` SID.
+Expose that HTTPS endpoint and WSS `/twilio/owner-coach/media/{transfer_id}`.
 
 The application adds one same-account **application participant**, not another PSTN
 destination. It sets `coaching=true` and `call_sid_to_coach` to the accepted owner's
 SID, with `end_conference_on_exit=false`. It verifies those values through Twilio
 before attaching a media stream. Every media frame then goes to that participant.
 There is no conference-wide announcement fallback.
+
+This transport requires capacity for the human calls **and** the internal application
+connection. Conference participants and account call legs need not have the same count.
+An app connection can fail as busy with [Twilio 10004](https://www.twilio.com/docs/api/errors/10004)
+when the account's concurrency limit is reached. See
+[Twilio's account policy](https://help.twilio.com/articles/223180028-How-fast-can-I-place-or-receive-phone-calls-with-Twilio).
+Increasing calls per second does not resolve a simultaneous-call limit. Bridge transport
+avoids this extra coach connection; it does not remove limits on unrelated simultaneous calls.
 
 Keypad acceptance comes before the owner's conference join. The provider connection
 warms during that interval, but the application waits for Twilio to report that the
@@ -135,15 +196,19 @@ track completion separately from generation and first-byte arrival.
 Realtime model text/audio inputs and generated speech use API credit. This mode does
 not run subscription Luna per hint. Native audio input costs are additional to output
 speech; repeated bounded history and text context also affect usage. Existing portal
-transcription, both PSTN legs, conference/application-participant charges and recording
+transcription, both PSTN legs, media-stream usage and recording
 costs are separate. Monitor actual provider token usage; do not estimate total cost
 from the number of spoken seconds alone.
+Managed conference transport also has conference/application-connection charges;
+bridge fallback uses ordinary conference charging while active. Consult current provider
+pricing rather than assuming local mixing is free overall.
 
 ## Checks and acceptance
 
 Run offline tests with `python -m pytest -q`. The tests cover source identity,
-caption failure, private routing, forged streams, missing app configuration, mode 3,
-stale context, cancellation and uncertain participant creation.
+caption failure, private routing, forged streams, mode 3, stale context, cancellation,
+bidirectional relay, mixing saturation, bounded queues, independent model failure,
+socket recovery, restart handling and uncertain conference participant creation.
 
 For a paid provider replay that **never places a call**:
 
@@ -155,7 +220,7 @@ It synthesizes source-labelled test speech, uses the same synthetic voice for bo
 and asks about owner and caller availability without sending input captions. Provider
 keys are read in place; output files contain synthetic speech only and belong in ignored `data/`.
 
-Before deployment, use two consenting phones and an isolated TwiML App/public endpoint:
+Before deployment, use two consenting phones and an isolated public endpoint:
 
 1. Verify no active or uncertain earlier call exists. Place one test and reconcile it before any retry.
 2. Accept with **1**. Confirm the caller hears none of the coach's hints.
@@ -163,8 +228,13 @@ Before deployment, use two consenting phones and an isolated TwiML App/public en
 4. Have the caller ask about **their own** availability. Confirm your calendar is not given as theirs.
 5. Ask for a hint yourself, then update a verified fact through MCP during the conversation.
 6. Pause coaching as the owner; confirm captions continue and caller speech cannot resume it.
-7. End the test and verify all three legs are reconciled. Test **3** on a separate authorized call.
-8. Measure median and slow-tail handset response time. Deploy only after private playback and source roles pass.
+7. In bridge transport, simulate a relay failure and verify both people can still hear
+   each other through the ordinary conference, with coaching off. Independently verify
+   that losing the model preserves the human relay.
+8. End the test and reconcile both human legs (plus app legs in managed conference mode).
+   Test **3** on a separate authorized call.
+9. Measure median and slow-tail handset response time. Deploy only after private playback,
+   source roles and recovery pass. Offline tests do not prove actual carrier fallback behavior.
 
 Official references: [OpenAI Realtime](https://developers.openai.com/api/docs/guides/realtime),
 [Realtime 2.1](https://developers.openai.com/api/docs/models/gpt-realtime-2.1),

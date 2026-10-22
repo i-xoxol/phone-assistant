@@ -50,7 +50,7 @@ class NativeTurns:
         return [(value,True)] if value else []
 
 
-async def capture_with_coaching(ws,row,side,stream,offset):
+async def capture_with_coaching(ws,row,side,stream,offset,*,on_audio=None,on_mark=None,receive_timeout=None):
     """Direct raw audio and optional portal captions run independently after common signature binding."""
     from app.calling.transcription import AudioTurns,open_transcription,configure
     m=ws.app.state.manager;tid=row['transfer_id'];speaker='owner' if side=='owner' else 'callee'
@@ -93,27 +93,38 @@ async def capture_with_coaching(ws,row,side,stream,offset):
             m.observer.stream_state(tid,side,'degraded')
             log_event('owner_caption_unavailable',call_id=row['call_id'],side=side,error_type=type(exc).__name__)
 
-    caption_task=asyncio.create_task(captions());native=NativeTurns()
+    caption_task=asyncio.create_task(captions());native=NativeTurns();native_enabled=True
+    def coach(audio,complete):
+        nonlocal native_enabled
+        if not native_enabled:return
+        try:m.observer.realtime.audio_turn(tid,side,audio,complete=complete)
+        except Exception as exc:
+            native_enabled=False
+            m.observer.task(m.observer.realtime.close(tid))
+            log_event('owner_native_coaching_unavailable',call_id=row['call_id'],error_type=type(exc).__name__)
     try:
         async with asyncio.timeout(remaining_seconds(m.db.get(row['call_id']))):
             while True:
-                message=await ws.receive_json()
+                message=await asyncio.wait_for(ws.receive_json(),receive_timeout)
                 if message.get('streamSid')!=stream:raise ValueError('Microphone stream changed')
                 if message.get('event')=='stop':break
+                if message.get('event')=='mark' and on_mark:
+                    on_mark(str(message.get('mark',{}).get('name','')))
                 if message.get('event')!='media':continue
                 media=message['media']
                 if media.get('track')!='inbound':raise ValueError('Wrong microphone track')
                 raw=base64.b64decode(media['payload'],validate=True)
                 if len(raw)>8000:raise ValueError('Microphone frame too large')
+                if on_audio:on_audio(raw)
                 for audio,complete in native.feed(raw):
-                    m.observer.realtime.audio_turn(tid,side,audio,complete=complete)
+                    coach(audio,complete)
                 if not caption_task.done():
                     try:queue.put_nowait(raw)
                     except asyncio.QueueFull:
                         caption_task.cancel();m.observer.stream_state(tid,side,'degraded')
     except WebSocketDisconnect:pass
     finally:
-        for audio,complete in native.flush():m.observer.realtime.audio_turn(tid,side,audio,complete=complete)
+        for audio,complete in native.flush():coach(audio,complete)
         if not caption_task.done():
             try:queue.put_nowait(None)
             except asyncio.QueueFull:caption_task.cancel()

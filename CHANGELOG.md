@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Optional two-leg local audio bridge for full Realtime coaching: 20 ms PCMU relay, owner-only mixing, source-labelled input, independent captions, bounded buffers and inline two-person Twilio fallback without a coach call.
+- Keep human audio flowing when native model processing fails; preserve recovery when a disconnected socket task is cancelled, and withhold stale/paused coaching at playback.
 - Wait for the accepted owner's actual conference join before creating a private coach; retain safe numeric carrier rejection codes and distinguish rejected creates from ambiguous attempts.
 - Full Realtime 2.1 private coaching: source-labelled native microphone audio, proactive hints, one warm connection and owner-only Twilio streaming; Luna is bypassed for this mode.
 - Keep owner/caller identities attached to raw audio; portal captions run independently, and caption failure does not stop native coaching input.

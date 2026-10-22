@@ -26,6 +26,8 @@ and brief GPT-Live help for complex questions, while factual hints stay on TTS.
 Optional [native Realtime coaching](docs/realtime-owner-coaching.md) uses full
 GPT-Realtime 2.1 to hear separately labelled owner/caller audio and stream brief
 proactive hints only to the owner's handset, without Luna or transcript-triggered replies.
+Its optional local audio bridge uses the two existing phone connections, mixes coaching
+only into the owner's earpiece audio, and falls back to a normal Twilio conference on connection loss.
 
 <p align="center">
   <a href="docs/getting-started.md">Set it up</a> ·

@@ -78,8 +78,10 @@ async def handle_owner_media(ws,tid,side):
         await ws.close(code=1008);return
     try:
         row=m.transfer.get(tid)
-        if (row['strategy']!='conference' or not m.observer.current(row)
+        if (row['strategy'] not in ('conference','bridge') or not m.observer.current(row)
                 or (side=='owner' and not row['accepted'])): raise ValueError('Inactive transfer')
+        if row['strategy']=='bridge' and not m.observer.audio_bridge.in_fallback(tid):
+            raise ValueError('Bridge microphone must use its bound bidirectional stream')
     except (ValueError,KeyError):
         await ws.close(code=1008);return
     key=(row['call_id'],side)

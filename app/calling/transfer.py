@@ -130,7 +130,7 @@ class OwnerTransfer:
             if request['status']=='pending': m.db.expire_supervisor_request(request['request_id'])
         try:
             if s.owner_observation_enabled:
-                self.update(tid,strategy='conference',transcription_state='starting')
+                self.update(tid,strategy='bridge' if m.observer.realtime.uses_bridge() else 'conference',transcription_state='starting')
                 await m.observer.start(self.get(tid),r)
             else:
                 await asyncio.wait_for(m.gateway.redirect_call(r['twilio_call_sid'],self.dial_twiml(self.get(tid),r)),8)

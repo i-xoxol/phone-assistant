@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     owner_screen_speech_voice: str = 'cedar'
     owner_prompt_directory: Path = ROOT / 'data/owner-prompts'
     owner_coaching_strategy: Literal['tts','hybrid','realtime'] = 'tts'
+    owner_realtime_transport: Literal['conference','bridge'] = 'conference'
     owner_coaching_application_sid: str = Field(default='',pattern=r'^(?:|AP[0-9a-fA-F]{32})$')
     owner_realtime_coaching_model: Literal['gpt-realtime-2.1'] = 'gpt-realtime-2.1'
     owner_realtime_coaching_voice: str = 'cedar'
