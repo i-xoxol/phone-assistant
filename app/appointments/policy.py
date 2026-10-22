@@ -5,6 +5,18 @@ from zoneinfo import ZoneInfo
 from app.appointments.contracts import Interval,Coverage,EventIdentity
 
 
+def coverage_failure(coverage:Coverage,required:Interval,now:datetime):
+    """Report the failed gate, never positive provenance as a failure reason."""
+    if not coverage.complete:
+        failures={'incomplete_pagination','mirror_coverage_not_attested','mirror_stale_or_failed',
+            'mirror_window_changed','mirror_out_of_window','mirror_completeness_unknown','mirror_unavailable'}
+        return coverage.reason if coverage.reason in failures else 'incomplete_coverage'
+    if not coverage.interval.contains(required):return 'insufficient_interval_coverage'
+    if now<coverage.checked_at:return 'future_coverage'
+    if now>=coverage.valid_until:return 'expired_coverage'
+    return None
+
+
 @dataclass(frozen=True)
 class BookingPolicy:
     version: str = 'academic-office-v1'
@@ -33,8 +45,8 @@ class BookingPolicy:
                 return 'busy','overlapping_commitment'
         if interval.start<=now:return 'outside_hours','past_interval'
         if not self.office_hours(interval):return 'outside_hours','academic_office_hours'
-        if not coverage.complete or not coverage.interval.contains(padded) or not coverage.checked_at<=now<coverage.valid_until:
-            return 'unknown',coverage.reason or 'incomplete_coverage'
+        failure=coverage_failure(coverage,padded,now)
+        if failure:return 'unknown',failure
         if any(e.state=='unknown' for e in coverage.events):return 'unknown','unknown_event_state'
         if self.require_occurrence and not any(e.kind=='availability' and e.interval and e.interval.contains(interval)
                 and e.state!='cancelled' for e in coverage.events):
