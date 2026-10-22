@@ -117,6 +117,10 @@ def test_yes_interrupting_incomplete_readback_cannot_write(service,tmp_path):
     ([('callee','My name is Casey Example.'),('callee','My last name is')],False),
     ([('callee','My name is Casey Example.'),('callee',"That's wrong. My name is Jordan Else.")],False),
     ([('callee','My name is Casey Example.'),('callee',"Thanks. My name is Jordan Else.")],False),
+    ([('callee','My name is Casey Example. Thanks, I am Jordan Else.')],False),
+    ([('callee','My name is Casey Example.'),('callee',"Wait, I'm Jordan Else.")],False),
+    ([('callee','My name is Casey Example.'),('callee',"Wait, I'm")],False),
+    ([('assistant','What is your full name? Please spell it.'),('callee','Casey Example')],True),
     ([('callee','My name is Casey Example.'),('assistant','How can I help?'),('callee',"I'm calling about my appointment.")],True),
     ([('callee','My name is Casey Example.'),('assistant','How can I help?'),('callee',"It's about my appointment.")],True),
     ([('callee','My name is Casey Example.'),('callee',"I'm calling about my appointment; my name is Jordan Else.")],False),
@@ -192,3 +196,39 @@ def test_confirmation_marker_and_details_in_separate_deltas_are_observed(service
     speech(m,cid,'callee','Thank you',5000)
     result=gateway.delivery_status(cid,op['operation_id'])
     assert result['spoken_observed'] and result['caller_receipt_observed'] and p.writes==1
+
+
+@pytest.mark.parametrize('introduction',[['My name is Casey St. John.'],['My name is Casey St.',' John.']])
+def test_abbreviated_surname_stays_complete_and_later_claim_still_supersedes(service,tmp_path,monkeypatch,introduction):
+    client,m,p,gateway,cid,r=prepare(service,tmp_path);seen=[]
+    async def lookup(first,last,*,contradictory=False):
+        seen.append(contradictory)
+        return {'status':'needs_owner' if contradictory else 'not_found'}
+    monkeypatch.setattr(gateway.service,'own_appointment',lookup)
+    for i,text in enumerate(introduction):speech(m,cid,'callee',text,1000+i*500)
+    assert client.portal.call(gateway.own,cid,{'first_name':'Casey','last_name':'St. John'})=={'status':'not_found'}
+    speech(m,cid,'callee',"Thanks, I am Jordan Else.",2000)
+    assert client.portal.call(gateway.own,cid,{'first_name':'Casey','last_name':'St. John'})=={'status':'needs_owner'}
+    assert seen==[False,True]
+
+
+@pytest.mark.parametrize('marker',['Not confirmed.','Not yet confirmed.'])
+def test_negated_confirmation_cannot_be_borrowed_for_later_readback(service,tmp_path,marker):
+    client,m,p,gateway,cid,r=prepare(service,tmp_path);agree(m,gateway,cid,r)
+    op=client.portal.call(gateway.book,cid,{'draft_id':r['draft_id'],'check_id':r['check_id'],'idempotency_key':'one'})
+    value=appointment(gateway.store.get('appointment_drafts','draft_id',r['draft_id']))
+    speech(m,cid,'assistant',marker,3000)
+    speech(m,cid,'assistant',readback_text(value),4000)
+    speech(m,cid,'callee','Thank you',5000)
+    result=gateway.delivery_status(cid,op['operation_id'])
+    assert not result['spoken_observed'] and not result['caller_receipt_observed'] and p.writes==1
+
+
+def test_separate_unrelated_assistant_turn_does_not_reuse_old_name_question(service,tmp_path,monkeypatch):
+    client,m,p,gateway,cid,r=prepare(service,tmp_path)
+    async def lookup(first,last,*,contradictory=False):return {'status':'needs_owner' if contradictory else 'not_found'}
+    monkeypatch.setattr(gateway.service,'own_appointment',lookup)
+    speech(m,cid,'assistant','Your full name?',1000)
+    speech(m,cid,'assistant','Who is the appointment for?',3000)
+    speech(m,cid,'callee','Casey Example',4000)
+    assert client.portal.call(gateway.own,cid,{'first_name':'Casey','last_name':'Example'})=={'status':'needs_owner'}

@@ -25,7 +25,7 @@ def speech_words(text):
     return tuple(str(int(w)) if w.isdecimal() else w for w in words(text))
 
 
-def complete_readback(text,value,*,include_identity=True):
+def complete_readback(text,value,*,include_identity=True,require_confirmation=False):
     """Require the complete queued readback, with bounded transcription variants.
 
     Unsupported paraphrases fail closed. Comparing the whole expression preserves every
@@ -39,6 +39,7 @@ def complete_readback(text,value,*,include_identity=True):
         zones+=['Eastern','Eastern Time','Eastern '+('Daylight' if start.strftime('%Z')=='EDT' else 'Standard')+' Time']
     prefixes=[value.first_name+' '+value.last_name] if include_identity else [
         '', 'Confirmed', 'Calendar and private registry verified confirmed']
+    if require_confirmation:prefixes=['Confirmed','Calendar and private registry verified confirmed']
     suffixes=['','Is that correct','Is that right','Is that okay','Does that work']
     actual=speech_words(text)
     for zone in zones:
@@ -49,15 +50,16 @@ def complete_readback(text,value,*,include_identity=True):
     return False
 
 
-def utterances(turns):
+def utterances(turns,*,join_sentences=False):
     """Reassemble adjacent transcript deltas, preserving speaker, pauses and sentence boundaries."""
     result=[]
     for turn in turns:
         start=turn.get('timestamp',turn.get('start_ms',0)/1000)
         end=turn.get('end_timestamp',turn.get('end_ms',start*1000)/1000)
         if (result and result[-1]['speaker']==turn['speaker'] and start<=result[-1]['end']+.75
-                and not re.search(r'[.!?]\s*$',result[-1]['text'])):
-            result[-1]['text']+=turn['text'];result[-1]['end']=max(end,result[-1]['end'])
+                and (join_sentences or not re.search(r'[.!?]\s*$',result[-1]['text']))):
+            separator=' ' if re.search(r'[.!?]$',result[-1]['text']) and not turn['text'][:1].isspace() else ''
+            result[-1]['text']+=separator+turn['text'];result[-1]['end']=max(end,result[-1]['end'])
         else:result.append({'speaker':turn['speaker'],'text':turn['text'],'end':end})
     return result
 
@@ -71,8 +73,18 @@ def caller_identified(turns,first,last):
     intro=fillers+r"(?:"+explicit+r"|this is|i am|i'm|it's|it is)\b\s*(.*)"
     component=fillers+r"(?:my|the) (first name|given name|last name|surname|family name)(?: is|'s)\b\s*(.*)"
     sentences=[]
-    for turn in utterances(turns):
-        sentences.extend({**turn,'text':text} for text in re.split(r'[.!?]+(?:\s+|$)',turn['text']) if text.strip())
+    for turn in utterances(turns,join_sentences=True):
+        if turn['speaker']!='callee':sentences.append(turn);continue
+        # A period inside a complete supplied name (for example St. John) is not a sentence boundary.
+        text=turn['text'].casefold().replace('’',"'");spans=[]
+        for name in (first,last,first+' '+last):
+            pattern=r'(?<!\w)'+r'[\W_]+'.join(re.escape(w) for w in words(name))+r'(?!\w)'
+            if words(name):spans.extend((m.start(),m.end()) for m in re.finditer(pattern,text))
+        offset=0
+        for boundary in re.finditer(r'[.!?]+(?:\s+|$)',text):
+            if any(a<=boundary.start()<b for a,b in spans):continue
+            sentences.append({**turn,'text':text[offset:boundary.start()]});offset=boundary.end()
+        if text[offset:].strip():sentences.append({**turn,'text':text[offset:]})
     for turn in sentences:
         text=turn['text'].casefold().replace('’',"'").strip()
         text=re.sub(r'\b(first|last|family|given)[- ]?name\b',r'\1 name',text)
@@ -85,11 +97,10 @@ def caller_identified(turns,first,last):
         if turn['speaker']!='callee':continue
         claim=re.fullmatch(intro,text)
         part=re.fullmatch(component,text)
-        name_cue=explicit+r'|\b(?:first name|last name|surname|family name|name)\b'
+        name_cue=explicit+r"|\b(?:this is|i am|i'm|it's|it is|first name|last name|surname|family name|name)\b"
         followup=r"(?:(?:i am|i'm) (?:calling|phoning|asking|inquiring|checking) (?:about|regarding|for|on|to confirm|to check|to discuss)|(?:it's|it is) (?:about|regarding)) (?:my|the|an) (?:(?:existing|upcoming|scheduled) )?appointment(?: please| thank you)?"
         ordinary=re.fullmatch(followup,' '.join(words(text)))
-        if (ordinary and question is None and not re.search(name_cue,text)
-                and not re.search(r"\b(?:not|isn't|actually|correction)\b",text)):continue
+        if ordinary and question is None:continue
         if part:
             field,answer=part.groups();field='last' if field in ('last name','surname','family name') else 'first'
         elif claim:field,answer='full',claim[1]

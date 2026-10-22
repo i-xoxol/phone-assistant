@@ -219,8 +219,8 @@ class AppointmentGateway:
         for turn in utterances(turns):
             if turn['speaker']=='assistant':
                 said+=turn['text']+' '
-                spoken=spoken or ('confirmed' in said.casefold() and (complete_readback(said,value,include_identity=False)
-                    or complete_readback(turn['text'],value,include_identity=False)))
+                spoken=spoken or (complete_readback(said,value,include_identity=False,require_confirmation=True)
+                    or complete_readback(turn['text'],value,include_identity=False,require_confirmation=True))
             else:
                 said=''
                 if spoken and turn['speaker']=='callee' and normalized(turn['text']) in ('yes','correct','thankyou','thanks'):receipt=True
