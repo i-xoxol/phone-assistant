@@ -27,6 +27,21 @@ def test_contradictory_readback_does_not_authorize(tmp_path,extra):
     assert not complete_readback('Casey Example, '+readback_text(value)+extra,value)
 
 
+@pytest.mark.parametrize('old,new',[
+    ('10:00 AM','eleven ten a.m.'),('10:00 AM','11 10 AM'),('10:00 AM','eleven-ten a.m.'),
+    ('15 minutes','one hundred fifteen minutes'),('15 minutes','one hour and fifteen minutes'),
+    ('15 minutes','one hundred and fifteen minutes'),('15 minutes','1 hour and 15 minutes')])
+def test_complete_temporal_expression_cannot_match_a_suffix(tmp_path,old,new):
+    s,db,p,d,state,now=setup(tmp_path);value=appointment(d)
+    assert not complete_readback(('Casey Example, '+readback_text(value)).replace(old,new),value)
+
+
+@pytest.mark.parametrize('field,value',[('last_name','May'),('purpose','May course guidance'),('location','May Hall')])
+def test_exact_non_temporal_fields_can_contain_month_words(tmp_path,field,value):
+    s,db,p,d,state,now=setup(tmp_path);value=replace(appointment(d),**{field:value})
+    assert complete_readback(value.first_name+' '+value.last_name+', '+readback_text(value),value)
+
+
 @pytest.mark.parametrize('spoken',['10 AM','10 a.m.','ten a.m.'])
 def test_exact_spoken_time_and_duration_variants(tmp_path,spoken):
     s,db,p,d,state,now=setup(tmp_path);value=appointment(d)
@@ -100,6 +115,17 @@ def test_yes_interrupting_incomplete_readback_cannot_write(service,tmp_path):
     ([('callee','My name is Casey Example.'),('callee','Call me Jordan Else.')],False),
     ([('callee','My name is Casey Example.'),('callee','My name is')],False),
     ([('callee','My name is Casey Example.'),('callee','My last name is')],False),
+    ([('callee','My name is Casey Example.'),('callee',"That's wrong. My name is Jordan Else.")],False),
+    ([('callee','My name is Casey Example.'),('callee',"Thanks. My name is Jordan Else.")],False),
+    ([('callee','My name is Casey Example.'),('assistant','How can I help?'),('callee',"I'm calling about my appointment.")],True),
+    ([('callee','My name is Casey Example.'),('assistant','How can I help?'),('callee',"It's about my appointment.")],True),
+    ([('callee','My name is Casey Example.'),('callee',"I'm calling about my appointment; my name is Jordan Else.")],False),
+    ([('callee','My name is Casey Example.'),('callee',"I'm calling about my appointment; I am Jordan Else.")],False),
+    ([('callee','My name is Casey Example.'),('callee',"I'm calling about my appointment as Jordan Else.")],False),
+    ([('callee','My name is Casey Example.'),('callee',"I'm calling myself Jordan Else.")],False),
+    ([('callee','My name is Casey Example.'),('callee',"I'm calling about the appointment, not Casey Example.")],False),
+    ([('callee','My name is Casey Example.'),('assistant','Your last-name?'),('callee','Else')],False),
+    ([('callee','My name is Casey Example.'),('callee','My lastname is Else.')],False),
     ([('callee','My name is Casey'),('callee',' Example')],True),
     ([('assistant','Your full name?'),('callee','Casey'),('callee',' Example')],True),
     ([('assistant','Your first name?'),('callee','Casey'),('assistant','And your surname?'),('callee','Example')],True),
@@ -155,3 +181,14 @@ def test_separate_names_disclose_only_the_verified_appointment_then_correction_b
     speech(m,cid,'callee','Actually, my name is Casey Exampleton.',6000)
     assert client.portal.call(gateway.own,cid,{'first_name':'Casey','last_name':'Example'})=={'status':'needs_owner'}
     assert p.writes==1
+
+
+def test_confirmation_marker_and_details_in_separate_deltas_are_observed(service,tmp_path):
+    client,m,p,gateway,cid,r=prepare(service,tmp_path);agree(m,gateway,cid,r)
+    op=client.portal.call(gateway.book,cid,{'draft_id':r['draft_id'],'check_id':r['check_id'],'idempotency_key':'one'})
+    value=appointment(gateway.store.get('appointment_drafts','draft_id',r['draft_id']))
+    speech(m,cid,'assistant','Confirmed.',3000)
+    speech(m,cid,'assistant',readback_text(value),4000)
+    speech(m,cid,'callee','Thank you',5000)
+    result=gateway.delivery_status(cid,op['operation_id'])
+    assert result['spoken_observed'] and result['caller_receipt_observed'] and p.writes==1

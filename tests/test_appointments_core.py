@@ -79,3 +79,21 @@ async def test_unsupported_guarantees_fail_closed(tmp_path):
     p.capabilities=replace(p.capabilities,suppress_invitations=False)
     assert (await s.book('call-1',d['draft_id'],check['check_id'],'yes','key'))['state']=='needs_owner'
     assert p.writes==0
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('change',['deadline','hangup','withdrawal','revision'])
+async def test_authority_changed_while_evaluating_final_consent_cannot_dispatch(tmp_path,change):
+    s,db,p,d,state,now=setup(tmp_path);check=await s.check('call-1',d['draft_id'])
+    original=s.consent;reads=[]
+    def consent(draft,consent_id):
+        evidence=original(draft,consent_id);reads.append(True)
+        if len(reads)==3:  # The provider's final before-dispatch guard.
+            if change=='deadline':now[0]+=timedelta(seconds=91)
+            if change=='hangup':state['active']=False
+            if change=='withdrawal':state['allowed']=False
+            if change=='revision':state['revision']='changed-during-consent'
+        return evidence
+    s.consent=consent
+    result=await s.book('call-1',d['draft_id'],check['check_id'],'yes','one')
+    assert result['state']=='needs_owner' and not result['write_attempted'] and p.writes==0

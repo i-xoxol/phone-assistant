@@ -218,9 +218,12 @@ class AppointmentGateway:
         draft=self.store.get('appointment_drafts','draft_id',operation['draft_id']);value=appointment(draft)
         for turn in utterances(turns):
             if turn['speaker']=='assistant':
-                said=turn['text']
-                spoken=spoken or ('confirmed' in said.casefold() and complete_readback(said,value,include_identity=False))
-            elif spoken and turn['speaker']=='callee' and normalized(turn['text']) in ('yes','correct','thankyou','thanks'):receipt=True
+                said+=turn['text']+' '
+                spoken=spoken or ('confirmed' in said.casefold() and (complete_readback(said,value,include_identity=False)
+                    or complete_readback(turn['text'],value,include_identity=False)))
+            else:
+                said=''
+                if spoken and turn['speaker']=='callee' and normalized(turn['text']) in ('yes','correct','thankyou','thanks'):receipt=True
         accepted=bool(update and update['status']=='acknowledged')
         with self.store.connect() as db:
             outbox=db.execute("SELECT outbox_id FROM booking_outbox WHERE operation_id=? AND kind='result' ORDER BY operation_revision DESC LIMIT 1",(oid,)).fetchone()
