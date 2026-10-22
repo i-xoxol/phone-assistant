@@ -156,6 +156,28 @@ subscriptions do not acquire these permissions automatically. Private Realtime
 `get_owner_schedule` is an in-process owner-only capability, not an incoming-caller
 or generic MCP calendar search tool.
 
+### Approve the added appointment permissions
+
+Refresh/rescan the existing Phone Assistant plugin's tools after deploying this
+version. Ask your supervising agent: **"Run get_appointment_permissions so I can
+approve the new appointment tools. Do not create any appointment."** This setup
+tool only verifies authorization. When permission is missing, it returns the
+documented OAuth challenge so ChatGPT can show its Connect/Authorize action.
+Follow that action on the **existing connection**, enter a fresh service-host
+MCP pairing code (`python -m scripts.mcp_pairing`), and approve the appointment
+read/book/manage scopes shown on the service's approval page. The code is
+single-use and expires after 15 minutes. A transcript-portal code will not work.
+
+Do not delete the plugin or recreate event subscriptions. The OAuth client
+identity is reused; existing `phone.calls` grants continue working until and
+after reauthorization. Refreshing an old token alone cannot add permissions.
+Ordinary appointment tools request only their own scope, retaining any
+appointment scopes already granted. No grant is expanded automatically.
+The owner-only in-process coaching calendar reader needs no extra MCP consent
+and reuses the already configured Google login.
+
+See the [official OAuth UI contract](https://developers.openai.com/plugins/build/auth#triggering-authentication-ui).
+
 `plugin/` contains a generic manifest, server configuration, and a supervising
 agent skill. The committed URL is **`https://phone.example.com/mcp`**, an
 intentional placeholder. Customize a local copy for your own service before

@@ -102,11 +102,14 @@ def create_mcp(manager):
     origin = settings.public_base_url
     if not origin:
         raise ValueError('PUBLIC_BASE_URL is required for remote MCP OAuth')
-    provider = PairingOAuthProvider(settings.oauth_database_path, origin)
     appointment_scopes=[]
+    middleware=[advertise_events]
     if settings.appointments_enabled:
         from app.appointments.mcp import SCOPES
+        from app.appointments.mcp_auth import appointment_authorization
         appointment_scopes=SCOPES
+        middleware.append(appointment_authorization(origin))
+    provider = PairingOAuthProvider(settings.oauth_database_path, origin, additional_scopes=tuple(appointment_scopes))
     auth = AuthSettings(issuer_url=origin, resource_server_url=origin + '/mcp',
                         validate_token_resource=True,
                         client_registration_options=ClientRegistrationOptions(
@@ -121,6 +124,8 @@ def create_mcp(manager):
         instructions+='''\nAPPOINTMENT TOOLS V1: Use check_appointment_slot/book_appointment/get_booking_status for this call's ordinary academic booking.
 Use the actual pending request UUID/deadline; progress is not a terminal reply. Existing phone.calls grants do not include
 the additional appointment read/book/manage scopes. Missing scope means needs_owner, never permission to bypass it.
+For initial setup only, get_appointment_permissions requests those separate permissions through the existing
+connection's OAuth approval UI without making a call or changing a calendar. Do not delete/recreate event subscriptions.
 Before a write, inspect existing call-bound operations and wait for complete spoken payload readback plus fresh caller assent.
 Do not create the same appointment through another calendar connector. A local uncertain/sent write must be reconciled first.
 Only state=confirmed with verified persisted fields permits success. Injection accepted is separate from actual speech/receipt.
@@ -128,7 +133,7 @@ Keep private appointments/notices out of set_call_fact and other shared context.
 appointment details. Family status requires an existing owner-established relationship and current explicit owner statement.
 Native supervision subscriptions/expiry are unchanged. The optional private Realtime schedule reader is read-only and owner-only.\n'''
     mcp = MCPServer('Phone Assistant', instructions=instructions, auth_server_provider=provider,
-                    auth=auth, extensions=[events], middleware=[advertise_events])
+                    auth=auth, extensions=[events], middleware=middleware)
     read = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
     write = ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True)
 

@@ -58,10 +58,11 @@ class PairingOAuthProvider(
 ):
     """SQLite-backed OAuth provider intended for one private MCP owner."""
 
-    def __init__(self, database: str | Path, public_base_url: str):
+    def __init__(self, database: str | Path, public_base_url: str, *, additional_scopes: tuple[str, ...] = ()):
         self.database = Path(database).expanduser()
         self.database.parent.mkdir(parents=True, exist_ok=True)
         self.public_base_url = public_base_url.rstrip("/")
+        self.additional_scopes = additional_scopes
         self._init_schema()
 
     def _connect(self) -> sqlite3.Connection:
@@ -112,7 +113,17 @@ class PairingOAuthProvider(
             row = db.execute(
                 "SELECT payload FROM oauth_clients WHERE client_id = ?", (client_id,)
             ).fetchone()
-        return OAuthClientInformationFull.model_validate_json(row["payload"]) if row else None
+        if not row:
+            return None
+        client = OAuthClientInformationFull.model_validate_json(row["payload"])
+        if self.additional_scopes:
+            # DCR predates optional capabilities. Permit this SAME client to
+            # request newly supported scopes through fresh owner consent.
+            # This changes neither stored grants nor tokens; refresh remains
+            # limited to the scopes already approved on that refresh token.
+            scopes = list(dict.fromkeys([*(client.scope or 'phone.calls').split(), *self.additional_scopes]))
+            client = client.model_copy(update={'scope': ' '.join(scopes)})
+        return client
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
         if not client_info.client_id:
