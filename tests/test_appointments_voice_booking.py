@@ -66,7 +66,8 @@ def test_voice_recovers_rejected_readback_without_supervisor_or_write_retry(serv
         assert readback['after_transcript_id']>0
         channel,command=connection.updates[-1]
         assert channel=='instructions' and 'without a preface' in command['content']
-        assert 'Eastern Time' in command['content'] and 'America/New_York' not in command['content']
+        assert 'October 26th' in command['content'] and '2026' not in command['content']
+        assert 'Eastern' not in command['content'] and 'America/New_York' not in command['content']
         bridge.update_event({'type':'session.instructions.appended','client_event_id':command['event_id']})
         # The earlier yes cannot authorize the repaired readback.
         assert not gateway.consent(gateway.store.get('appointment_drafts','draft_id',r['draft_id']),None).affirmative
@@ -78,7 +79,7 @@ def test_voice_recovers_rejected_readback_without_supervisor_or_write_retry(serv
         assert (await bridge.tools.operation(item))['operation_id']==result['operation_id'] and p.writes==1
         # Confirmed booking queues an explicit spoken result; acknowledgement alone is not speech.
         channel,command=connection.updates[-1]
-        assert channel=='instructions' and 'Confirmed ' in command['content']
+        assert channel=='instructions' and 'Confirmed. October 26th, 10:00 AM.' in command['content']
         bridge.update_event({'type':'session.instructions.appended','client_event_id':command['event_id']})
         assert gateway.delivery_status(cid,result['operation_id'])['spoken_observed'] is False
         speech(m,cid,'assistant','Confirmed '+readback_text(value).removesuffix(' Is that correct?'),6000)

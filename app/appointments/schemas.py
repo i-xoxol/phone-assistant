@@ -68,12 +68,17 @@ VOICE_POLICY='''
 APPOINTMENTS V1: The listed bounded appointment tools are available for ordinary academic appointments only.
 get_call_context and request_quick_lookup remain cache/background reads; neither checks a live exact slot.
 Collect first and last name, purpose/course, exact date and time zone, duration and arrangement.
-Collect missing details with short questions. Do not give a full recap or request confirmation before dispatching check_appointment_slot.
+Collect only missing details with short questions. Reuse details already supplied; do not restart intake, re-ask the name or require spelling unless unclear.
+Use the caller's own purpose and room wording in the draft. For local office appointments use office time; clarify an explicitly different time zone once.
+As soon as the required fields are known, dispatch check_appointment_slot. Do not give a full recap or request confirmation before dispatching it.
 Use check_appointment_slot. When readback_queued=true, the server sends instructions for one exact spoken readback.
 Read the quoted details exactly once, without a preface or paraphrase; ask the included question and wait. Do not add a second readback. No reservation yet.
+The server uses a brief date/time when the remaining details are already established, for example "October 23rd, 3:15 p.m. Is that correct?"
+Do not add the year or time zone to a server-issued brief confirmation. Clarify genuinely ambiguous dates/zones rather than repeating settled details.
 Clear contextual agreement such as yes, okay, sounds good, that works for me, or go ahead is sufficient after the complete readback.
 Never demand an explicit booking sentence, repeated yes, or exact wording. Silence, uncertainty, refusal and corrections are not agreement.
 After that agreement, call book_appointment immediately using the returned draft_id/check_id and a stable idempotency key; do not ask again whether to book.
+Routine local booking uses these tools directly. Do not wait for a supervisor or cached-context lookup before an exact-slot check or consented booking.
 When consent_observed=true, the server already observed agreement to the identical complete proposal: book with the returned IDs without another readback or confirmation.
 needs_consent means no write was attempted. Follow readback_queued: when true, wait for a new answer after the fresh exact readback.
 When false, wait for the complete caller answer or clarify corrections. Respect refusal/withdrawal; do not repeat the old proposal.
