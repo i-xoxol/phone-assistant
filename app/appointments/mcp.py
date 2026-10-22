@@ -6,6 +6,8 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.types import ToolAnnotations
 from app.appointments.schemas import SlotRequest,BookRequest
 from app.appointments.mcp_auth import SCOPES,authorization_metadata
+from app.appointments.service import ConsentRequired
+from app.logging_config import log_event
 
 
 def require(scope):
@@ -34,9 +36,16 @@ def install(mcp,manager):
     async def book_appointment(call_id:UUID,request:BookRequest)->dict:
         """Attempt one exact, consented, call-bound ordinary booking; status uncertainty must be reconciled.
         A separate owner grant, enabled write policy, actual spoken readback and current caller agreement are required.
+        needs_consent means no write: follow readback_queued, wait for new agreement, then reuse these IDs/key.
         Never create a duplicate via an external calendar connector. No cancellation/rescheduling or invitations."""
         require('phone.appointments.book')
-        return await manager.appointments.book(str(call_id),request.model_dump(mode='json'))
+        args=request.model_dump(mode='json')
+        try:return await manager.appointments.book(str(call_id),args)
+        except ConsentRequired:
+            # Match voice recovery only for the typed, pre-write consent rejection.
+            log_event('appointment_consent_required',call_id=str(call_id),
+                reason='complete_readback_and_fresh_assent_required')
+            return await manager.appointments.retry_consent(str(call_id),args)
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,openWorldHint=True),
         meta={**authorization_metadata('get_booking_status'),'requiredScope':'phone.appointments.read'})
     async def get_booking_status(call_id:UUID,operation_id:UUID)->dict:
