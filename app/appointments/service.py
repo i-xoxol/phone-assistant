@@ -72,7 +72,9 @@ class BookingService:
         if not (evidence.affirmative and evidence.readback_observed and evidence.payload_hash==draft['payload_hash']
                 and evidence.caller_revision==authority.revision):
             raise ValueError('Fresh caller agreement after complete readback is required')
-        return authority
+        latest=self.current(draft)
+        if latest.revision!=authority.revision:raise ValueError('Caller changed during consent evaluation')
+        return latest
 
     async def book(self,call_id,draft_id,check_id,consent_id,idempotency_key):
         if not idempotency_key or len(idempotency_key)>100:raise ValueError('Use a stable bounded idempotency key')
