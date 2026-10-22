@@ -85,6 +85,7 @@ class Capabilities:
     owner_agenda: bool = False
     guarded_write: bool = False
     availability_search: bool = False
+    human_readable_details: bool = False
 
     def safe_booking(self):
         return self.version.split('.')[0]=='1' and all((self.exact_reads,self.event_readback,self.create,self.deterministic_identity,
@@ -111,6 +112,7 @@ class CalendarEvent:
     # Read only via the private owner agenda capability; never caller availability results.
     owner_label: str = ''
     purpose: str = ''
+    booking_details_verified: bool = False
 
 
 @dataclass(frozen=True)

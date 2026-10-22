@@ -6,6 +6,7 @@ from uuid import uuid4
 from app.appointments.contracts import Appointment,CalendarEvent,Coverage,Interval,ProviderFault,WriteNotAuthorized
 from app.appointments.registry import Registry,appointment,event_identity,payload_hash
 from app.appointments.policy import BookingPolicy,coverage_failure
+from app.appointments.details import require_arrangement
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class BookingService:
 
     def prepare(self,call_id,request_id,value:Appointment):
         self.current({'call_id':call_id,'request_id':request_id})
+        require_arrangement(value.location)
         return self.store.draft(call_id,request_id,value)
 
     def interval(self,draft):
@@ -139,6 +141,7 @@ class BookingService:
             if old:
                 if old['payload_hash']!=draft['payload_hash']:raise ValueError('Operation payload changed')
                 return await self.status(call_id,old['operation_id'])
+            require_arrangement(appointment(draft).location)
             authorization=self.verify_consent(draft,consent_id)
             check=self.store.get('appointment_checks','check_id',check_id)
             if (check['draft_id']!=draft_id or check['draft_revision']!=draft['revision'] or check['decision']!='available'
@@ -200,6 +203,8 @@ class BookingService:
                     or event.participant_last!=expected.last_name or event.purpose!=expected.purpose or event.disclosure!='ordinary'
                     or event.ownership!='phone-assistant' or not event.revision):
                 return self.store.transition(oid,'needs_owner','readback','persisted_fields_differ')
+            if self.provider.capabilities.human_readable_details and not event.booking_details_verified:
+                return self.store.transition(oid,'needs_owner','readback','calendar_details_not_verified')
             coverage=await self.provider.read_interval(self.interval(draft),exclude=event.identity)
             decision,reason=self.policy.decide(expected.interval,coverage,self.clock(),exclude=event.identity)
             if decision!='available':return self.store.transition(oid,'needs_owner','external_race',reason)

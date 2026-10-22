@@ -30,6 +30,7 @@ def install(mcp,manager):
     async def find_first_available_slot(call_id:UUID,request:FirstAvailableRequest)->dict:
         """Find one earliest verified office slot in the next fourteen days, without requiring an exact date/time.
         Only missing name, purpose, duration and arrangement are required; date bounds are optional caller constraints.
+        Arrangement means a specific room/address or connection method; needs_details asks only for the missing arrangement.
         Queues one exact proposal. First-available preference is not consent: wait for agreement before booking with returned IDs.
         No reservation, calendar write, private titles or expanded hours. Existing call authority/deadline still apply."""
         require('phone.appointments.read')
@@ -39,6 +40,7 @@ def install(mcp,manager):
         meta={**authorization_metadata('check_appointment_slot'),'requiredScope':'phone.appointments.read'})
     async def check_appointment_slot(call_id:UUID,request:SlotRequest)->dict:
         """Live exact-slot check for this incoming call, with privacy-filtered result. No reservation.
+        Arrangement needs a specific room/address or connection method; in person or online alone returns needs_details.
         General cached free windows are not this API. No calendars or authorization flags are caller arguments."""
         require('phone.appointments.read')
         return await manager.appointments.check(str(call_id),request.model_dump(mode='json'))

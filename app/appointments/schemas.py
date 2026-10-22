@@ -16,7 +16,7 @@ class SlotRequest(BaseModel):
     start: AwareDatetime
     end: AwareDatetime
     time_zone: str = Field(max_length=80)
-    arrangement: str = Field(min_length=1,max_length=160)
+    arrangement: str = Field(min_length=1,max_length=160,description='Specific room/address or how to connect remotely; in person or online alone is incomplete.')
     def appointment(self):
         from zoneinfo import ZoneInfo
         zone=ZoneInfo(self.time_zone)
@@ -39,7 +39,7 @@ class FirstAvailableRequest(BaseModel):
     last_name: str=Field(min_length=1,max_length=100)
     purpose: str=Field(min_length=1,max_length=160)
     duration_minutes: int=Field(ge=1,le=120,strict=True)
-    arrangement: str=Field(min_length=1,max_length=160)
+    arrangement: str=Field(min_length=1,max_length=160,description='Specific room/address or how to connect remotely; in person or online alone is incomplete.')
     not_before: AwareDatetime | None = None
     not_after: AwareDatetime | None = None
 
@@ -85,6 +85,9 @@ VOICE_POLICY='''
 APPOINTMENTS V1: The listed bounded appointment tools are available for ordinary academic appointments only.
 get_call_context and request_quick_lookup remain cache/background reads; neither checks a live exact slot.
 Collect first and last name, purpose/course, duration and arrangement.
+An arrangement needs an actual room/address or a specific way to connect. "In person", "online", "Zoom" or "phone" alone is incomplete.
+Ask one short location/connection question if missing. An owner-approved office location may be proposed for agreement; never invent a room, link or callback number.
+needs_details with missing_fields=[arrangement] means collect only that detail and reuse the rest of intake, including first available. No calendar write has happened.
 When the caller says first available, earliest, next available, or any time, do not ask for a specific date or time.
 Once those other details are known, call find_first_available_slot immediately; omit date bounds unless the caller supplied a constraint.
 It searches the next fourteen days using office time and returns one exact checked proposal through the same single server readback.
