@@ -90,15 +90,16 @@ class VoiceTools:
         manager = self.bridge.manager
         name = item['name']
         inbound = manager.db.get(self.bridge.call_id).get('direction') == 'inbound'
-        if name in ('check_appointment_slot','book_appointment','get_booking_status','get_my_appointment','get_caller_status','get_family_availability'):
+        if name in ('find_first_available_slot','check_appointment_slot','book_appointment','get_booking_status','get_my_appointment','get_caller_status','get_family_availability'):
             record=manager.db.get(self.bridge.call_id)
             if (not inbound or record['inbound_mode']!='concierge' or not manager.settings.appointments_enabled or not manager.appointments
                     or manager.bridges.get(self.bridge.call_id) is not self.bridge or self.bridge.closing
                     or self.bridge.handoff or self.bridge.call_id in manager.stopping):
                 raise ValueError('Appointment capability unavailable in this voice session')
             args=json.loads(item['arguments']);gateway=manager.appointments
-            if name=='check_appointment_slot':
-                result=await gateway.check(self.bridge.call_id,args)
+            if name in ('find_first_available_slot','check_appointment_slot'):
+                handler=gateway.first_available if name=='find_first_available_slot' else gateway.check
+                result=await handler(self.bridge.call_id,args)
                 result.pop('readback',None)  # The queued voice instruction owns the single readback.
                 return result
             if name=='book_appointment':

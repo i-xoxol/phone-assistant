@@ -5,7 +5,7 @@ from datetime import datetime,timedelta,timezone
 from uuid import uuid4
 from app.appointments.contracts import Appointment,CalendarEvent,Coverage,Interval,ProviderFault,WriteNotAuthorized
 from app.appointments.registry import Registry,appointment,event_identity,payload_hash
-from app.appointments.policy import BookingPolicy
+from app.appointments.policy import BookingPolicy,coverage_failure
 
 
 @dataclass(frozen=True)
@@ -48,6 +48,53 @@ class BookingService:
     def interval(self,draft):
         i=appointment(draft).interval
         return Interval(i.start-timedelta(minutes=self.policy.buffer_before),i.end+timedelta(minutes=self.policy.buffer_after),i.zone)
+
+    async def find_slot(self,call_id,request_id,duration_minutes,not_before=None,not_after=None):
+        """Read a bounded complete window before claiming its earliest eligible minute.
+
+        This returns a proposal only. The facade runs the ordinary exact check to
+        create a draft/readback, and booking still requires fresh spoken assent.
+        """
+        authority=self.current({'call_id':call_id,'request_id':request_id});now=self.clock()
+        if isinstance(duration_minutes,bool) or not isinstance(duration_minutes,int) or not 1<=duration_minutes<=120:
+            raise ValueError('Use a whole-minute duration from 1 to 120')
+        limit=now+timedelta(days=14)
+        if any(t is not None and t.tzinfo is None for t in (not_before,not_after)):
+            raise ValueError('Use timezone-aware search bounds')
+        start=max(now,not_before or now).astimezone(timezone.utc);end=(not_after or limit).astimezone(timezone.utc)
+        if not start<end<=limit:raise ValueError('Search must end within the next fourteen days')
+        window=Interval(start-timedelta(minutes=self.policy.buffer_before),
+            end+timedelta(minutes=self.policy.buffer_after),self.policy.zone)
+        result={'reservation':False,'search_start':start.isoformat(),'search_end':end.isoformat(),'time_zone':self.policy.zone}
+        try:
+            caps=self.provider.capabilities
+            if not (caps.exact_reads and caps.recurrence_expansion and caps.availability_search):raise ProviderFault('unsupported')
+            async with asyncio.timeout(max(.001,min(6,(authority.deadline-self.clock()).total_seconds()))):
+                with self.store.measure('calendar_search'):coverage=await self.provider.read_availability(window)
+            now=self.clock()
+            reason=coverage_failure(coverage,window,now)
+            if not reason and any(e.state=='unknown' for e in coverage.events):reason='unknown_event_state'
+        except (ProviderFault,TimeoutError) as exc:
+            reason=exc.code if isinstance(exc,ProviderFault) else 'deadline_budget'
+        def finish(decision,**fields):
+            latest=self.current({'call_id':call_id,'request_id':request_id})
+            if latest.revision!=authority.revision:raise ValueError('Caller changed during availability search')
+            if decision!='unknown':
+                stale=coverage_failure(coverage,window,self.clock())
+                if stale:return {**result,'decision':'unknown','reason':stale}
+            return {**result,'decision':decision,**fields}
+        if reason:return finish('unknown',reason=reason)
+        # Minute-aligned proposals support ordinary spoken times, including after
+        # a conflict ending between minutes. Policy checks buffers and occurrences.
+        cursor=max(start,now).replace(second=0,microsecond=0)
+        if cursor<start or cursor<=now:cursor+=timedelta(minutes=1)
+        duration=timedelta(minutes=duration_minutes)
+        while cursor+duration<=end:
+            candidate=Interval(cursor,cursor+duration,self.policy.zone)
+            if self.policy.office_hours(candidate) and self.policy.decide(candidate,coverage,now)[0]=='available':
+                return finish('available',interval=candidate)
+            cursor+=timedelta(minutes=1)
+        return finish('no_available_slot',reason='no_verified_slot_in_search_window')
 
     async def check(self,call_id,draft_id):
         draft=self.bound(call_id,draft_id);authority=self.current(draft)

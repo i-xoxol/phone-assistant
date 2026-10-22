@@ -67,7 +67,8 @@ class MirrorHealth:
 
 class GoogleCalendarAdapter:
     capabilities=Capabilities(exact_reads=True,event_readback=True,create=True,deterministic_identity=True,
-        suppress_invitations=True,private_events=True,change_cursors=True,recurrence_expansion=True,owner_agenda=True,guarded_write=True)
+        suppress_invitations=True,private_events=True,change_cursors=True,recurrence_expansion=True,owner_agenda=True,guarded_write=True,
+        availability_search=True)
     def __init__(self,http,token,identity,mirror,clock,*,zone='America/New_York',office_ids=(),mirror_source=None,max_pages=10):
         if identity.provider!='google':raise ValueError('Google adapter requires its own provider namespace')
         self.http,self.token,self.identity,self.mirror,self.clock=http,token,identity,mirror,clock
@@ -129,7 +130,11 @@ class GoogleCalendarAdapter:
     async def read_agenda(self,interval):
         return await self._coverage(interval,agenda=True)
 
-    async def _coverage(self,interval,exclude=None,agenda=False):
+    async def read_availability(self,interval):
+        # Search needs all conflicts, not the exact-check early exit. No private titles.
+        return await self._coverage(interval,search=True)
+
+    async def _coverage(self,interval,exclude=None,agenda=False,search=False):
         params={'timeMin':interval.start.isoformat(),'timeMax':interval.end.isoformat(),
             'singleEvents':'true','showDeleted':'true','maxResults':2500,
             'fields':f'nextPageToken,items({FIELDS+(",summary" if agenda else "")})'}
@@ -141,7 +146,7 @@ class GoogleCalendarAdapter:
                 event=self.normalize(raw)
                 if agenda:event=replace(event,owner_label=str(raw.get('summary',''))[:160])
                 events.append(event)
-                if (not agenda and event.identity!=exclude and not (event.alias_verified and exclude in event.aliases)
+                if (not agenda and not search and event.identity!=exclude and not (event.alias_verified and exclude in event.aliases)
                         and event.kind!='availability' and event.state=='busy' and event.interval.overlaps(interval)):
                     return Coverage(interval,checked,checked+timedelta(seconds=30),False,tuple(events),'known_conflict')
             if not page.get('nextPageToken'):break

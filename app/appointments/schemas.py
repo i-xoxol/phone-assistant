@@ -32,6 +32,17 @@ class BookRequest(BaseModel):
     check_id: UUID
     idempotency_key: str=Field(min_length=1,max_length=100)
 
+class FirstAvailableRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    request_id: UUID | None = None
+    first_name: str=Field(min_length=1,max_length=100)
+    last_name: str=Field(min_length=1,max_length=100)
+    purpose: str=Field(min_length=1,max_length=160)
+    duration_minutes: int=Field(ge=1,le=120,strict=True)
+    arrangement: str=Field(min_length=1,max_length=160)
+    not_before: AwareDatetime | None = None
+    not_after: AwareDatetime | None = None
+
 class AppointmentLookup(BaseModel):
     model_config=ConfigDict(extra='forbid')
     first_name: str=Field(min_length=1,max_length=100)
@@ -49,6 +60,12 @@ def tool(name,description,model=None):
         'parameters':model.model_json_schema() if model else {'type':'object','properties':{},'additionalProperties':False}}
 
 VOICE_TOOLS=[
+    tool('find_first_available_slot','Find the earliest verified minute-aligned ordinary office appointment in the next fourteen days. '
+        'Use for first available, earliest, or any time: no exact date/time is required. Collect only missing full name, purpose, duration and arrangement. '
+        'Optional not_before/not_after are only caller-stated constraints within that window; omit them for first available. '
+        'Reuse the returned request_id for corrections or retries. '
+        'The server checks real complete calendar coverage and queues one exact proposal; do not repeat it. '
+        'Nothing is booked until the caller agrees to that concrete proposal and book_appointment succeeds.',FirstAvailableRequest),
     tool('get_booking_status','Read/reconcile this call operation; polling never creates a calendar event. '
         'Injection acknowledgment is not spoken confirmation.',OperationStatus),
     tool('check_appointment_slot','Check one exact ordinary office appointment interval. Collect full name, purpose/course, duration and arrangement first. '
@@ -67,11 +84,17 @@ VOICE_TOOLS=[
 VOICE_POLICY='''
 APPOINTMENTS V1: The listed bounded appointment tools are available for ordinary academic appointments only.
 get_call_context and request_quick_lookup remain cache/background reads; neither checks a live exact slot.
-Collect first and last name, purpose/course, exact date and time zone, duration and arrangement.
+Collect first and last name, purpose/course, duration and arrangement.
+When the caller says first available, earliest, next available, or any time, do not ask for a specific date or time.
+Once those other details are known, call find_first_available_slot immediately; omit date bounds unless the caller supplied a constraint.
+It searches the next fourteen days using office time and returns one exact checked proposal through the same single server readback.
+First available is a search preference, not consent to book an unseen time. Wait for agreement to the returned concrete proposal, then book with its IDs.
+If no slot is verified in that bounded window, explain that limit once; do not repeatedly ask the caller to invent a date/time or claim the entire calendar is unavailable.
+For a caller who requests a particular date/time, collect the exact date and time zone and use check_appointment_slot.
 Collect only missing details with short questions. Reuse details already supplied; do not restart intake, re-ask the name or require spelling unless unclear.
 Use the caller's own purpose and room wording in the draft. For local office appointments use office time; clarify an explicitly different time zone once.
-As soon as the required fields are known, dispatch check_appointment_slot. Do not give a full recap or request confirmation before dispatching it.
-Use check_appointment_slot. When readback_queued=true, the server sends instructions for one exact spoken readback.
+As soon as the required fields are known, dispatch find_first_available_slot for flexible timing or check_appointment_slot for an exact requested time. Do not give a full recap or request confirmation before dispatching it.
+With either slot tool, when readback_queued=true, the server sends instructions for one exact spoken readback.
 Read the quoted details exactly once, without a preface or paraphrase; ask the included question and wait. Do not add a second readback. No reservation yet.
 The server uses a brief date/time when the remaining details are already established, for example "October 23rd, 3:15 p.m. Is that correct?"
 Do not add the year or time zone to a server-issued brief confirmation. Clarify genuinely ambiguous dates/zones rather than repeating settled details.
