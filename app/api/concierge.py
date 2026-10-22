@@ -36,15 +36,21 @@ async def caller_language(body:OwnerLanguage,request:Request):
 
 
 @router.put('/facts')
-def fact(body:FactUpdate,request:Request):
-    try: return request.app.state.manager.knowledge.fact(body)
+async def fact(body:FactUpdate,request:Request):
+    manager=request.app.state.manager
+    try: result=manager.knowledge.fact(body)
     except ValueError as exc: raise HTTPException(409,str(exc)) from None
+    manager.observer.realtime.context_changed()
+    return result
 
 
 @router.post('/facts/{fact_id}/retire')
-def retire_fact(fact_id:UUID,request:Request):
-    try: return request.app.state.manager.knowledge.retire(str(fact_id))
+async def retire_fact(fact_id:UUID,request:Request):
+    manager=request.app.state.manager
+    try: result=manager.knowledge.retire(str(fact_id))
     except KeyError: raise HTTPException(404,'Fact not found') from None
+    manager.observer.realtime.context_changed()
+    return result
 
 
 @router.get('/context')

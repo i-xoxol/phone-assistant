@@ -122,6 +122,7 @@ class OwnerTransfer:
             conn.execute('INSERT INTO owner_transfers(transfer_id,call_id,owner_number,reason,source,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)',
                          (tid,call_id,s.owner_transfer_number,reason,source,'dialing',stamp,stamp))
         m.db.emit(call_id,'call.owner_transfer',{'transfer_id':tid,'status':'dialing'})
+        m.screening.prepare(tid)
         # Expected Stream shutdown must not let the old bridge hang up the parent.
         bridge.handoff=True
         bridge.playback_sealed=True
@@ -129,7 +130,7 @@ class OwnerTransfer:
             if request['status']=='pending': m.db.expire_supervisor_request(request['request_id'])
         try:
             if s.owner_observation_enabled:
-                self.update(tid,strategy='conference',transcription_state='starting')
+                self.update(tid,strategy='bridge' if m.observer.realtime.uses_bridge() else 'conference',transcription_state='starting')
                 await m.observer.start(self.get(tid),r)
             else:
                 await asyncio.wait_for(m.gateway.redirect_call(r['twilio_call_sid'],self.dial_twiml(self.get(tid),r)),8)
@@ -188,10 +189,7 @@ class OwnerTransfer:
             self.update(tid,status='screening')
             gather=response.gather(input='dtmf',num_digits=1,timeout=8,action_on_empty_result=True,
                 action=self.manager.settings.public_url('/twilio/owner-transfer/'+tid+'/accept'),method='POST')
-            recording=self.manager.recordings.snapshot(row['call_id'])['policy']
-            gather.say('Your phone assistant has a caller who needs you. '+row['reason']+
-                       (' Audio recording is enabled for this call.' if recording and not recording['stop_requested_at'] else '')+
-                       ' Press 1 to accept and speak to the caller, or 2 to decline.')
+            self.manager.screening.screen(gather,row)
             response.hangup()
         return str(response)
 
@@ -207,7 +205,7 @@ class OwnerTransfer:
             return str(response)
         with self.manager.db.connect() as conn:
             conn.execute('UPDATE owner_transfers SET decision=?,accepted=? WHERE transfer_id=? AND decision IS NULL',
-                ('accepted' if form.get('Digits')=='1' else 'declined',int(form.get('Digits')=='1'),tid))
+                ('accepted' if form.get('Digits') in ('1','3') else 'declined',int(form.get('Digits') in ('1','3')),tid))
         row=self.get(tid)
         self.update(tid,status='accepted' if row['accepted'] else 'declined')
         if not row['accepted']: response.hangup()

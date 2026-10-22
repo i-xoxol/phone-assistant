@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Optional two-leg local audio bridge for full Realtime coaching: 20 ms PCMU relay, owner-only mixing, source-labelled input, independent captions, bounded buffers and inline two-person Twilio fallback without a coach call.
+- Keep human audio flowing when native model processing fails; preserve recovery when a disconnected socket task is cancelled, and withhold stale/paused coaching at playback.
+- Wait for the accepted owner's actual conference join before creating a private coach; retain safe numeric carrier rejection codes and distinguish rejected creates from ambiguous attempts.
+- Full Realtime 2.1 private coaching: source-labelled native microphone audio, proactive hints, one warm connection and owner-only Twilio streaming; Luna is bypassed for this mode.
+- Keep owner/caller identities attached to raw audio; portal captions run independently, and caption failure does not stop native coaching input.
+- Stream audio as generated, recheck current context during delivery, clear superseded hints and preserve human calls on coaching failures.
+- Short owner screening menu, cached high-quality keypad clips and a natural once-per-transfer briefing.
+- Optional hybrid private coaching: subscription Luna chooses TTS hints or a brief, caption-fed GPT-Live session with context updates, idle closure and bounded reconnects.
+- Keep both transfer modes transcribed; simple answer never starts Luna or Live, and owner-only pause/resume leaves captions running.
+- Preserve follow-up questions through coaching cooldowns, recognize recent owner follow-ups and reuse spoken evidence for new Live advice without repeating factual hints.
+- Bound and acknowledge multipart Live context updates; add an end-to-end provider replay of the factual-answer/follow-up workflow without dialing.
 - Honor casual owner greetings in both the voice prompt and silent-start fallback; skip repeated assistant introductions.
 - Remember explicit incoming caller language requests by number, with owner MCP/portal edits and English default.
 - Read approved student/activity facts locally by question; prioritize relevant anticipated-call context.

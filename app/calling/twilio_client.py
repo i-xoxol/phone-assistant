@@ -1,4 +1,5 @@
 import asyncio
+from urllib.parse import urlencode
 
 from twilio.http.http_client import TwilioHttpClient
 from twilio.rest import Client
@@ -54,6 +55,19 @@ class TwilioGateway:
         # A participant announcement targets only this participant, never the room.
         return await asyncio.to_thread(self.client().conferences(conference_sid).participants(owner_sid).update,
             announce_url=url,announce_method='POST')
+
+    async def add_coach(self,row,record,seconds):
+        """A TwiML application participant audible only to the accepted owner's leg."""
+        params=urlencode({'coach_id':record['coach_id'],'nonce':record['nonce']})
+        return await asyncio.to_thread(self.client().conferences(row['conference_sid']).participants.create,
+            from_=self.settings.twilio_phone_number,
+            to='app:'+self.settings.owner_coaching_application_sid+'?'+params,
+            label='rt-'+record['coach_id'],coaching=True,call_sid_to_coach=row['child_sid'],
+            start_conference_on_enter=False,end_conference_on_exit=False,beep='false',
+            early_media=True,record=False,max_participants=3,jitter_buffer_size='small',time_limit=seconds)
+
+    async def coach_participant(self,conference_sid,label_or_sid):
+        return await asyncio.to_thread(self.client().conferences(conference_sid).participants(label_or_sid).fetch)
 
     async def prepare_inbound(self, sid: str, minutes: int):
         # Only call AFTER the signed media start proves Twilio answered.

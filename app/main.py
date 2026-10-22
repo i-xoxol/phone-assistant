@@ -7,6 +7,7 @@ from app.api.calls import router as calls_router
 from app.api.messages import router as messages_router, supervisor_router
 from app.api.concierge import router as concierge_router
 from app.api.owner_transfer import router as transfer_router,media_router
+from app.api.owner_coaching import router as coaching_router,bridge_router
 from app.api.voice import router as voice_router
 from app.api.hours import router as hours_router
 from app.api.twilio_webhooks import router as twilio_router
@@ -51,6 +52,8 @@ def create_app(settings: Settings | None = None, *, gateway=None) -> FastAPI:
     app.include_router(twilio_router)
     app.include_router(transfer_router)
     app.include_router(media_router)
+    app.include_router(coaching_router)
+    app.include_router(bridge_router)
     app.include_router(voice_router)
     app.include_router(hours_router)
     app.include_router(live_router)
