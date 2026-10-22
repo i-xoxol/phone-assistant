@@ -72,6 +72,16 @@ def create_app(settings: Settings | None = None, *, gateway=None) -> FastAPI:
     if app.state.settings.mcp_enabled:
         from app.mcp.server import create_mcp
         app.state.mcp, app.state.oauth = create_mcp(app.state.manager)
+        if app.state.settings.appointments_enabled:
+            from mcp.server.auth.routes import create_protected_resource_routes
+            from app.appointments.mcp_auth import SCOPES
+            # The SDK uses required_scopes for discovery, which omits optional
+            # per-tool grants. Advertise all supported scopes without requiring
+            # them on existing phone.calls requests.
+            app.router.routes.extend(create_protected_resource_routes(
+                resource_url=app.state.mcp.settings.auth.resource_server_url,
+                authorization_servers=[app.state.mcp.settings.auth.issuer_url],
+                scopes_supported=['phone.calls', *SCOPES]))
         from urllib.parse import urlsplit
         from mcp.server.transport_security import TransportSecuritySettings
         app.mount('/', app.state.mcp.streamable_http_app(stateless_http=True, json_response=True,
