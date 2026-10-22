@@ -483,6 +483,25 @@ If caller_identity_ambiguous is true, do not offer the presented number for call
         instructions+=activity_policy;backend+=activity_policy
     instructions+=owner_identity_policy(settings)
     backend+=owner_identity_policy(settings)
+    from app.calling.style import STYLE_POLICY
+    instructions+=STYLE_POLICY
+    if settings.appointments_enabled and concierge:
+        from app.appointments.schemas import VOICE_TOOLS,VOICE_POLICY
+        tools.extend(VOICE_TOOLS);instructions+=VOICE_POLICY;backend+=VOICE_POLICY
+        instructions=instructions.replace('The supervisor must have completed and verified the booking itself. You cannot commit or schedule independently.',
+            'A booking requires either the existing verified supervisor result or the bounded local book_appointment result with state=confirmed.')
+        replacements={
+            'You have no direct calendar, email, contacts, booking or payment access.':'Only the listed bounded appointment readers and booking tool can access the calendar. Email, arbitrary contacts and payments remain unavailable.',
+            'You have no direct calendar, email, contacts, booking, payment or outbound-call access.':'Only the listed bounded appointment tools can access the calendar. Email, payments and arbitrary outbound calls remain unavailable.',
+            'Only an appointment_confirmed supervisor reply permits saying an ordinary appointment was actually booked.':'Only a verified appointment_confirmed supervisor reply or local state=confirmed permits saying a booking was completed.',
+            'Only the trusted supervisor can look up private context and perform authorized appointment actions.':'The trusted supervisor and listed bounded tools may perform their explicitly authorized appointment operations.',
+            'a booking still requires a verified supervisor result.':'a booking requires a verified supervisor or bounded local confirmed result.',
+            'A reservation always needs a verified supervisor result.':'A reservation needs a verified supervisor or bounded local confirmed result.'}
+        for old,new in replacements.items():instructions=instructions.replace(old,new);backend=backend.replace(old,new)
+        backend=backend.replace('Only get_call_context, request_supervisor, save_message, reach_owner and end_call are available.',
+            'Use only the explicitly listed tools, including the bounded appointment tools. No generic calendar operations.')
+        backend=backend.replace('Only get_call_context, request_supervisor, save_message and end_call are available.',
+            'Use only the explicitly listed tools, including the bounded appointment tools. No generic calendar operations.')
     return {'model':settings.openai_live_model, 'instructions':instructions,
         'input':[{'type':'message','role':'developer','content':[{'type':'input_text','text':opening}]}],
         'audio':{'format':{'type':'audio/pcmu', 'rate':8000}, 'output':{'voice':record.get('voice_name') or settings.openai_voice}},

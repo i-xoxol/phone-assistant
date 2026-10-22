@@ -103,14 +103,31 @@ def create_mcp(manager):
     if not origin:
         raise ValueError('PUBLIC_BASE_URL is required for remote MCP OAuth')
     provider = PairingOAuthProvider(settings.oauth_database_path, origin)
+    appointment_scopes=[]
+    if settings.appointments_enabled:
+        from app.appointments.mcp import SCOPES
+        appointment_scopes=SCOPES
     auth = AuthSettings(issuer_url=origin, resource_server_url=origin + '/mcp',
                         validate_token_resource=True,
                         client_registration_options=ClientRegistrationOptions(
-                            enabled=True, valid_scopes=['phone.calls'], default_scopes=['phone.calls']),
+                            enabled=True, valid_scopes=['phone.calls',*appointment_scopes], default_scopes=['phone.calls']),
                         revocation_options=RevocationOptions(enabled=True), required_scopes=['phone.calls'])
     events = PhoneEvents(manager, provider)
     manager.mcp_events = events
-    mcp = MCPServer('Phone Assistant', instructions=INSTRUCTIONS, auth_server_provider=provider,
+    instructions=INSTRUCTIONS
+    if settings.appointments_enabled:
+        instructions=instructions.replace('The live voice model has no calendar access.',
+            'The live voice backend has only the listed bounded appointment tools, gated by server policy.')
+        instructions+='''\nAPPOINTMENT TOOLS V1: Use check_appointment_slot/book_appointment/get_booking_status for this call's ordinary academic booking.
+Use the actual pending request UUID/deadline; progress is not a terminal reply. Existing phone.calls grants do not include
+the additional appointment read/book/manage scopes. Missing scope means needs_owner, never permission to bypass it.
+Before a write, inspect existing call-bound operations and wait for complete spoken payload readback plus fresh caller assent.
+Do not create the same appointment through another calendar connector. A local uncertain/sent write must be reconciled first.
+Only state=confirmed with verified persisted fields permits success. Injection accepted is separate from actual speech/receipt.
+Keep private appointments/notices out of set_call_fact and other shared context. Name matching permits only minimal ordinary
+appointment details. Family status requires an existing owner-established relationship and current explicit owner statement.
+Native supervision subscriptions/expiry are unchanged. The optional private Realtime schedule reader is read-only and owner-only.\n'''
+    mcp = MCPServer('Phone Assistant', instructions=instructions, auth_server_provider=provider,
                     auth=auth, extensions=[events], middleware=[advertise_events])
     read = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
     write = ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True)
@@ -435,10 +452,18 @@ def create_mcp(manager):
                 return RedirectResponse(destination, status_code=302, headers={'Cache-Control': 'no-store'})
             except ValueError as exc:
                 error = html.escape(str(exc))
+        requested_scopes=details['params'].get('scopes') or ['phone.calls']
+        appointment_grant=('Additional requested appointment access: '+', '.join(
+            html.escape(scope) for scope in requested_scopes if scope.startswith('phone.appointments.'))+
+            '. Booking access permits bounded ordinary calendar creation only after current caller consent; '
+            'read access permits private appointment status retrieval; manage access permits owner-provided '
+            'audience-scoped status notices and classification of existing contacts. No invitations, cancellation, or rescheduling.') if any(
+                scope.startswith('phone.appointments.') for scope in requested_scopes) else ''
         page = f'''<!doctype html><meta name="viewport" content="width=device-width"><title>Connect Phone Assistant</title>
         <main style="font:18px system-ui;max-width:38rem;margin:3rem auto;padding:1rem">
         <h1>Connect Phone Assistant</h1><p>{html.escape(details.get('client_name') or 'MCP client')}
         requests access to place paid outbound calls, read transcripts, press keypad digits and hang up.</p>
+        <p>{appointment_grant}</p>
         <p>This is the owner's private service. A one-time code generated on the service host is required.</p>
         <p>Returns to: {html.escape(urlsplit(str(details['params']['redirect_uri'])).netloc)}</p><p>{error}</p>
         <form method="post"><input type="hidden" name="request" value="{html.escape(key)}">
@@ -446,4 +471,7 @@ def create_mcp(manager):
         <button name="action" value="approve">Connect</button><button name="action" value="deny">Cancel</button></form></main>'''
         return HTMLResponse(page, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
             'X-Frame-Options': 'DENY', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://chatgpt.com http://localhost:* http://127.0.0.1:*; frame-ancestors 'none'"})
+    if settings.appointments_enabled:
+        from app.appointments.mcp import install
+        install(mcp,manager)
     return mcp, provider

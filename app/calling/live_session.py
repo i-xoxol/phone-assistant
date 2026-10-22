@@ -253,6 +253,13 @@ class MediaBridge:
                 raise ValueError('Stream mismatch')
             if message['event'] == 'media':
                 if message['media'].get('track') == 'inbound':
+                    if self.manager.settings.appointments_enabled:
+                        raw=base64.b64decode(message['media']['payload'],validate=True)
+                        if has_speech(raw):
+                            at=int(message['media'].get('timestamp',0))+self.transcript_offset_ms
+                            previous=self.manager.caller_activity.get(self.call_id,{})
+                            epoch=previous.get('epoch',0)+(at-previous.get('last_speech_ms',-1000)>400)
+                            self.manager.caller_activity[self.call_id]={'epoch':epoch,'last_speech_ms':at}
                     if self.inbound and not self.caller_spoke:
                         speech=has_speech(base64.b64decode(message['media']['payload'],validate=True))
                         self.input_speech_frames=self.input_speech_frames+1 if speech else 0

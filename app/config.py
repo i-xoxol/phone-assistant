@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,6 +70,32 @@ class Settings(BaseSettings):
     recording_notice_directory: Path = ROOT / 'data/recording-notices'
     inbound_missed_call_context: bool = False
     missed_call_notifications_enabled: bool = False
+    appointments_enabled: bool = False
+    owner_calendar_coaching_enabled: bool = False
+    appointments_writes_enabled: bool = False
+    appointment_sync_enabled: bool = False
+    appointment_database_path: Path = ROOT / 'data/appointments.sqlite3'
+    appointment_google_token_file: Path | None = None
+    appointment_account_namespace: str = ''
+    appointment_calendar_id: str = 'primary'
+    appointment_mirror_status_url: str = ''
+    appointment_mirror_window_verified: bool = False
+    appointment_office_event_ids: list[str] = Field(default_factory=list)
+    appointment_mirror_source_tenant: str = ''
+    appointment_mirror_source_calendar: str = ''
+
+    @model_validator(mode='after')
+    def calendar_boundary(self):
+        if (self.appointments_writes_enabled or self.appointment_sync_enabled) and not self.appointments_enabled:
+            raise ValueError('Appointment writes/indexing require the separately enabled appointment feature')
+        if self.appointments_enabled or self.owner_calendar_coaching_enabled:
+            if not self.appointment_google_token_file or not self.appointment_account_namespace or not self.appointment_mirror_status_url:
+                raise ValueError('Configure the existing Google credential boundary, account namespace and verified mirror status URL')
+            if self.appointment_database_path.resolve()==self.database_path.resolve():
+                raise ValueError('The private appointment registry must use a separate database')
+        if bool(self.appointment_mirror_source_tenant)!=bool(self.appointment_mirror_source_calendar):
+            raise ValueError('Mirror aliases require both verified source account and calendar namespaces')
+        return self
 
 
     def backend_options(self) -> dict:
@@ -87,7 +113,7 @@ class Settings(BaseSettings):
                 raise ValueError('WEBHOOK_URL must be an HTTPS URL without userinfo or a fragment')
         return value
 
-    @field_validator('database_path')
+    @field_validator('database_path','appointment_database_path')
     @classmethod
     def absolute_database(cls, path: Path) -> Path:
         return path if path.is_absolute() else ROOT / path

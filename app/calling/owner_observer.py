@@ -220,6 +220,7 @@ class TransferObserver:
         if action.startswith('whisper-'):
             if (form.get('CallSid')!=row['child_sid'] or row['mode']!='whisper' or not self.current(row)):
                 raise ValueError('Whisper destination mismatch')
+            if tid in self.paused:return str(response)
             wid=action.removeprefix('whisper-')
             with self.m.db.connect() as db:
                 whisper=db.execute('''SELECT w.*,COALESCE(d.evidence_ids,'[]') AS evidence_ids,d.source_turn
@@ -283,6 +284,8 @@ class TransferObserver:
             self.owner_addressed[tid]=time.monotonic()
             if re.search(r'\b(stop (?:coaching|listening)|pause coaching|be quiet)\b',text,re.I):
                 self.paused.add(tid)
+                self.audio={wid:asset for wid,asset in self.audio.items() if asset['transfer_id']!=tid}
+                with self.m.db.connect() as db:db.execute("UPDATE owner_whispers SET state='cancelled' WHERE transfer_id=? AND state IN ('requested','fetched')",(tid,))
                 self.requests.pop(tid,None);self.dirty.discard(tid)
                 if task:=self.coaches.pop(tid,None):task.cancel()
                 self.task(self.live.close(tid))
@@ -454,6 +457,7 @@ class TransferObserver:
         row=self.m.transfer.get(tid)
         asset=self.audio.get(wid)
         if not asset or asset['transfer_id']!=tid or asset['expires']<=time.monotonic(): raise KeyError(wid)
+        if tid in self.paused:raise KeyError(wid)
         if row['mode']!='whisper' or not row['accepted'] or not self.current(row): raise KeyError(wid)
         with self.m.db.connect() as db:
             whisper=db.execute('''SELECT w.*,COALESCE(d.evidence_ids,'[]') AS evidence_ids,d.source_turn

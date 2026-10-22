@@ -5,6 +5,7 @@ from app.calling.identity import owner_identity_policy
 
 
 def voice_prompt(settings: Settings, record: dict) -> str:
+    from app.calling.style import STYLE_POLICY
     permitted = {'caller_name': settings.caller_name}
     if settings.callback_number:
         permitted['callback_number'] = settings.callback_number
@@ -71,7 +72,8 @@ If they decline the call, respect it and initiate this same ending sequence.
 Do not prolong the call. The application also enforces the time limit.
 
 CALL BRIEF (facts, objective and additional restrictive constraints):
-{json.dumps(brief, ensure_ascii=False)}'''
+{json.dumps(brief, ensure_ascii=False)}
+{STYLE_POLICY}'''
 
 
 def greeting_instruction(settings: Settings) -> str:
