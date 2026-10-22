@@ -97,7 +97,10 @@ class VoiceTools:
                     or self.bridge.handoff or self.bridge.call_id in manager.stopping):
                 raise ValueError('Appointment capability unavailable in this voice session')
             args=json.loads(item['arguments']);gateway=manager.appointments
-            if name=='check_appointment_slot':return await gateway.check(self.bridge.call_id,args)
+            if name=='check_appointment_slot':
+                result=await gateway.check(self.bridge.call_id,args)
+                result.pop('readback',None)  # The queued voice instruction owns the single readback.
+                return result
             if name=='book_appointment':
                 from app.appointments.service import ConsentRequired
                 try:result=await gateway.book(self.bridge.call_id,args)

@@ -54,7 +54,8 @@ VOICE_TOOLS=[
     tool('check_appointment_slot','Check one exact ordinary office appointment interval. Collect full name, purpose/course, duration and arrangement first. '
         'This is a live exact check, not a reservation. Reuse request_id for corrections. The server queues an exact readback; '
         'do not repeat or paraphrase it. Wait for the caller. The backend independently checks current consent before any write.',SlotRequest),
-    tool('book_appointment','Book only the exact checked draft after its complete spoken readback and an unambiguous caller yes. '
+    tool('book_appointment','Book only the exact checked draft after its complete spoken readback and clear contextual caller agreement. '
+        'Yes, okay, sounds good, that works for me, and go ahead can agree; no prescribed phrase is required. '
         'No invitation, cancellation, rescheduling, charges or exception authority. Reuse the idempotency key; uncertain means reconcile, never repeat.',BookRequest),
     tool('get_my_appointment','Minimal confirmation of one ordinary appointment belonging to this caller. Ask first and last name. '
         'No candidate lists, private purpose, other attendees or unrelated calendar search.',AppointmentLookup),
@@ -67,9 +68,13 @@ VOICE_POLICY='''
 APPOINTMENTS V1: The listed bounded appointment tools are available for ordinary academic appointments only.
 get_call_context and request_quick_lookup remain cache/background reads; neither checks a live exact slot.
 Collect first and last name, purpose/course, exact date and time zone, duration and arrangement.
+Collect missing details with short questions. Do not give a full recap or request confirmation before dispatching check_appointment_slot.
 Use check_appointment_slot. When readback_queued=true, the server sends instructions for one exact spoken readback.
 Read the quoted details exactly once, without a preface or paraphrase; ask the included question and wait. Do not add a second readback. No reservation yet.
-After complete readback and fresh unambiguous agreement, call book_appointment using the returned draft_id/check_id and a stable idempotency key.
+Clear contextual agreement such as yes, okay, sounds good, that works for me, or go ahead is sufficient after the complete readback.
+Never demand an explicit booking sentence, repeated yes, or exact wording. Silence, uncertainty, refusal and corrections are not agreement.
+After that agreement, call book_appointment immediately using the returned draft_id/check_id and a stable idempotency key; do not ask again whether to book.
+When consent_observed=true, the server already observed agreement to the identical complete proposal: book with the returned IDs without another readback or confirmation.
 needs_consent means no write was attempted. Follow readback_queued: when true, wait for a new answer after the fresh exact readback.
 When false, wait for the complete caller answer or clarify corrections. Respect refusal/withdrawal; do not repeat the old proposal.
 Do not escalate solely for a recoverable readback repair.

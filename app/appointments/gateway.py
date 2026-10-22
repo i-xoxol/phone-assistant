@@ -6,7 +6,7 @@ import httpx
 from app.appointments.contracts import CalendarIdentity,ProviderFault
 from app.appointments.registry import Registry,appointment,name_key
 from app.appointments.service import BookingService,CallAuthority,ConsentEvidence
-from app.appointments.evidence import complete_readback,caller_identified,utterances,affirmative_answer
+from app.appointments.evidence import complete_readback,caller_identified,utterances,affirmative_answer,spoken_consent
 from app.appointments.disclosure import PrivateNotices
 from app.appointments.schemas import SlotRequest,BookRequest,AppointmentLookup
 from app.storage.models import TERMINAL,CallUpdateRequest
@@ -123,24 +123,35 @@ class AppointmentGateway:
             turns=[dict(t) for t in db.execute('SELECT * FROM transcript_events WHERE call_id=? AND id>? ORDER BY start_ms,id',
                 (draft['call_id'],readback['after_transcript_id'] if readback else 2**63-1))]
         # Acknowledgment alone is insufficient: require observed assistant readback followed by caller assent.
-        heard=False;last_caller=[]
-        assistant='';last_speaker=None;readback_end=-1
-        for turn in turns:
-            if turn['speaker']=='assistant':
-                if last_speaker=='callee':assistant=''
-                assistant+=turn['text']
-                heard=complete_readback(assistant,value);last_caller=[];readback_end=turn['end_ms']
-            elif turn['speaker']=='callee' and heard:
-                if turn['start_ms']<readback_end:heard=False
-                else:last_caller.append(turn['text'])
-            last_speaker=turn['speaker']
-        yes=affirmative_answer(''.join(last_caller))
+        heard,yes=spoken_consent(turns,value)
         # All current caller audio is part of the revision: any later changed detail/withdrawal fails closed.
         activity=getattr(self.m,'caller_activity',{}).get(draft['call_id'])
         caption_end=max((t['end_ms'] for t in turns if t['speaker']=='callee'),default=-1)
         audio_observed=not activity or caption_end>=activity['last_speech_ms']
         return ConsentEvidence(draft['payload_hash'],self.revision(draft['call_id']),
             bool(accepted and accepted['status']=='acknowledged' and heard and audio_observed),yes)
+
+    def reuse_readback(self,draft):
+        # A supervisor handoff/check must not repeat an already agreed identical proposal.
+        # Copy only a server-bound, acknowledged, currently valid spoken proof, never a model flag.
+        with self.store.connect() as db:
+            candidates=[dict(r) for r in db.execute('SELECT d.* FROM appointment_drafts d JOIN appointment_readbacks r '
+                'ON r.draft_id=d.draft_id AND r.draft_revision=d.revision WHERE d.call_id=? AND d.payload_hash=? '
+                'ORDER BY r.created_at DESC',(draft['call_id'],draft['payload_hash']))]
+        for candidate in candidates:
+            try:source_authority=self.service.current(candidate)
+            except ValueError:continue
+            evidence=self.consent(candidate,None)
+            if not (evidence.readback_observed and evidence.affirmative):continue
+            with self.store.connect() as db:
+                # Reusing proof cannot renew the authority under which it was obtained.
+                deadline=min(source_authority.deadline,self.service.current(draft).deadline).isoformat()
+                db.execute('UPDATE appointment_requests SET deadline=? WHERE request_id=?',(deadline,draft['request_id']))
+                db.execute('INSERT OR IGNORE INTO appointment_readbacks SELECT ?,?,update_id,created_at,after_transcript_id '
+                    'FROM appointment_readbacks WHERE draft_id=? AND draft_revision=?',
+                    (draft['draft_id'],draft['revision'],candidate['draft_id'],candidate['revision']))
+            return True
+        return False
 
     async def queue_readback(self,draft,*,repeat=False):
         from uuid import UUID,uuid5
@@ -178,7 +189,8 @@ class AppointmentGateway:
             return {'state':'needs_consent','reason':'latest_caller_answer_requires_clarification',
                 'readback_queued':False,'calendar_write_attempted':False,
                 'instruction':'Nothing is booked. Wait for the complete caller answer. Respect a refusal or withdrawal; '
-                    'clarify corrections and check the changed details. Do not repeat the old proposal or book without fresh complete agreement.'}
+                    'clarify corrections and check the changed details. Natural agreement is enough after a complete readback; '
+                    'never require the caller to recite a booking phrase. Do not repeat the old proposal after a refusal.'}
         queued=await self.queue_readback(draft,repeat=True)
         return {'state':'needs_consent' if queued else 'needs_details',
             'reason':'complete_readback_and_fresh_assent_required' if queued else 'arrangement_too_long_for_clear_readback',
@@ -197,11 +209,20 @@ class AppointmentGateway:
             try:self.m.db.supervisor_request(rid)
             except KeyError:pass
             else:await self.progress(rid,'conflict',result['check_id'])
-        if result['decision']=='available':
+        reused=result['decision']=='available' and self.reuse_readback(draft)
+        if reused:
+            deadline=self.service.current(draft).deadline
+            if datetime.fromisoformat(result['expires_at'])>deadline:
+                result['expires_at']=deadline.isoformat()
+                with self.store.connect() as db:db.execute('UPDATE appointment_checks SET expires_at=? WHERE check_id=?',
+                    (result['expires_at'],result['check_id']))
+        if result['decision']=='available' and not reused:
             if not await self.queue_readback(draft):return {'state':'needs_details','reason':'arrangement_too_long_for_clear_readback'}
         return {**result,'draft_id':draft['draft_id'],'request_id':rid,'schema_version':'1.0',
-            'readback':spoken_readback(appointment(draft)),'readback_queued':result['decision']=='available',
-            'instruction':'The readback is queued when available; do not repeat it. Wait for fresh caller agreement after complete readback. Nothing is booked.'}
+            'readback':spoken_readback(appointment(draft)),'readback_queued':result['decision']=='available' and not reused,
+            'consent_observed':reused,
+            'instruction':'The identical complete readback and current caller agreement are already observed. Do not repeat the details or ask for another confirmation; call book_appointment with these IDs and a stable idempotency key. Nothing is booked yet.' if reused
+                else 'The server owns the single queued readback when available. Do not add a second summary or readback. Natural contextual agreement is sufficient; never demand a prescribed booking phrase. Then call book_appointment. Nothing is booked yet.'}
 
     async def progress(self,request_id,phase,check_id=None):
         from uuid import UUID,uuid5
