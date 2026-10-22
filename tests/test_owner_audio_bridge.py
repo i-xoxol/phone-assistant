@@ -201,6 +201,8 @@ def test_revoked_context_and_pause_withhold_mixed_audio_and_clear_only_the_owner
     room.legs={'caller':Leg(caller,'MZ_CALLER'),'owner':Leg(owner,'MZ_OWNER')}
     snapshot=facts_key(pool.context(tid,None)['CURRENT_APPROVED_FACTS'])
     hint=(ch.generation,snapshot,b'\x80'*FRAME)
+    ch.delivery_permission=(ch.generation,snapshot)
+    ch.delivery_until=__import__('time').monotonic()+30
     async def check():
         await room.send('owner',SILENCE,hint)
         assert base64.b64decode(owner.messages[-1]['media']['payload'])!=SILENCE

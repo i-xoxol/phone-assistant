@@ -28,6 +28,10 @@ GPT-Realtime 2.1 to hear separately labelled owner/caller audio and stream brief
 proactive hints only to the owner's handset, without Luna or transcript-triggered replies.
 Its optional local audio bridge uses the two existing phone connections, mixes coaching
 only into the owner's earpiece audio, and falls back to a normal Twilio conference on connection loss.
+The optional [appointment upgrade](docs/appointments.md), disabled by default, adds
+exact calendar checks, consented ordinary booking, private repeat-caller confirmation,
+and direct read-only schedule tools for Realtime coaching. See its separate release
+and permission requirements before enabling it.
 
 <p align="center">
   <a href="docs/getting-started.md">Set it up</a> ·
@@ -312,7 +316,7 @@ deploy/            Example systemd unit
 ## Current limits
 
 - Single owner and single worker; no multi-tenant isolation or production fleet management.
-- No voicemail detection, direct calendar/email access, or independent booking by the voice model. Incoming concierge actions require a connected, authorized supervisor. Audio recording is optional and requires prepared notices.
+- No voicemail detection or direct email access. Calendar booking is an optional, disabled-by-default feature with separate grants and strict call-bound consent checks; see [appointment upgrade](docs/appointments.md). Audio recording is optional and requires prepared notices.
 - DTMF briefly reconnects the voice stream; it is not uninterrupted keypad injection.
 - Conversation permissions are mainly prompt-based. The exposed voice tools are restricted,
   but a prompt is not a deterministic guarantee of every spoken response.

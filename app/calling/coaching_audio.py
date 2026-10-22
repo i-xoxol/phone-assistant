@@ -86,6 +86,8 @@ async def capture_with_coaching(ws,row,side,stream,offset,*,on_audio=None,on_mar
                         done,_=await asyncio.wait((reader,sender),return_when=asyncio.FIRST_COMPLETED)
                         for task in done:task.result()
                         if sender in done:await asyncio.sleep(.8)
+                        elif m.observer.current(m.transfer.get(tid)):
+                            m.observer.stream_state(tid,side,'degraded')
                     finally:
                         reader.cancel();sender.cancel();await asyncio.gather(reader,sender,return_exceptions=True)
         except asyncio.CancelledError:raise

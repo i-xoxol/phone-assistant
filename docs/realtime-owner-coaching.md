@@ -19,6 +19,14 @@ or the owner saying “Let me check my calendar for next week.” Unrelated conv
 should produce no hint. The model has a silent `skip_hint` function; it cannot book,
 spend, dial, change permissions, transfer or hang up.
 
+The optional appointment adapter can also provide `get_owner_schedule` directly to
+this model when `OWNER_CALENDAR_COACHING_ENABLED=true`. It reads at most seven days
+per lookup from the configured Google aggregate, with a four-second read budget.
+Fresh, complete coverage is required; mirror lag remains possible. Schedule labels
+are owner-only and never added to shared phone facts, the caller model or caller audio.
+This is read-only: no booking, cancellation or invitation tools are offered to coaching.
+See [calendar tools and release boundary](appointments.md) before enabling it.
+
 ## Audio and identity
 
 ```mermaid

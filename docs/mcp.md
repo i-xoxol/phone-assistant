@@ -149,6 +149,13 @@ uncertainty, voice errors, or decisions still requiring the owner.
 
 ## Reusable plugin template
 
+The disabled-by-default [appointment tools](appointments.md) use schema version
+`1.0` and separate `phone.appointments.read`, `phone.appointments.book` and
+`phone.appointments.manage` grants. Existing `phone.calls` tokens and native event
+subscriptions do not acquire these permissions automatically. Private Realtime
+`get_owner_schedule` is an in-process owner-only capability, not an incoming-caller
+or generic MCP calendar search tool.
+
 `plugin/` contains a generic manifest, server configuration, and a supervising
 agent skill. The committed URL is **`https://phone.example.com/mcp`**, an
 intentional placeholder. Customize a local copy for your own service before

@@ -28,6 +28,7 @@ def create_app(settings: Settings | None = None, *, gateway=None) -> FastAPI:
         await app.state.webhook.start()
         if hasattr(app.state.manager, 'mcp_events'):
             await app.state.manager.mcp_events.start()
+        if app.state.manager.appointments:app.state.manager.appointments.start()
         try:
             if hasattr(app.state, 'mcp'):
                 async with app.state.mcp.session_manager.run():

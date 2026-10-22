@@ -6,6 +6,7 @@ import hmac
 import json
 import re
 import time
+from datetime import datetime
 from contextlib import suppress
 from uuid import uuid4
 
@@ -44,6 +45,10 @@ class Channel:
         self.pending_audio=False
         self.held_owner_audio=None
         self.transfer_id=None
+        self.call_id=None
+        self.delivery_permission=None
+        self.delivery_until=0
+        self.facts_delivery_until=float('inf')
 
 
 class OwnerRealtime:
@@ -103,17 +108,33 @@ class OwnerRealtime:
                 (tid,str(uuid4()),uuid4().hex,utcnow().isoformat(),'preparing'))
         ch=self.channels[tid]=Channel()
         ch.transfer_id=tid
+        ch.call_id=self.m.transfer.get(tid)['call_id']
         ch.session=self.factory(self.m.settings,lambda state,**v:self.state(tid,state,**v))
+        if self.m.settings.owner_calendar_coaching_enabled and self.m.appointments:
+            async def calendar_lookup(args):
+                from app.appointments.coaching import owner_schedule
+                generation=ch.generation
+                def authorized():
+                    return (self.active(tid) and self.channels.get(tid) is ch and tid not in self.o.paused
+                        and ch.generation==generation and ch.call_id not in self.m.stopping)
+                result=await owner_schedule(self.m.appointments,args,authorized)
+                if result.get('status')=='current':
+                    ch.delivery_until=min(ch.facts_delivery_until,time.monotonic()+30,time.monotonic()+max(0,
+                        (datetime.fromisoformat(result['expires_at'])-utcnow()).total_seconds()))
+                return result
+            ch.session.calendar_lookup=calendar_lookup
         ch.starter=self.o.task(self.start(tid,ch))
         ch.worker=self.o.task(self.work(tid,ch))
         return ch
 
     async def start(self,tid,ch):
         create_attempted=False
+        peer_wait_started=False
         try:
             await asyncio.wait_for(ch.session.ready.wait(),12)
             if ch.session.closed.is_set():raise RuntimeError('Coach provider unavailable')
             if self.m.transfer.get(tid)['strategy']=='bridge':
+                peer_wait_started=True
                 await self.o.audio_bridge.wait_ready(tid)
                 if not self.active(tid):return
                 ch.connected.set();self.update(tid,status='streaming');self.state(tid,'streaming')
@@ -144,6 +165,9 @@ class OwnerRealtime:
             safe_code=code if type(code) is int and 0<code<1000000 else None
             self.update(tid,status=status,error_code='twilio_'+str(safe_code) if safe_code else 'coach_setup_'+status)
             self.state(tid,'unavailable',error_type=type(exc).__name__,twilio_code=safe_code)
+            if peer_wait_started and self.m.transfer.get(tid)['strategy']=='bridge' and self.o.current(self.m.transfer.get(tid)):
+                # Losing coaching readiness cannot leave a partial human bridge waiting forever.
+                await self.o.audio_bridge.fallback(tid,'peer_not_ready')
             await self.close(tid,from_starter=True)
 
     async def wait_for_owner(self,tid):
@@ -244,6 +268,7 @@ class OwnerRealtime:
 
     def context_changed(self):
         for tid,ch in list(self.channels.items()):
+            ch.delivery_permission=None
             if not self.active(tid) or tid in self.o.paused or not ch.audio_history:continue
             ch.pending_audio=True;ch.changed.set();ch.generation+=1
             if ch.job and not ch.job.done():ch.job.cancel()
@@ -312,6 +337,10 @@ class OwnerRealtime:
             db.execute('INSERT INTO owner_realtime_hints VALUES (?,?,?,?,?,?,?,NULL)',
                 (wid,tid,utcnow().isoformat(),'','generating',snapshot,request['turn_id'] if request else None))
         first=None
+        ch.delivery_permission=(generation,snapshot)
+        expiries=[datetime.fromisoformat(f['expires_at']) for f in context['CURRENT_APPROVED_FACTS'] if f.get('expires_at')]
+        ch.facts_delivery_until=time.monotonic()+max(0,(min(expiries)-utcnow()).total_seconds()) if expiries else float('inf')
+        ch.delivery_until=min(ch.facts_delivery_until,time.monotonic()+(30 if expiries else 8))
         async def audio(raw):
             nonlocal first
             if not self.valid(tid,ch,generation,snapshot):raise ValueError('Superseded coaching context')
@@ -340,8 +369,15 @@ class OwnerRealtime:
         return (self.active(tid) and tid not in self.o.paused and generation==ch.generation
             and snapshot==facts_key(sorted(self.o.facts(self.m.transfer.get(tid)),key=lambda f:f['fact_id'])[:80]))
 
+    def valid_frame(self,tid,ch,generation,snapshot):
+        """Hot path is memory-only; authority is validated before generation and invalidated on changes."""
+        return (self.channels.get(tid) is ch and not ch.closed.is_set() and tid not in self.o.paused
+            and ch.call_id not in self.m.stopping and ch.generation==generation
+            and ch.delivery_permission==(generation,snapshot) and time.monotonic()<ch.delivery_until)
+
     async def clear(self,ch):
         async with ch.clear_lock:
+            ch.delivery_permission=None
             while not ch.queue.empty():
                 with suppress(asyncio.QueueEmpty):ch.queue.get_nowait()
             for future in ch.marks.values():
@@ -413,7 +449,7 @@ class OwnerRealtime:
             async def send():
                 while self.active(tid):
                     generation,snapshot,packet=await ch.queue.get()
-                    if not self.valid(tid,ch,generation,snapshot):await self.clear(ch);continue
+                    if not self.valid_frame(tid,ch,generation,snapshot):await self.clear(ch);continue
                     if isinstance(packet,dict):
                         await ws.send_json({'event':'mark','streamSid':ch.stream_sid,'mark':{'name':packet['mark']}})
                     else:

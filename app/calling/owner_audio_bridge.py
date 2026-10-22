@@ -20,6 +20,7 @@ from app.calling.transfer import remaining_seconds
 from app.logging_config import log_event
 
 FRAME=160  # 20 ms, PCMU/8 kHz, mono. No WAV headers on either WebSocket.
+PEER_ATTACH_SECONDS=15
 SILENCE=b'\xff'*FRAME
 DECODE=tuple(mulaw_sample(i) for i in range(256))
 ENCODE=bytes(linear_mulaw(i) for i in range(-32768,32768))
@@ -55,10 +56,12 @@ class Room:
         self.b=bridge;self.tid=tid;self.legs={};self.ready=asyncio.Event();self.closed=asyncio.Event()
         self.call_id=bridge.m.transfer.get(tid)['call_id']
         self.pump=None;self.hint=None;self.late_frames=0
+        self.peer_watch=None
 
     def attach(self,side,leg):
         if side in self.legs or self.closed.is_set():raise ValueError('Duplicate bridge leg')
         self.legs[side]=leg
+        if self.peer_watch is None:self.peer_watch=self.b.o.task(self.watch_peer())
         if len(self.legs)==2:
             self.b.update(self.tid,state='active');self.ready.set()
             self.pump=self.b.o.task(self.relay())
@@ -70,13 +73,13 @@ class Room:
         while True:
             if self.hint:
                 generation,snapshot,raw=self.hint
-                if not pool.valid(self.tid,ch,generation,snapshot):self.hint=None;continue
+                if not pool.valid_frame(self.tid,ch,generation,snapshot):self.hint=None;continue
                 frame=raw[:FRAME];rest=raw[FRAME:]
                 self.hint=(generation,snapshot,rest) if rest else None
                 return (generation,snapshot,frame+SILENCE[:FRAME-len(frame)]),marks
             try:generation,snapshot,packet=ch.queue.get_nowait()
             except asyncio.QueueEmpty:return None,marks
-            if not pool.valid(self.tid,ch,generation,snapshot):continue
+            if not pool.valid_frame(self.tid,ch,generation,snapshot):continue
             if isinstance(packet,dict):marks.append(packet['mark'])
             else:self.hint=(generation,snapshot,packet)
 
@@ -91,9 +94,23 @@ class Room:
                     if ch and wid in ch.marks and not ch.marks[wid].done():
                         await asyncio.wait_for(leg.ws.send_json({'event':'mark','streamSid':leg.stream,
                             'mark':{'name':wid}}),.3)
-                if hint and ch and pool.valid(self.tid,ch,hint[0],hint[1]):raw=mix_private(raw,hint[2])
+                if hint and ch and pool.valid_frame(self.tid,ch,hint[0],hint[1]):raw=mix_private(raw,hint[2])
             await asyncio.wait_for(leg.ws.send_json({'event':'media','streamSid':leg.stream,
                 'media':{'payload':base64.b64encode(raw).decode()}}),.3)
+
+    async def watch_peer(self):
+        """Human recovery is independent of model setup, including a model that never becomes ready."""
+        try:
+            async with asyncio.timeout(self.b.m.settings.owner_transfer_ring_seconds+45):
+                while not self.closed.is_set() and not self.ready.is_set():
+                    row=self.b.m.transfer.get(self.tid)
+                    if not self.b.o.current(row):return
+                    if row['accepted']:
+                        await asyncio.wait_for(self.ready.wait(),PEER_ATTACH_SECONDS)
+                        return
+                    await asyncio.sleep(.2)
+        except TimeoutError:
+            if not self.closed.is_set():await self.b.fallback(self.tid,'peer_attachment_timeout')
 
     async def relay(self):
         deadline=time.monotonic()+.04  # A small initial jitter cushion, never a finished-clip buffer.
@@ -189,6 +206,8 @@ class OwnerAudioBridge:
             if self.o.streams.get(key) is leg.handler:self.o.streams.pop(key,None)
         if room.pump and room.pump is not asyncio.current_task():
             room.pump.cancel();await asyncio.gather(room.pump,return_exceptions=True)
+        if room.peer_watch and room.peer_watch is not asyncio.current_task():
+            room.peer_watch.cancel();await asyncio.gather(room.peer_watch,return_exceptions=True)
         async def close(leg):
             with suppress(Exception):await asyncio.wait_for(leg.ws.close(),1)
         await asyncio.gather(*(close(leg) for leg in room.legs.values()))

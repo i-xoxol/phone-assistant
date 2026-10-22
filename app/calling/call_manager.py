@@ -29,6 +29,7 @@ class CallManager:
         self.db.on_event = self.events.notify
         self.tool_tasks = set()
         self.stopping = set()
+        self.caller_activity = {}
         self.supervisor_tasks = {}
         self.context = ConciergeContext(database)
         from app.calling.hours import OperatingHours
@@ -49,6 +50,10 @@ class CallManager:
         self.screening=OwnerScreening(self)
         from app.calling.owner_observer import TransferObserver
         self.observer = TransferObserver(self)
+        self.appointments = None
+        if settings.appointments_enabled or settings.owner_calendar_coaching_enabled:
+            from app.appointments.gateway import AppointmentGateway
+            self.appointments = AppointmentGateway(self)
 
     def result(self, call_id):
         return {**self.db.get(call_id),'lookup_requests':self.lookup.list_for_call(call_id),
@@ -162,6 +167,10 @@ class CallManager:
             raise ValueError('Owner contact is handling this call; no new automated booking')
         if reply.outcome == 'appointment_confirmed' and not record['inbound_booking_allowed']:
             raise ValueError('This call has no standing booking authorization; ask the owner first')
+        if reply.outcome=='appointment_confirmed' and self.settings.appointments_enabled and self.appointments:
+            with self.appointments.store.connect() as db:
+                pending=db.execute("SELECT 1 FROM booking_operations WHERE call_id=? AND state!='confirmed'",(record['call_id'],)).fetchone()
+            if pending:raise ValueError('Reconcile the existing local booking operation before a terminal confirmation')
         headings = {'information':'Supervisor verified information; no booking is confirmed:',
             'appointment_confirmed':'Supervisor verified the appointment was actually booked:',
             'needs_owner':'Supervisor needs owner approval; make no commitment:',
@@ -180,6 +189,7 @@ class CallManager:
                 'note':'Reply injection is not proof the caller heard it. Verify transcript; never repeat a booking on a delivery retry.'}
 
     async def stop_supervision(self):
+        if self.appointments:await self.appointments.close()
         await self.screening.stop()
         await self.observer.stop()
         await self.lookup.stop()
