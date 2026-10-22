@@ -9,6 +9,8 @@ from app.appointments.service import BookingService,CallAuthority,ConsentEvidenc
 from app.appointments.evidence import complete_readback,caller_identified,utterances,affirmative_answer,spoken_consent
 from app.appointments.disclosure import PrivateNotices
 from app.appointments.schemas import SlotRequest,BookRequest,AppointmentLookup
+from app.appointments import confirmation
+from app.logging_config import log_event
 from app.storage.models import TERMINAL,CallUpdateRequest
 
 
@@ -122,12 +124,26 @@ class AppointmentGateway:
         with self.m.db.connect() as db:
             turns=[dict(t) for t in db.execute('SELECT * FROM transcript_events WHERE call_id=? AND id>? ORDER BY start_ms,id',
                 (draft['call_id'],readback['after_transcript_id'] if readback else 2**63-1))]
+        # Late captions can predate the queued instruction despite a newer database ID.
+        if accepted and accepted.get('end_ms') is not None:
+            turns=[t for t in turns if t['start_ms']>=accepted['end_ms']]
+        matcher=None
+        if accepted and confirmation.eligible(value,self.clock(),self.service.policy.zone):
+            content=accepted['content']
+            short=content==confirmation.SHORT+confirmation.time_text(value)+'. Is that correct?'
+            compact=content==confirmation.COMPACT+confirmation.details_text(value)+'. Is that correct?'
+            if compact or (short and confirmation.established_details(self.transcript(draft['call_id']),value)):
+                matcher=lambda text:complete_readback(text,value) or confirmation.matches(text,value,short=short)
         # Acknowledgment alone is insufficient: require observed assistant readback followed by caller assent.
-        heard,yes=spoken_consent(turns,value)
+        heard,yes=spoken_consent(turns,value,matches=matcher)
         # All current caller audio is part of the revision: any later changed detail/withdrawal fails closed.
         activity=getattr(self.m,'caller_activity',{}).get(draft['call_id'])
         caption_end=max((t['end_ms'] for t in turns if t['speaker']=='callee'),default=-1)
         audio_observed=not activity or caption_end>=activity['last_speech_ms']
+        if not (accepted and accepted['status']=='acknowledged' and heard and audio_observed and yes):
+            log_event('appointment_consent_evidence',call_id=draft['call_id'],
+                readback_acknowledged=bool(accepted and accepted['status']=='acknowledged'),
+                readback_spoken=heard,caller_affirmative=yes,captions_current=audio_observed)
         return ConsentEvidence(draft['payload_hash'],self.revision(draft['call_id']),
             bool(accepted and accepted['status']=='acknowledged' and heard and audio_observed),yes)
 
@@ -153,12 +169,26 @@ class AppointmentGateway:
             return True
         return False
 
+    def readback_plan(self,draft,*,fresh=False):
+        if not fresh:
+            with self.store.connect() as db:row=db.execute('SELECT update_id FROM appointment_readbacks WHERE draft_id=? AND draft_revision=?',
+                (draft['draft_id'],draft['revision'])).fetchone()
+            queued=self.m.db.call_update(draft['call_id'],row['update_id']) if row else None
+            if queued:
+                for prefix in (confirmation.SHORT,confirmation.COMPACT,'Read these quoted details exactly, without a preface, then wait:\n'):
+                    if queued['content'].startswith(prefix):return prefix,queued['content'][len(prefix):]
+        value=appointment(draft)
+        if confirmation.eligible(value,self.clock(),self.service.policy.zone):
+            short=confirmation.established_details(self.transcript(draft['call_id']),value)
+            prefix=confirmation.SHORT if short else confirmation.COMPACT
+            text=(confirmation.time_text(value) if short else confirmation.details_text(value))+'. Is that correct?'
+            return prefix,text
+        return 'Read these quoted details exactly, without a preface, then wait:\n',f'{value.first_name} {value.last_name}, '+spoken_readback(value)
+
     async def queue_readback(self,draft,*,repeat=False):
         from uuid import UUID,uuid5
         self.service.current(draft)
-        value=appointment(draft)
-        text=f'{value.first_name} {value.last_name}, '+spoken_readback(value)
-        instruction='Read these quoted details exactly, without a preface, then wait:\n'+text
+        prefix,text=self.readback_plan(draft,fresh=repeat);instruction=prefix+text
         if len(text.encode())>330 or len(instruction.encode())>400:return False
         with self.m.db.connect() as db:cursor=db.execute('SELECT coalesce(max(id),0) FROM transcript_events WHERE call_id=?',(draft['call_id'],)).fetchone()[0]
         uid=uuid5(UUID(draft['draft_id']),'readback-'+str(draft['revision'])+('-after-'+str(cursor) if repeat else ''))
@@ -219,7 +249,7 @@ class AppointmentGateway:
         if result['decision']=='available' and not reused:
             if not await self.queue_readback(draft):return {'state':'needs_details','reason':'arrangement_too_long_for_clear_readback'}
         return {**result,'draft_id':draft['draft_id'],'request_id':rid,'schema_version':'1.0',
-            'readback':spoken_readback(appointment(draft)),'readback_queued':result['decision']=='available' and not reused,
+            'readback':self.readback_plan(draft)[1],'readback_queued':result['decision']=='available' and not reused,
             'consent_observed':reused,
             'instruction':'The identical complete readback and current caller agreement are already observed. Do not repeat the details or ask for another confirmation; call book_appointment with these IDs and a stable idempotency key. Nothing is booked yet.' if reused
                 else 'The server owns the single queued readback when available. Do not add a second summary or readback. Natural contextual agreement is sufficient; never demand a prescribed booking phrase. Then call book_appointment. Nothing is booked yet.'}
@@ -266,7 +296,8 @@ class AppointmentGateway:
         uid=uuid5(UUID(result['operation_id']),'verified-booking-result')
         with self.store.connect() as db:db.execute('INSERT INTO appointment_delivery VALUES(?,?,?,NULL)',(result['operation_id'],str(uid),cursor))
         draft=self.store.get('appointment_drafts','draft_id',result['draft_id']);value=appointment(draft)
-        text='Confirmed '+spoken_readback(value).removesuffix(' Is that correct?')
+        text=('Confirmed. '+confirmation.time_text(value)+'.' if confirmation.eligible(value,self.clock(),self.service.policy.zone)
+            else 'Confirmed '+spoken_readback(value).removesuffix(' Is that correct?'))
         try:
             with self.store.measure('result_injection'):await self.m.send_call_update(call_id,CallUpdateRequest(mode='instructions',
                 content='Verified booking. Read exactly to the caller:\n'+text,update_id=uid))
@@ -282,11 +313,18 @@ class AppointmentGateway:
         said='';spoken=False;receipt=False
         operation=self.store.get('booking_operations','operation_id',oid)
         draft=self.store.get('appointment_drafts','draft_id',operation['draft_id']);value=appointment(draft)
+        brief_result=bool(update and confirmation.eligible(value,self.clock(),self.service.policy.zone)
+            and update['content']=='Verified booking. Read exactly to the caller:\nConfirmed. '+confirmation.time_text(value)+'.')
+        def verified_speech(text):
+            if complete_readback(text,value,include_identity=False,require_confirmation=True):return True
+            if brief_result:
+                positive=re.fullmatch(r'\s*(?:Okay[, .]+)?Confirmed[, .]+(.+)',text,re.I)
+                return bool(positive and confirmation.matches(positive[1]+' Is that correct?',value,short=True))
+            return False
         for turn in utterances(turns):
             if turn['speaker']=='assistant':
                 said+=turn['text']+' '
-                spoken=spoken or (complete_readback(said,value,include_identity=False,require_confirmation=True)
-                    or complete_readback(turn['text'],value,include_identity=False,require_confirmation=True))
+                spoken=spoken or verified_speech(said) or verified_speech(turn['text'])
             else:
                 said=''
                 if spoken and turn['speaker']=='callee' and normalized(turn['text']) in ('yes','correct','thankyou','thanks'):receipt=True

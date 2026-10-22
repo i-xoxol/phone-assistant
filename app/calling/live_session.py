@@ -203,7 +203,8 @@ class MediaBridge:
         expected = 'session.' + {'context':'thinking', 'say':'commentary', 'instructions':'instructions'}[row['mode']] + '.appended'
         if data['type'] == expected:
             self.manager.db.finish_update(self.call_id, update_id, self.session_id, 'acknowledged',
-                start_ms=data.get('start_ms'), end_ms=data.get('end_ms'))
+                start_ms=data['start_ms']+self.transcript_offset_ms if data.get('start_ms') is not None else None,
+                end_ms=data['end_ms']+self.transcript_offset_ms if data.get('end_ms') is not None else None)
         elif data['type'] == 'error':
             # An invalid append must not tear down an otherwise healthy phone call.
             self.manager.db.finish_update(self.call_id, update_id, self.session_id,

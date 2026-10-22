@@ -2,6 +2,8 @@
 import re,unicodedata
 from zoneinfo import ZoneInfo
 
+READBACK_PREFIXES=('','Okay','OK','All right','Alright','Right','Sure','Thank you','Thanks',
+    'Let me confirm','Let me confirm that','Just to confirm','Thank you let me confirm that','Okay let me confirm')
 
 def words(text):
     text=unicodedata.normalize('NFKC',text).casefold().replace('’',"'")
@@ -39,12 +41,13 @@ def appointment_continuation(text):
     pause=r'(?:(?:just )?(?:a|one) moment(?: please)?|give me (?:just )?(?:a|one) moment(?: please)?)'
     status=(r"(?:let me|i will|i'll|i am|i'm) (?:check|checking|verify|verifying|finish|finalize|complete|book|booking|schedule|scheduling|process|processing) "
         r'(?:'+target+r'|the details|the final step|that step|the request)(?: (?:now|for you|with the calendar|on the calendar))?')
-    unit=r'(?:'+acknowledgment+'|'+pause+'|'+status+'|'+question+r')'
+    booking=r'(?:booking|scheduling) '+target+r'(?: now| for you)?'
+    unit=r'(?:'+acknowledgment+'|'+pause+'|'+status+'|'+booking+'|'+question+r')'
     return bool(re.fullmatch(unit+r'(?: '+unit+r')*',normalized)
         and ('?' not in text or re.search(question,normalized)))
 
 
-def spoken_consent(turns,value):
+def spoken_consent(turns,value,*,matches=None):
     """Bind agreement to a complete proposal, retaining it across harmless assistant follow-ups."""
     blocks=[]
     for turn in turns:
@@ -54,7 +57,7 @@ def spoken_consent(turns,value):
     heard=False;answer='';readback_end=-1
     for block in blocks:
         if block['speaker']=='assistant':
-            if complete_readback(block['text'],value):
+            if (matches(block['text']) if matches else complete_readback(block['text'],value)):
                 heard=True;answer='';readback_end=block['end_ms']
             elif not (heard and appointment_continuation(block['text'])):
                 heard=False;answer=''
@@ -77,7 +80,7 @@ def speech_words(text):
     return tuple(str(int(w)) if w.isdecimal() else w for w in words(text))
 
 
-def date_words(start):
+def date_words(start,*,include_year=True):
     """Exact spoken date variants, confined to the date field (never other quantities)."""
     units=('zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen '
         'fifteen sixteen seventeen eighteen nineteen').split()
@@ -99,7 +102,7 @@ def date_words(start):
             for last in {cardinal(tail),cardinal(tail).replace(' ','-')}:
                 years.update({'two thousand '+last,'two thousand and '+last})
                 if tail>=10:years.add('twenty '+last)
-    return {speech_words(start.strftime('%B')+' '+d+' '+y) for d in days for y in years}
+    return {speech_words(start.strftime('%B')+' '+d+(' '+y if include_year else '')) for d in days for y in years}
 
 
 def complete_readback(text,value,*,include_identity=True,require_confirmation=False):
@@ -117,7 +120,7 @@ def complete_readback(text,value,*,include_identity=True,require_confirmation=Fa
     prefixes=[value.first_name+' '+value.last_name] if include_identity else [
         '', 'Confirmed', 'Calendar and private registry verified confirmed']
     if require_confirmation:prefixes=['Confirmed','Calendar and private registry verified confirmed']
-    prefixes=[polite+' '+prefix for polite in ('','Okay','OK','All right','Alright','Right','Sure','Thank you','Thanks') for prefix in prefixes]
+    prefixes=[polite+' '+prefix for polite in READBACK_PREFIXES for prefix in prefixes]
     suffixes=['','Is that correct','Is that right','Is that okay','Does that work']
     actual=speech_words(text)
     tails=[]
