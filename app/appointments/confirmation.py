@@ -33,7 +33,9 @@ def room_words(text):
 def established_details(turns,value):
     """Omit only details already supplied clearly in this conversation, never model claims."""
     # "Yes, it is correct" agrees to the proposal; it is not a replacement name claim.
-    identity_turns=[t for t in turns if t['speaker']!='callee' or not affirmative_answer(t['text'])]
+    # Classify a reassembled answer, not individual streaming words such as "correct".
+    identity_turns=[{'speaker':t['speaker'],'text':t['text'],'timestamp':t['end'],'end_timestamp':t['end']}
+        for t in utterances(turns,join_sentences=True) if t['speaker']!='callee' or not affirmative_answer(t['text'])]
     if not caller_identified(identity_turns,value.first_name,value.last_name):return False
     minutes=int((value.interval.end-value.interval.start).total_seconds()/60)
     expected={'purpose':speech_words(value.purpose),'location':room_words(value.location),
@@ -58,6 +60,9 @@ def established_details(turns,value):
             parsed=room_words(answer) if question=='location' else speech_words(answer)
             if parsed==expected[question]:established.add(question)
             else:established.discard(question)
+        elif not affirmative_answer(turn['text']):
+            # An unsolicited new room/purpose/duration must not leave old omitted details valid.
+            established.clear()
         question=None
     return established==set(expected)
 

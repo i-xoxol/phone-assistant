@@ -31,7 +31,7 @@ def collected(service,tmp_path):
     return client,m,p,g,cid,r
 
 
-@pytest.mark.parametrize('answer',['Okay.','Sounds good.','Yes, it is correct.'])
+@pytest.mark.parametrize('answer',['Okay.','Sounds good.','Yes, it is correct.','fragmented'])
 def test_collected_details_need_one_short_time_confirmation_and_one_write(service,tmp_path,answer):
     client,m,p,g,cid,r=collected(service,tmp_path)
     d=g.store.get('appointment_drafts','draft_id',r['draft_id']);v=appointment(d)
@@ -47,7 +47,9 @@ def test_collected_details_need_one_short_time_confirmation_and_one_write(servic
         boundary=bridge.transcript_offset_ms+4700
         speech(m,cid,'assistant','Thank you, let me confirm that. ',boundary-1000)
         speech(m,cid,'assistant',r['readback'],boundary+1000)
-        speech(m,cid,'callee',answer,boundary+2500)
+        if answer=='fragmented':
+            for delta,offset in [('Yes, ',2000),('it is ',2200),('correct.',2500)]:speech(m,cid,'callee',delta,boundary+offset)
+        else:speech(m,cid,'callee',answer,boundary+2500)
         speech(m,cid,'assistant','Okay, booking it now.',boundary+3500)
         m.caller_activity[cid]={'epoch':1,'last_speech_ms':boundary+3000}
         item={'name':'book_appointment','call_id':'brief-one','arguments':json.dumps({
@@ -110,6 +112,19 @@ def test_omitted_fields_need_unambiguous_current_answers(service,tmp_path,field,
     questions={'duration':'How long?','location':'Which room?','purpose':'What is the appointment for?'}
     turns=turns+[{'speaker':'assistant','text':questions[field],'timestamp':10,'end_timestamp':10.5},
         {'speaker':'callee','text':text,'timestamp':11,'end_timestamp':11.5}]
+    assert not confirmation.established_details(turns,v)
+
+
+@pytest.mark.parametrize('change',['Office B.','Thirty minutes.','A different course.','Make it online.'])
+def test_unelicited_substantive_change_requires_reading_remaining_details(service,tmp_path,change):
+    client,m,p,g,cid,r=collected(service,tmp_path)
+    v=appointment(g.store.get('appointment_drafts','draft_id',r['draft_id']))
+    turns=m.db.get(cid)['transcript']
+    assert confirmation.established_details(turns,v)
+    turns=turns+[{'speaker':'assistant','text':r['readback'],'timestamp':10,'end_timestamp':10.5},
+        {'speaker':'callee','text':change,'timestamp':11,'end_timestamp':11.5},
+        {'speaker':'assistant','text':'Is that correct?','timestamp':12,'end_timestamp':12.5},
+        {'speaker':'callee','text':'Yes.','timestamp':13,'end_timestamp':13.5}]
     assert not confirmation.established_details(turns,v)
 
 
