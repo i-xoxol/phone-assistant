@@ -8,7 +8,7 @@ from app.appointments.registry import Registry,appointment,name_key
 from app.appointments.service import BookingService,CallAuthority,ConsentEvidence
 from app.appointments.evidence import complete_readback,caller_identified,utterances,affirmative_answer,spoken_consent
 from app.appointments.disclosure import PrivateNotices
-from app.appointments.schemas import SlotRequest,BookRequest,AppointmentLookup
+from app.appointments.schemas import SlotRequest,BookRequest,AppointmentLookup,FirstAvailableRequest
 from app.appointments import confirmation
 from app.logging_config import log_event
 from app.storage.models import TERMINAL,CallUpdateRequest
@@ -230,6 +230,20 @@ class AppointmentGateway:
                 'Wait for a new caller answer after the complete readback. Only then call book_appointment with the same IDs and idempotency key. '
                 'Do not retry automatically or request the supervisor solely for this recoverable consent step.' if queued
                 else 'Nothing is booked. Clarify shorter exact details before checking again.'}
+
+    async def first_available(self,call_id,args):
+        args=FirstAvailableRequest.model_validate(args);rid=self.request(call_id,args.request_id)
+        result=await self.service.find_slot(call_id,rid,args.duration_minutes,args.not_before,args.not_after)
+        if result['decision']!='available':
+            return {**result,'request_id':rid,'readback_queued':False,'consent_observed':False,
+                'instruction':'Nothing is booked. No earliest slot was verified in the returned search window. '
+                    'Explain the bounded result briefly; do not claim other dates are unavailable or repeatedly ask for a specific date/time.'}
+        interval=result['interval']
+        # Keep the exact-check/readback/consent/write path identical to a requested slot.
+        checked=await self.check(call_id,dict(request_id=rid,first_name=args.first_name,last_name=args.last_name,
+            purpose=args.purpose,arrangement=args.arrangement,start=interval.start,end=interval.end,time_zone=interval.zone))
+        return {**checked,'search_start':result['search_start'],'search_end':result['search_end'],
+            'selection':'first_available_in_search_window'}
 
     async def check(self,call_id,args):
         args=SlotRequest.model_validate(args);rid=self.request(call_id,args.request_id)

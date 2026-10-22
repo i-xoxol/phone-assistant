@@ -6,6 +6,7 @@ SCOPES = ['phone.appointments.read', 'phone.appointments.book', 'phone.appointme
 TOOL_SCOPES = {
     'get_appointment_permissions': SCOPES,
     'check_appointment_slot': [SCOPES[0]],
+    'find_first_available_slot': [SCOPES[0]],
     'get_booking_status': [SCOPES[0]],
     'get_my_appointment': [SCOPES[0]],
     'report_call_request_progress': [SCOPES[0]],

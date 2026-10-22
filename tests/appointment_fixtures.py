@@ -10,7 +10,7 @@ SLOT=Interval(NOW+timedelta(hours=1),NOW+timedelta(hours=1,minutes=15),'America/
 class FakeProvider:
     identity=CalendarIdentity('fake','tenant-two','opaque-calendar:🟢')
     capabilities=Capabilities(exact_reads=True,event_readback=True,create=True,deterministic_identity=True,
-        suppress_invitations=True,private_events=True,recurrence_expansion=True,change_cursors=True,guarded_write=True)
+        suppress_invitations=True,private_events=True,recurrence_expansion=True,change_cursors=True,guarded_write=True,availability_search=True)
     def __init__(self,clock):
         self.clock=clock;self.events={};self.writes=0;self.complete=True;self.fail='';self.read_hook=None
         self.office=CalendarEvent(EventIdentity(self.identity,'office:α'),'v1',
@@ -21,6 +21,7 @@ class FakeProvider:
         if self.fail=='read':raise ProviderFault('unavailable')
         return Coverage(interval,self.clock(),self.clock()+timedelta(minutes=1),self.complete,(self.office,*self.events.values()))
     async def read_event(self,identity):return self.events.get(identity.event)
+    async def read_availability(self,interval):return await self.read_interval(interval)
     async def create(self,identity,value,*,authorize):
         authorize()
         self.writes+=1

@@ -122,6 +122,8 @@ def create_mcp(manager):
         instructions=instructions.replace('The live voice model has no calendar access.',
             'The live voice backend has only the listed bounded appointment tools, gated by server policy.')
         instructions+='''\nAPPOINTMENT TOOLS V1: Use check_appointment_slot/book_appointment/get_booking_status for this call's ordinary academic booking.
+For first available/earliest/any time, use find_first_available_slot once name, purpose, duration and arrangement are known.
+Do not demand a specific date/time. The bounded search queues one concrete proposal; wait for current caller agreement before booking.
 Use the actual pending request UUID/deadline; progress is not a terminal reply. Existing phone.calls grants do not include
 the additional appointment read/book/manage scopes. Missing scope means needs_owner, never permission to bypass it.
 For initial setup only, get_appointment_permissions requests those separate permissions through the existing

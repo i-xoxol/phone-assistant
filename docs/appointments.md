@@ -46,6 +46,7 @@ fold selection for ambiguous times.
 
 | Tool | Main input | Result / authority |
 | --- | --- | --- |
+| `find_first_available_slot` | Live call; first/last name; purpose; duration in minutes; arrangement; optional caller-stated date bounds | Earliest verified minute-aligned slot within the next 14 days, followed by the ordinary exact check and one readback; no reservation |
 | `check_appointment_slot` | Live call; optional pending request UUID; first/last name; purpose/course; start/end/time_zone; arrangement | Exact decision, check/draft/request IDs, TTL, policy version, completeness, no reservation |
 | `book_appointment` | Call-bound draft/check IDs and stable idempotency key | Revisioned state; confirmed only after provider readback and private registry commit |
 | `get_booking_status` | Call and operation IDs | Read/reconcile original event; never creates an event |
@@ -80,6 +81,17 @@ MCP wraps this as `{"call_id":"<live call UUID>","request":{...}}`. The voice
 runtime binds the call internally. Reuse the returned request ID for corrections;
 then use the returned draft/check IDs and a stable key for booking. Never replay
 this historical example as a real appointment.
+
+For “first available,” “earliest” or “any time,” collect only missing name,
+purpose, duration and arrangement; do not demand an exact date/time. The bounded
+search requires complete fresh coverage of its entire window, including every
+page of conflicts, and the existing academic-hours and Office Hours occurrence
+policy. It uses office time and honors optional caller-stated bounds within the
+next fourteen days. Incomplete coverage cannot establish the earliest slot.
+No result means no slot was verified in that window, not that all future dates
+are unavailable. The caller must hear and agree to the concrete proposal before
+booking; a flexible timing preference alone never authorizes a write. This tool
+uses the existing appointment read scope and preserves the request deadline.
 
 ## Calendar and consent rules
 

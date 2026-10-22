@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import AwareDatetime
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.types import ToolAnnotations
-from app.appointments.schemas import SlotRequest,BookRequest
+from app.appointments.schemas import SlotRequest,BookRequest,FirstAvailableRequest
 from app.appointments.mcp_auth import SCOPES,authorization_metadata
 from app.appointments.service import ConsentRequired
 from app.logging_config import log_event
@@ -24,6 +24,16 @@ def install(mcp,manager):
         Missing grants trigger OAuth approval on the existing connection; never bypass approval."""
         for scope in SCOPES:require(scope)
         return {'status':'authorized','scopes':SCOPES,'appointment_action_performed':False}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,openWorldHint=True),
+        meta={**authorization_metadata('find_first_available_slot'),'requiredScope':'phone.appointments.read'})
+    async def find_first_available_slot(call_id:UUID,request:FirstAvailableRequest)->dict:
+        """Find one earliest verified office slot in the next fourteen days, without requiring an exact date/time.
+        Only missing name, purpose, duration and arrangement are required; date bounds are optional caller constraints.
+        Queues one exact proposal. First-available preference is not consent: wait for agreement before booking with returned IDs.
+        No reservation, calendar write, private titles or expanded hours. Existing call authority/deadline still apply."""
+        require('phone.appointments.read')
+        return await manager.appointments.first_available(str(call_id),request.model_dump(mode='json'))
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,openWorldHint=True),
         meta={**authorization_metadata('check_appointment_slot'),'requiredScope':'phone.appointments.read'})
