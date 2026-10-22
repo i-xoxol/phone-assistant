@@ -14,8 +14,55 @@ def contains_words(text,value):
 
 
 def affirmative_answer(text):
-    text=' '.join(text.casefold().replace('’',"'").split()).strip(' .!?')
-    return bool(re.fullmatch(r"yes(?: please)?|yes[,]? (?:that is|that's|it is|it's) (?:correct|right)|correct|that works|так|так[,]? правильно",text))
+    """Clear agreement in response to the bound proposal; no prescribed booking phrase."""
+    if '?' in text:return False
+    text=' '.join(words(text))
+    if len(text.split())>40:return False
+    agree=(r"yes|yeah|yep|yup|sure|okay|ok|all right|alright|correct|right|absolutely|definitely|certainly|"
+        r"perfect|great|fine|sounds (?:good|great|fine|right|perfect)(?: to me)?|looks good|go ahead|let's do (?:it|that)|"
+        r"that (?:works|will work|would work)(?: for me)?|that sounds (?:good|great|fine|right|perfect)|"
+        r"(?:that is|that's|it is|it's|that would be|that will be) (?:correct|right|fine|good|great|perfect)(?: (?:for|with) me)?|"
+        r"(?:(?:i want|i would like|i'd like) you to |you (?:can|may) |please )?(?:book|schedule) (?:it|that|the appointment|that appointment|this appointment)|"
+        r"так|так правильно|правильно")
+    unit=r'(?:'+agree+r'|please|thank you|thanks)'
+    return bool(re.fullmatch(unit+r'(?: (?:and )?'+unit+r')*',text) and re.search(r'\b(?:'+agree+r')\b',text))
+
+
+def appointment_continuation(text):
+    """Only status/acknowledgment or another question about this same booking may carry consent."""
+    normalized=' '.join(words(text))
+    if len(normalized.split())>60:return False
+    target=r'(?:it|that|this|the appointment|that appointment|this appointment|the booking|that booking)'
+    question=(r'(?:(?:would you like|do you want) me to (?:book|schedule) '+target+r'|'
+        r'(?:shall|can|may) i (?:book|schedule) '+target+r'|is that (?:correct|right|okay)|does that work(?: for you)?)')
+    acknowledgment=r'(?:okay|ok|all right|alright|right|sure|great|perfect|thank you|thanks)'
+    pause=r'(?:(?:just )?(?:a|one) moment(?: please)?|give me (?:just )?(?:a|one) moment(?: please)?)'
+    status=(r"(?:let me|i will|i'll|i am|i'm) (?:check|checking|verify|verifying|finish|finalize|complete|book|booking|schedule|scheduling|process|processing) "
+        r'(?:'+target+r'|the details|the final step|that step|the request)(?: (?:now|for you|with the calendar|on the calendar))?')
+    unit=r'(?:'+acknowledgment+'|'+pause+'|'+status+'|'+question+r')'
+    return bool(re.fullmatch(unit+r'(?: '+unit+r')*',normalized)
+        and ('?' not in text or re.search(question,normalized)))
+
+
+def spoken_consent(turns,value):
+    """Bind agreement to a complete proposal, retaining it across harmless assistant follow-ups."""
+    blocks=[]
+    for turn in turns:
+        if blocks and blocks[-1]['speaker']==turn['speaker']:
+            blocks[-1]['text']+=turn['text'];blocks[-1]['end_ms']=turn['end_ms']
+        else:blocks.append(dict(turn))
+    heard=False;answer='';readback_end=-1
+    for block in blocks:
+        if block['speaker']=='assistant':
+            if complete_readback(block['text'],value):
+                heard=True;answer='';readback_end=block['end_ms']
+            elif not (heard and appointment_continuation(block['text'])):
+                heard=False;answer=''
+        elif block['speaker']=='callee' and heard and block['start_ms']>=readback_end:
+            answer=block['text']
+            if not affirmative_answer(answer):heard=False
+        else:heard=False;answer=''
+    return heard,heard and affirmative_answer(answer)
 
 
 def speech_words(text):
@@ -70,14 +117,16 @@ def complete_readback(text,value,*,include_identity=True,require_confirmation=Fa
     prefixes=[value.first_name+' '+value.last_name] if include_identity else [
         '', 'Confirmed', 'Calendar and private registry verified confirmed']
     if require_confirmation:prefixes=['Confirmed','Calendar and private registry verified confirmed']
+    prefixes=[polite+' '+prefix for polite in ('','Okay','OK','All right','Alright','Right','Sure','Thank you','Thanks') for prefix in prefixes]
     suffixes=['','Is that correct','Is that right','Is that okay','Does that work']
     actual=speech_words(text)
     tails=[]
+    dates=date_words(start)
     for prefix in prefixes:
         before=speech_words(prefix)
         if actual[:len(before)]!=before:continue
         remaining=actual[len(before):]
-        for date in date_words(start):
+        for date in dates:
             if remaining[:len(date)]==date:tails.append(remaining[len(date):])
     if not tails:return False
     for zone in zones:
