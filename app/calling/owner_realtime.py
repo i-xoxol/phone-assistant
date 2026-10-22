@@ -48,6 +48,7 @@ class Channel:
         self.call_id=None
         self.delivery_permission=None
         self.delivery_until=0
+        self.facts_delivery_until=float('inf')
 
 
 class OwnerRealtime:
@@ -118,7 +119,7 @@ class OwnerRealtime:
                         and ch.generation==generation and ch.call_id not in self.m.stopping)
                 result=await owner_schedule(self.m.appointments,args,authorized)
                 if result.get('status')=='current':
-                    ch.delivery_until=min(time.monotonic()+30,time.monotonic()+max(0,
+                    ch.delivery_until=min(ch.facts_delivery_until,time.monotonic()+30,time.monotonic()+max(0,
                         (datetime.fromisoformat(result['expires_at'])-utcnow()).total_seconds()))
                 return result
             ch.session.calendar_lookup=calendar_lookup
@@ -338,7 +339,8 @@ class OwnerRealtime:
         first=None
         ch.delivery_permission=(generation,snapshot)
         expiries=[datetime.fromisoformat(f['expires_at']) for f in context['CURRENT_APPROVED_FACTS'] if f.get('expires_at')]
-        ch.delivery_until=time.monotonic()+max(0,min(30,(min(expiries)-utcnow()).total_seconds()) if expiries else 8)
+        ch.facts_delivery_until=time.monotonic()+max(0,(min(expiries)-utcnow()).total_seconds()) if expiries else float('inf')
+        ch.delivery_until=min(ch.facts_delivery_until,time.monotonic()+(30 if expiries else 8))
         async def audio(raw):
             nonlocal first
             if not self.valid(tid,ch,generation,snapshot):raise ValueError('Superseded coaching context')

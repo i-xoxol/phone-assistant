@@ -1,4 +1,4 @@
-import asyncio,json
+import asyncio,json,time
 from dataclasses import replace
 from datetime import timedelta
 from types import SimpleNamespace
@@ -109,5 +109,13 @@ def test_calendar_callback_is_bound_to_accepted_owner_coaching_and_revoked_on_pa
     result=client.portal.call(ch.session.calendar_lookup,query())
     assert result['status']=='current' and result['private_owner_only']
     assert 'Only owner hears this' not in str(m.incoming_context(m.db.get(cid)))
+    ch.facts_delivery_until=time.monotonic()+.001
+    client.portal.call(ch.session.calendar_lookup,query())
+    assert ch.delivery_until<=ch.facts_delivery_until
+    ch.delivery_permission=(ch.generation,'snapshot')
+    async def expired():
+        await asyncio.sleep(.005)
+        assert not m.observer.realtime.valid_frame(tid,ch,ch.generation,'snapshot')
+    client.portal.call(expired)
     m.observer.paused.add(tid)
     assert client.portal.call(ch.session.calendar_lookup,query())['status']=='unavailable'
