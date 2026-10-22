@@ -25,6 +25,8 @@ CI validates Python 3.11, 3.12, and 3.14 in clean Linux environments.
 
 | Area | Behavior covered |
 |---|---|
+| `python -m scripts.check_realtime_coaching --native --output data/preview` | Actual full Realtime 2.1, generated synthetic raw audio with verified owner/caller labels, proactive hints, caller/owner availability distinction, first-audio timings; no input captions, Luna or telephone |
+| `python -m scripts.check_realtime_coaching` | Actual full Realtime connection reuse, caption-fed prompt smoke test, streaming first audio and irrelevant-topic silence; no telephone |
 | Calls | Creation, invalid numbers, provider failure, busy/no-answer, completion, persistence, retrieval |
 | Provider callbacks | Signature/account/call checks, ordering, terminal states, signed media diagnostics |
 | Voice | Two-way relay, codec binding, transcript timing, finalization, large bursts, stalled playback, failure races |

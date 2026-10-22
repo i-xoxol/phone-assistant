@@ -92,6 +92,7 @@ class CallManager:
 
     async def context_changed(self):
         """Notify live incoming sessions to fetch the latest safe context, without a restart."""
+        self.observer.realtime.context_changed()
         for cid,bridge in list(self.bridges.items()):
             if not bridge.inbound or bridge.closing or bridge.handoff or bridge.end_requested.is_set():
                 continue

@@ -230,7 +230,7 @@ def create_mcp(manager):
         return result
 
     @mcp.tool(annotations=knowledge_write)
-    def set_call_fact(topic:str,text:str,source:str,expires_at:AwareDatetime,
+    async def set_call_fact(topic:str,text:str,source:str,expires_at:AwareDatetime,
             approved_for_callers:bool,contact_id:UUID|None=None,fact_id:UUID|None=None) -> dict:
         """Store/update one verified phone-safe fact, max 250 UTF-8 bytes, expiry within ninety days.
         approved_for_callers must be true: this may be disclosed to ANY unverified caller mentioning the contact/topic.
@@ -240,12 +240,16 @@ def create_mcp(manager):
         data={'topic':topic,'text':text,'source':source,'expires_at':expires_at,
               'approved_for_callers':approved_for_callers,'contact_id':contact_id}
         if fact_id: data['fact_id']=fact_id
-        return manager.knowledge.fact(FactUpdate(**data))
+        result=manager.knowledge.fact(FactUpdate(**data))
+        manager.observer.realtime.context_changed()
+        return result
 
     @mcp.tool(annotations=knowledge_write)
-    def retire_call_fact(fact_id:UUID) -> dict:
+    async def retire_call_fact(fact_id:UUID) -> dict:
         """Immediately withhold an obsolete fact from new/in-flight lookups. Keeps the private audit record."""
-        return manager.knowledge.retire(str(fact_id))
+        result=manager.knowledge.retire(str(fact_id))
+        manager.observer.realtime.context_changed()
+        return result
 
     @mcp.tool(annotations=read)
     def get_inbound_context() -> dict:

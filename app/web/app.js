@@ -55,7 +55,7 @@ function showCall() {
   const transfer=call?.owner_transfer;
   $('transferState').textContent=transfer?'Owner contact: '+transfer.status.replaceAll('_',' ')+
     (transfer.strategy==='conference'?' · Transcription: '+transfer.transcription_state+' · '+
-      (transfer.mode==='whisper'?'Private Luna coaching on':transfer.mode==='transcript'?'Luna off':'Choose mode when answering'):
+      (transfer.mode==='whisper'?'Private coaching on':transfer.mode==='transcript'?'Coaching off':'Choose mode when answering'):
       ' · Captions pause during human conversation.')+(transfer.error_code?' · '+transfer.error_code.replaceAll('_',' '):''):'';
   if (call) {
     let duration=call.duration_seconds;

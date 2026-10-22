@@ -23,6 +23,9 @@ Optional [natural private voice replies](docs/private-voice-coaching.md) let the
 ask Luna for current information during a handoff, with on-demand OpenAI speech.
 Optional [hybrid coaching](docs/hybrid-owner-coaching.md) uses short cached screening
 and brief GPT-Live help for complex questions, while factual hints stay on TTS.
+Optional [native Realtime coaching](docs/realtime-owner-coaching.md) uses full
+GPT-Realtime 2.1 to hear separately labelled owner/caller audio and stream brief
+proactive hints only to the owner's handset, without Luna or transcript-triggered replies.
 
 <p align="center">
   <a href="docs/getting-started.md">Set it up</a> ·
@@ -269,6 +272,7 @@ webhook, and its hangup button talks directly to the service.
 | [Live monitor](docs/live-monitor.md) | Phone/laptop pairing, SSE replay, captions, hangup behavior |
 | [Forwarded calls and recordings](docs/recordings.md) | Missed-call context, caller ID, recording notices, private playback and Rocky access |
 | [Hybrid owner coaching](docs/hybrid-owner-coaching.md) | Short screening, cached speech, TTS hints, temporary Live coaching, limits and acceptance tests |
+| [Native Realtime coaching](docs/realtime-owner-coaching.md) | Full Realtime 2.1, source-labelled audio, proactive owner-only streaming, setup and acceptance tests |
 | [Webhooks](docs/webhooks.md) | Native MCP Events, ordinary subscription tools, receivers, signature formats |
 | [Deployment](docs/deployment.md) | Linux/systemd, persistent tunnels, reverse proxies, updates, backups |
 | [Security and privacy](docs/security.md) | Data flow, controls, prompt-policy limits, private deployments |

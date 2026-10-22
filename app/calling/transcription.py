@@ -108,6 +108,10 @@ async def handle_owner_media(ws,tid,side):
         record=m.db.get(row['call_id'])
         offset=max(0,int((utcnow()-datetime.fromisoformat(record['started_at'] or record['created_at'])).total_seconds()*1000))
         speaker='owner' if side=='owner' else 'callee'
+        if m.observer.realtime.available():
+            from app.calling.coaching_audio import capture_with_coaching
+            await capture_with_coaching(ws,row,side,stream,offset)
+            return
         async with live_client(s) as client:
             async with await open_transcription(client) as connection:
                 await configure(connection,s)

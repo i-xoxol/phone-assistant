@@ -56,7 +56,11 @@ class Settings(BaseSettings):
     owner_screen_speech_model: str = 'gpt-realtime-2.1'
     owner_screen_speech_voice: str = 'cedar'
     owner_prompt_directory: Path = ROOT / 'data/owner-prompts'
-    owner_coaching_strategy: Literal['tts','hybrid'] = 'tts'
+    owner_coaching_strategy: Literal['tts','hybrid','realtime'] = 'tts'
+    owner_coaching_application_sid: str = Field(default='',pattern=r'^(?:|AP[0-9a-fA-F]{32})$')
+    owner_realtime_coaching_model: Literal['gpt-realtime-2.1'] = 'gpt-realtime-2.1'
+    owner_realtime_coaching_voice: str = 'cedar'
+    owner_realtime_coaching_max_hints: int = Field(default=40,ge=1,le=100)
     owner_live_coaching_idle_seconds: int = Field(default=20,ge=5,le=60)
     owner_live_coaching_max_seconds: int = Field(default=60,ge=10,le=120)
     owner_live_coaching_max_sessions: int = Field(default=2,ge=1,le=4)

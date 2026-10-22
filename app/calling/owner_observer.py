@@ -39,6 +39,8 @@ class TransferObserver:
         self.paused=set()
         self.owner_addressed={}
         self.wakeups={}
+        from app.calling.owner_realtime import OwnerRealtime
+        self.realtime=OwnerRealtime(self)
         with manager.db.connect() as db:
             db.execute('''CREATE TABLE IF NOT EXISTS owner_whispers (
                 whisper_id TEXT PRIMARY KEY,transfer_id TEXT NOT NULL REFERENCES owner_transfers(transfer_id),
@@ -82,7 +84,7 @@ class TransferObserver:
         dial=response.dial(time_limit=max(1,remaining_seconds(r)),record='do-not-record',
             action=self.path(row,'conference-finished'),method='POST')
         dial.conference(self.room(row),start_conference_on_enter=side=='owner',end_conference_on_exit=True,
-            max_participants=2,beep=False,record='do-not-record',
+            max_participants=3 if self.realtime.available() else 2,beep=False,record='do-not-record',
             status_callback=self.path(row,'conference-status'),status_callback_method='POST',
             status_callback_event='start end join leave')
         response.hangup()
@@ -173,13 +175,16 @@ class TransferObserver:
             if not row['decision']:
                 digit=form.get('Digits','')
                 accepted=digit in ('1','3')
-                mode=('whisper' if digit=='1' and self.m.settings.subscription_lookup_enabled else 'transcript') if accepted else 'off'
+                coaching=(self.realtime.available() if self.m.settings.owner_coaching_strategy=='realtime'
+                    else self.m.settings.subscription_lookup_enabled)
+                mode=('whisper' if digit=='1' and coaching else 'transcript') if accepted else 'off'
                 with self.m.db.connect() as db:
                     db.execute('UPDATE owner_transfers SET decision=?,accepted=?,mode=? WHERE transfer_id=? AND decision IS NULL',
                         ('accepted' if accepted else 'declined',int(accepted),mode,tid))
                 row=self.m.transfer.get(tid)
                 self.m.transfer.update(tid,status='accepted' if row['accepted'] else 'declined')
             if row['accepted']:
+                self.realtime.ensure(tid)
                 return self.conference_twiml(row,'owner')
             response.hangup();await self.resume(tid);return str(response)
         parent=self.m.db.get(row['call_id'])
@@ -195,9 +200,11 @@ class TransferObserver:
             if (not re.fullmatch(r'CF[0-9a-fA-F]{32}',cf) or form.get('FriendlyName')!=self.room(row)
                     or (row['conference_sid'] and row['conference_sid']!=cf)):
                 raise ValueError('Conference mismatch')
-            if form.get('CallSid') and form['CallSid'] not in (parent['twilio_call_sid'],row['child_sid']):
-                raise ValueError('Conference participant mismatch')
+            if (form.get('CallSid') and form['CallSid'] not in (parent['twilio_call_sid'],row['child_sid'])
+                    and not self.realtime.known_leg(tid,form['CallSid'])):
+                await self.realtime.bind_conference_event(tid,form)
             if not row['conference_sid']: self.m.transfer.update(tid,conference_sid=cf)
+            self.realtime.ensure(tid)
             if form.get('StatusCallbackEvent')=='conference-end' and row['accepted'] and self.current(row):
                 self.m.transfer.update(tid,status='completed',transcription_state='stopped')
                 await self.m.hangup_call(row['call_id'])
@@ -258,8 +265,9 @@ class TransferObserver:
     def transcript_changed(self,tid,speaker=None,text='',turn_id=''):
         row=self.m.transfer.get(tid)
         if row['mode']!='whisper' or not row['accepted'] or not self.current(row): return
+        was_paused=tid in self.paused
         addressed=bool(re.search(r'\b(assistant|rocky|luna|асистент|рокі|луна)\b',text,re.I))
-        followup=(self.m.settings.owner_coaching_strategy=='hybrid' and tid not in self.paused and tid in self.owner_addressed
+        followup=(self.m.settings.owner_coaching_strategy in ('hybrid','realtime') and tid not in self.paused and tid in self.owner_addressed
             and time.monotonic()-self.owner_addressed[tid]<120
             and re.search(r'\b(what should I (?:ask|say|do)|what (?:other|else).*availability|what about|'
                 r'що мені (?:спитати|запитати|сказати|робити))\b',text,re.I))
@@ -270,12 +278,16 @@ class TransferObserver:
                 self.requests.pop(tid,None);self.dirty.discard(tid)
                 if task:=self.coaches.pop(tid,None):task.cancel()
                 self.task(self.live.close(tid))
+                self.task(self.realtime.pause(tid))
                 self.m.db.emit(row['call_id'],'call.owner_coaching',{'state':'paused'})
                 return
             self.paused.discard(tid)
             self.requests[tid] = {'turn_id': turn_id, 'text': text[:1200]}
             if event:=self.wakeups.get(tid):event.set()
         if tid in self.paused:return
+        if self.m.settings.owner_coaching_strategy=='realtime':
+            self.realtime.labels_changed(tid,resumed=was_paused and tid not in self.paused)
+            return
         self.live.context_changed(tid)
         self.dirty.add(tid)
         if tid not in self.coaches or self.coaches[tid].done():
@@ -462,8 +474,9 @@ class TransferObserver:
 
     def history(self,cid):
         with self.m.db.connect() as db:
-            return [dict(r) for r in db.execute('''SELECT w.created_at,w.text,w.state FROM owner_whispers w
+            legacy=[dict(r) for r in db.execute('''SELECT w.created_at,w.text,w.state FROM owner_whispers w
                 JOIN owner_transfers t USING(transfer_id) WHERE t.call_id=? ORDER BY w.created_at''',(cid,))]
+        return sorted(legacy+self.realtime.history(cid),key=lambda r:r['created_at'])
 
     def call_ended(self,cid):
         streams=[task for key,task in self.streams.items() if key[0]==cid]
@@ -481,7 +494,9 @@ class TransferObserver:
             self.m.screening.discard(row['transfer_id'])
             try:asyncio.get_running_loop()
             except RuntimeError:pass
-            else:self.task(self.live.close(row['transfer_id']))
+            else:
+                self.task(self.live.close(row['transfer_id']))
+                self.task(self.realtime.close(row['transfer_id']))
         if row and row['transfer_id'] in self.coaches: self.coaches[row['transfer_id']].cancel()
         if row and row['strategy']=='conference' and row['child_sid']:
             try: asyncio.get_running_loop()
@@ -508,6 +523,7 @@ class TransferObserver:
             error_code='transcription_unavailable' if aggregate=='degraded' else None)
 
     async def stop(self):
+        await self.realtime.stop()
         tasks=list(self.tasks)+list(self.streams.values())
         for task in tasks: task.cancel()
         await asyncio.gather(*tasks,return_exceptions=True)

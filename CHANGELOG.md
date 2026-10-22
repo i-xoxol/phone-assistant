@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Full Realtime 2.1 private coaching: source-labelled native microphone audio, proactive hints, one warm connection and owner-only Twilio streaming; Luna is bypassed for this mode.
+- Keep owner/caller identities attached to raw audio; portal captions run independently, and caption failure does not stop native coaching input.
+- Stream audio as generated, recheck current context during delivery, clear superseded hints and preserve human calls on coaching failures.
 - Short owner screening menu, cached high-quality keypad clips and a natural once-per-transfer briefing.
 - Optional hybrid private coaching: subscription Luna chooses TTS hints or a brief, caption-fed GPT-Live session with context updates, idle closure and bounded reconnects.
 - Keep both transfer modes transcribed; simple answer never starts Luna or Live, and owner-only pause/resume leaves captions running.
