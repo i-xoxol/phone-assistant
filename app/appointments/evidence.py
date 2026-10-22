@@ -22,7 +22,8 @@ def affirmative_answer(text):
     if len(text.split())>40:return False
     agree=(r"yes|yeah|yep|yup|sure|okay|ok|all right|alright|correct|right|absolutely|definitely|certainly|"
         r"perfect|great|fine|sounds (?:good|great|fine|right|perfect)(?: to me)?|looks good|go ahead|let's do (?:it|that)|"
-        r"that (?:works|will work|would work)(?: for me)?|that sounds (?:good|great|fine|right|perfect)|"
+        r"that (?:works|will work|would work|should work)(?: for me)?|that sounds (?:good|great|fine|right|perfect)|"
+        r"i agree (?:with|to) (?:this|that|the) appointment|"
         r"(?:that is|that's|it is|it's|that would be|that will be) (?:correct|right|fine|good|great|perfect)(?: (?:for|with) me)?|"
         r"(?:(?:i want|i would like|i'd like) you to |you (?:can|may) |please )?(?:book|schedule) (?:it|that|the appointment|that appointment|this appointment)|"
         r"так|так правильно|правильно")
@@ -36,7 +37,8 @@ def appointment_continuation(text):
     if len(normalized.split())>60:return False
     target=r'(?:it|that|this|the appointment|that appointment|this appointment|the booking|that booking)'
     question=(r'(?:(?:would you like|do you want) me to (?:book|schedule) '+target+r'|'
-        r'(?:shall|can|may) i (?:book|schedule) '+target+r'|is that (?:correct|right|okay)|does that work(?: for you)?)')
+        r'(?:shall|can|may) i (?:book|schedule) '+target+r'|is that (?:correct|right|okay)|does that work(?: for you)?|'
+        r'could you (?:please )?confirm (?:that )?you agree to '+target+r')')
     acknowledgment=r'(?:okay|ok|all right|alright|right|sure|great|perfect|thank you|thanks)'
     pause=r'(?:(?:just )?(?:a|one) moment(?: please)?|give me (?:just )?(?:a|one) moment(?: please)?)'
     status=(r"(?:let me|i will|i'll|i am|i'm) (?:check|checking|verify|verifying|finish|finalize|complete|book|booking|schedule|scheduling|process|processing) "
