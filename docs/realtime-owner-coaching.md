@@ -92,6 +92,13 @@ SID, with `end_conference_on_exit=false`. It verifies those values through Twili
 before attaching a media stream. Every media frame then goes to that participant.
 There is no conference-wide announcement fallback.
 
+Keypad acceptance comes before the owner's conference join. The provider connection
+warms during that interval, but the application waits for Twilio to report that the
+exact owner Call SID is connected to the correct conference and is off hold before
+adding the coach. Read-only readiness checks may repeat; participant creation does
+not. This avoids the [target-not-yet-present race](https://www.twilio.com/docs/api/errors/16028).
+Numeric Twilio rejection codes are retained without logging request URLs or secrets.
+
 Signed webhooks, a per-transfer nonce, call/account binding and a unique participant
 label bind the application callback and media stream. An ambiguous create is never
 retried. Cleanup targets the coach leg only. Coaching failure leaves both human legs

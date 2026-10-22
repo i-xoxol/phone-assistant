@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from fastapi import WebSocketDisconnect
 from twilio.request_validator import RequestValidator
+from twilio.base.exceptions import TwilioRestException
 from twilio.twiml.voice_response import VoiceResponse
 
 from app.calling.context import utcnow
@@ -101,16 +102,19 @@ class OwnerRealtime:
         return ch
 
     async def start(self,tid,ch):
+        create_attempted=False
         try:
             await asyncio.wait_for(ch.session.ready.wait(),12)
             if ch.session.closed.is_set():raise RuntimeError('Coach provider unavailable')
-            # Acceptance starts provider setup; conference callbacks establish the room shortly after.
-            async with asyncio.timeout(15):
-                while self.active(tid) and not self.m.transfer.get(tid)['conference_sid']:
-                    await asyncio.sleep(.1)
-            if not self.active(tid):return
-            row=self.m.transfer.get(tid);record=self.record(tid)
+            # Accepting the keypad prompt precedes the owner's <Dial><Conference>.
+            # A room SID proves only that the caller joined, not that the owner is coachable.
+            row=await self.wait_for_owner(tid)
+            if row is None:
+                self.update(tid,status='failed',error_code='owner_left_before_coach')
+                await self.close(tid,from_starter=True);return
+            record=self.record(tid)
             self.update(tid,status='dialing')
+            create_attempted=True
             participant=await asyncio.wait_for(self.m.gateway.add_coach(
                 row,record,max(1,remaining_seconds(self.m.db.get(row['call_id'])))),8)
             self.check_participant(row,record,participant)
@@ -122,9 +126,33 @@ class OwnerRealtime:
         except asyncio.CancelledError:raise
         except Exception as exc:
             # A timed-out create may have succeeded. Keep its durable record; no redial.
-            self.update(tid,status='unconfirmed',error_code='coach_setup_unconfirmed')
-            self.state(tid,'unavailable',error_type=type(exc).__name__)
+            rejected=isinstance(exc,TwilioRestException) and exc.status in (400,401,403,404,422,429)
+            status='unconfirmed' if create_attempted and not rejected else 'failed'
+            code=getattr(exc,'code',None)
+            safe_code=code if type(code) is int and 0<code<1000000 else None
+            self.update(tid,status=status,error_code='twilio_'+str(safe_code) if safe_code else 'coach_setup_'+status)
+            self.state(tid,'unavailable',error_type=type(exc).__name__,twilio_code=safe_code)
             await self.close(tid,from_starter=True)
+
+    async def wait_for_owner(self,tid):
+        """Only repeat read-only readiness checks; the participant create still happens once."""
+        async with asyncio.timeout(15):
+            while self.active(tid):
+                row=self.m.transfer.get(tid)
+                if row['conference_sid']:
+                    try:
+                        owner=await asyncio.wait_for(self.m.gateway.coach_participant(
+                            row['conference_sid'],row['child_sid']),3)
+                    except TwilioRestException as exc:
+                        if exc.status!=404:raise
+                    else:
+                        if owner.conference_sid!=row['conference_sid'] or owner.call_sid!=row['child_sid']:
+                            raise ValueError('Owner conference binding mismatch')
+                        if owner.status in ('complete','failed'):raise ValueError('Owner left conference')
+                        if owner.status=='connected' and owner.hold is False:
+                            return row if self.active(tid) else None
+                await asyncio.sleep(.2)
+        return None
 
     def check_participant(self,row,record,participant):
         if (participant.conference_sid!=row['conference_sid'] or participant.label!='rt-'+record['coach_id']
@@ -411,7 +439,7 @@ class OwnerRealtime:
                 self.bind_participant(tid,sid)
             if sid and sid not in (row['child_sid'],self.m.db.get(row['call_id'])['twilio_call_sid']):
                 await asyncio.wait_for(self.m.gateway.hangup(sid),5)
-            self.update(tid,status='unconfirmed' if record['status']=='unconfirmed' else 'completed')
+            self.update(tid,status=record['status'] if record['status'] in ('failed','unconfirmed') else 'completed')
         except Exception:
             self.update(tid,status='unconfirmed',error_code='coach_cleanup_unconfirmed')
             self.state(tid,'cleanup_unconfirmed')

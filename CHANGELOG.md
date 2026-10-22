@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Wait for the accepted owner's actual conference join before creating a private coach; retain safe numeric carrier rejection codes and distinguish rejected creates from ambiguous attempts.
 - Full Realtime 2.1 private coaching: source-labelled native microphone audio, proactive hints, one warm connection and owner-only Twilio streaming; Luna is bypassed for this mode.
 - Keep owner/caller identities attached to raw audio; portal captions run independently, and caption failure does not stop native coaching input.
 - Stream audio as generated, recheck current context during delivery, clear superseded hints and preserve human calls on coaching failures.

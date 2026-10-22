@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 from starlette.websockets import WebSocketDisconnect
 from twilio.request_validator import RequestValidator
+from twilio.base.exceptions import TwilioRestException
 
 from app.calling.context import utcnow
 from app.calling.knowledge import FactUpdate
@@ -33,21 +34,32 @@ class FakeSession:
     async def close(self):self.closed.set()
 
 
-def ready(service,digit='1',app=True):
+def ready(service,digit='1',app=True,owner_states=None,create_error=None):
     client,m,g,cid,tid=prepared(service)
     m.settings.owner_speech_enabled=True;m.settings.owner_coaching_strategy='realtime'
     m.settings.owner_coaching_application_sid='AP'+'1'*32 if app else ''
     m.settings.subscription_lookup_enabled=False  # No subscription worker needed for this mode.
     m.transfer.update(tid,conference_sid=CF)
     m.observer.realtime.factory=FakeSession
-    g.coach_adds=[];g.coach_hangups=[]
+    g.coach_adds=[];g.coach_hangups=[];g.owner_checks=[]
+    owner_states=list(owner_states or ['connected'])
     def participant():
         record=m.observer.realtime.record(tid)
         return SimpleNamespace(call_sid=COACH,conference_sid=CF,label='rt-'+record['coach_id'],
             coaching=True,call_sid_to_coach=CHILD)
     async def add(row,record,seconds):
-        g.coach_adds.append((row,record,seconds));return participant()
-    async def fetch(cf,label):assert cf==CF;return participant()
+        g.coach_adds.append((row,record,seconds))
+        if create_error:raise create_error
+        return participant()
+    async def fetch(cf,label):
+        assert cf==CF
+        if label==CHILD:
+            state=owner_states.pop(0) if len(owner_states)>1 else owner_states[0]
+            g.owner_checks.append(state)
+            if state=='missing':raise TwilioRestException(404,'/synthetic',code=20404,msg='Not joined yet')
+            return SimpleNamespace(call_sid=COACH if state=='wrong_owner' else CHILD,conference_sid=CF,
+                status='connected' if state=='held' else state,hold=state=='held')
+        return participant()
     async def hangup(sid):g.coach_hangups.append(sid)
     g.add_coach=add;g.coach_participant=fetch;g.hangup=hangup
     def forbidden(*_,**__):raise AssertionError('Realtime coaching must bypass Luna and GPT-Live')
@@ -101,6 +113,55 @@ def test_missing_streaming_application_falls_back_to_captions(service):
     client,m,g,cid,tid=ready(service,app=False)
     assert m.transfer.get(tid)['mode']=='transcript'
     assert not g.coach_adds and not m.observer.realtime.channels
+
+
+def test_coach_waits_for_the_actual_owner_to_join_not_just_the_room_or_acceptance(service):
+    client,m,g,cid,tid=ready(service,owner_states=['missing','connecting','held','connected'])
+    async def joined():
+        async with asyncio.timeout(2):
+            while not g.coach_adds:await asyncio.sleep(.01)
+    client.portal.call(joined)
+    assert g.owner_checks==['missing','connecting','held','connected']
+    assert len(g.coach_adds)==1 and m.db.get(cid)['status']=='in_progress'
+
+
+@pytest.mark.parametrize('state',['wrong_owner','complete','failed'])
+def test_missing_or_wrong_owner_never_creates_a_coach_or_ends_the_human_call(service,state):
+    client,m,g,cid,tid=ready(service,owner_states=[state])
+    async def stopped():
+        async with asyncio.timeout(1):
+            while m.observer.realtime.record(tid)['status']!='failed':await asyncio.sleep(.01)
+    client.portal.call(stopped)
+    assert not g.coach_adds and not g.coach_hangups
+    assert m.db.get(cid)['status']=='in_progress' and m.observer.realtime.ensure(tid) is None
+
+
+def test_owner_leaving_during_join_wait_never_dials_a_coach(service):
+    client,m,g,cid,tid=ready(service,owner_states=['connecting'])
+    async def left():
+        ch=m.observer.realtime.channels[tid]
+        m.db.transition(cid,'completed')
+        await ch.starter
+    client.portal.call(left)
+    assert not g.coach_adds and not g.coach_hangups
+    assert m.observer.realtime.record(tid)['status']=='failed'
+
+
+def test_definite_carrier_rejection_keeps_numeric_code_without_leaking_request_or_retrying(service):
+    error=TwilioRestException(400,'/secret-request-url',code=16028,msg='secret-token-must-not-leak')
+    client,m,g,cid,tid=ready(service,create_error=error)
+    async def stopped():
+        async with asyncio.timeout(1):
+            while m.observer.realtime.record(tid)['status']!='failed':await asyncio.sleep(.01)
+    client.portal.call(stopped)
+    record=m.observer.realtime.record(tid)
+    assert record['error_code']=='twilio_16028' and len(g.coach_adds)==1
+    assert not g.coach_hangups and m.db.get(cid)['status']=='in_progress'
+    assert m.observer.realtime.ensure(tid) is None
+    with m.db.connect() as db:
+        events=[r['payload'] for r in db.execute("SELECT payload FROM call_events WHERE type='call.owner_coaching'")]
+    assert any(json.loads(event).get('twilio_code')==16028 for event in events)
+    assert 'secret' not in json.dumps(events)
 
 
 def test_proactive_caller_question_streams_privately_without_luna_and_persists_playback(service):
@@ -200,7 +261,9 @@ def test_ambiguous_coach_creation_is_never_retried_and_never_hangs_up_humans(ser
     m.transfer.update(tid,conference_sid=CF)
     pool=m.observer.realtime;pool.factory=FakeSession;attempts=[]
     async def ambiguous(*_):attempts.append(1);raise TimeoutError()
-    async def absent(*_):raise RuntimeError('provider unavailable')
+    async def absent(cf,label):
+        if label==CHILD:return SimpleNamespace(call_sid=CHILD,conference_sid=CF,status='connected',hold=False)
+        raise RuntimeError('provider unavailable')
     g.add_coach=ambiguous;g.coach_participant=absent
     async def run():
         ch=pool.ensure(tid)
