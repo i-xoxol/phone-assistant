@@ -3,6 +3,7 @@ import asyncio
 from datetime import timedelta
 from pydantic import AwareDatetime,BaseModel,ConfigDict,Field,model_validator
 from app.appointments.contracts import Interval,ProviderFault
+from app.appointments.policy import coverage_failure
 
 
 class ScheduleRequest(BaseModel):
@@ -35,9 +36,8 @@ async def owner_schedule(gateway,args,authorized):
         async with asyncio.timeout(4):
             coverage=await provider.read_agenda(Interval(request.start,request.end,request.time_zone))
         if not authorized():return {'status':'unavailable'}
-        if (not coverage.complete or not coverage.interval.contains(Interval(request.start,request.end,request.time_zone))
-                or not coverage.checked_at<=gateway.clock()<coverage.valid_until):
-            return {'status':'unknown','reason':coverage.reason or 'incomplete_coverage'}
+        failure=coverage_failure(coverage,Interval(request.start,request.end,request.time_zone),gateway.clock())
+        if failure:return {'status':'unknown','reason':failure}
         events=[e for e in coverage.events if e.interval and e.state!='cancelled' and e.kind!='availability'
             and e.interval.overlaps(coverage.interval)]
         if any(e.state=='unknown' for e in events):return {'status':'unknown','reason':'unknown_event_state'}

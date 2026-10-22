@@ -6,6 +6,7 @@ import httpx
 from app.appointments.contracts import CalendarIdentity,ProviderFault
 from app.appointments.registry import Registry,appointment,name_key
 from app.appointments.service import BookingService,CallAuthority,ConsentEvidence
+from app.appointments.evidence import complete_readback,caller_identified,utterances
 from app.appointments.disclosure import PrivateNotices
 from app.appointments.schemas import SlotRequest,BookRequest,AppointmentLookup
 from app.storage.models import TERMINAL,CallUpdateRequest
@@ -23,17 +24,6 @@ def readback_text(value):
     start=value.interval.start.astimezone(ZoneInfo(value.interval.zone))
     minutes=int((value.interval.end-value.interval.start).total_seconds()/60)
     return f'{start.strftime("%B %d %Y at %I:%M %p")} {value.interval.zone}, {minutes} minutes, {value.purpose}, {value.location}. Is that correct?'
-
-
-def complete_readback(text,value,*,include_identity=True):
-    from zoneinfo import ZoneInfo
-    start=value.interval.start.astimezone(ZoneInfo(value.interval.zone))
-    parts=[start.strftime('%B'),str(start.day),str(start.year),start.strftime('%I:%M %p').lstrip('0'),
-        str(int((value.interval.end-value.interval.start).total_seconds()/60))+' minutes',value.location]
-    if include_identity:parts.extend([value.first_name,value.last_name,value.purpose])
-    zone_heard=any(normalized(zone) in normalized(text) for zone in
-        (value.interval.zone,start.strftime('%Z'),'Eastern' if value.interval.zone=='America/New_York' else value.interval.zone))
-    return zone_heard and all(normalized(part) in normalized(text) for part in parts)
 
 
 class AppointmentGateway:
@@ -129,13 +119,15 @@ class AppointmentGateway:
                 (draft['call_id'],readback['after_transcript_id'] if readback else 2**63-1))]
         # Acknowledgment alone is insufficient: require observed assistant readback followed by caller assent.
         heard=False;last_caller=[]
-        assistant='';last_speaker=None
+        assistant='';last_speaker=None;readback_end=-1
         for turn in turns:
             if turn['speaker']=='assistant':
                 if last_speaker=='callee':assistant=''
                 assistant+=turn['text']
-                if complete_readback(assistant,value):heard=True;last_caller=[]
-            elif turn['speaker']=='callee' and heard:last_caller.append(turn['text'])
+                heard=complete_readback(assistant,value);last_caller=[];readback_end=turn['end_ms']
+            elif turn['speaker']=='callee' and heard:
+                if turn['start_ms']<readback_end:heard=False
+                else:last_caller.append(turn['text'])
             last_speaker=turn['speaker']
         words=' '.join(''.join(last_caller).casefold().split()).strip(' .!?')
         yes=bool(re.fullmatch(r"yes(?: please)?|yes[,]? (?:that is|that's) correct|correct|that works|так|так[,]? правильно",words))
@@ -224,9 +216,9 @@ class AppointmentGateway:
         said='';spoken=False;receipt=False
         operation=self.store.get('booking_operations','operation_id',oid)
         draft=self.store.get('appointment_drafts','draft_id',operation['draft_id']);value=appointment(draft)
-        for turn in turns:
+        for turn in utterances(turns):
             if turn['speaker']=='assistant':
-                said+=turn['text']
+                said=turn['text']
                 spoken=spoken or ('confirmed' in said.casefold() and complete_readback(said,value,include_identity=False))
             elif spoken and turn['speaker']=='callee' and normalized(turn['text']) in ('yes','correct','thankyou','thanks'):receipt=True
         accepted=bool(update and update['status']=='acknowledged')
@@ -263,18 +255,12 @@ class AppointmentGateway:
 
     async def own(self,call_id,args):
         args=AppointmentLookup.model_validate(args)
-        turns=self.transcript(call_id);caller=' '.join(t['text'] for t in turns if t['speaker']=='callee')
-        full=normalized(args.first_name+args.last_name);given=False;name_question=False
-        for turn in turns:
-            if turn['speaker']=='assistant':
-                name_question=bool(re.search(r'full name|first and last name|your name|who am i speaking',turn['text'],re.I))
-            elif turn['speaker']=='callee':
-                answer=normalized(turn['text'])
-                given=given or (name_question and answer in (full,'its'+full,'mynameis'+full,'iam'+full,'im'+full))
-                given=given or any(prefix+full in answer for prefix in ('mynameis','thisis','iam','im'))
-                name_question=False
-        contradictory=not given or bool(re.search(r"\b(?:not|isn't|is not|не)\s+"+re.escape(args.first_name),caller,re.I))
+        revision=self.revision(call_id);turns=self.transcript(call_id)
+        activity=getattr(self.m,'caller_activity',{}).get(call_id)
+        caption_end=max((t['end_timestamp']*1000 for t in turns if t['speaker']=='callee'),default=-1)
+        contradictory=not caller_identified(turns,args.first_name,args.last_name) or bool(activity and caption_end<activity['last_speech_ms'])
         result=await self.service.own_appointment(args.first_name,args.last_name,contradictory=contradictory)
+        if self.revision(call_id)!=revision:return {'status':'needs_owner'}
         if result['status']=='match':
             row=self.store.own_appointment(args.first_name,args.last_name,self.clock()).get('appointment')
             if row:

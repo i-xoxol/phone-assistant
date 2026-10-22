@@ -46,16 +46,18 @@ class BookingService:
         return Interval(i.start-timedelta(minutes=self.policy.buffer_before),i.end+timedelta(minutes=self.policy.buffer_after),i.zone)
 
     async def check(self,call_id,draft_id):
-        draft=self.bound(call_id,draft_id);authority=self.current(draft);now=self.clock()
+        draft=self.bound(call_id,draft_id);authority=self.current(draft)
         try:
             if not (self.provider.capabilities.exact_reads and self.provider.capabilities.recurrence_expansion):raise ProviderFault('unsupported')
             async with asyncio.timeout(max(.001,min(6,(authority.deadline-self.clock()).total_seconds()))):
                 with self.store.measure('calendar_check'):coverage=await self.provider.read_interval(self.interval(draft))
+            now=self.clock()
             decision,reason=self.policy.decide(appointment(draft).interval,coverage,now)
         except (ProviderFault,TimeoutError) as exc:
+            now=self.clock()
             reason=exc.code if isinstance(exc,ProviderFault) else 'deadline_budget'
             coverage=Coverage(self.interval(draft),now,now,False,reason=reason);decision='unknown'
-        self.current(draft)
+        authority=self.current(draft)
         expires=min(now+timedelta(seconds=self.policy.check_ttl_seconds),authority.deadline,coverage.valid_until)
         result=self.store.check(draft,self.policy.version,decision,reason,now,expires,coverage.complete)
         return {**result,'reservation':False,'verified_alternatives':[]}
