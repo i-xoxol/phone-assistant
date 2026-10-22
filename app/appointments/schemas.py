@@ -52,8 +52,8 @@ VOICE_TOOLS=[
     tool('get_booking_status','Read/reconcile this call operation; polling never creates a calendar event. '
         'Injection acknowledgment is not spoken confirmation.',OperationStatus),
     tool('check_appointment_slot','Check one exact ordinary office appointment interval. Collect full name, purpose/course, duration and arrangement first. '
-        'This is a live exact check, not a reservation. Reuse request_id for corrections. Read back every returned agreed detail, ask for confirmation, '
-        'and wait for the caller. The backend independently checks current consent before any write.',SlotRequest),
+        'This is a live exact check, not a reservation. Reuse request_id for corrections. The server queues an exact readback; '
+        'do not repeat or paraphrase it. Wait for the caller. The backend independently checks current consent before any write.',SlotRequest),
     tool('book_appointment','Book only the exact checked draft after its complete spoken readback and an unambiguous caller yes. '
         'No invitation, cancellation, rescheduling, charges or exception authority. Reuse the idempotency key; uncertain means reconcile, never repeat.',BookRequest),
     tool('get_my_appointment','Minimal confirmation of one ordinary appointment belonging to this caller. Ask first and last name. '
@@ -67,7 +67,11 @@ VOICE_POLICY='''
 APPOINTMENTS V1: The listed bounded appointment tools are available for ordinary academic appointments only.
 get_call_context and request_quick_lookup remain cache/background reads; neither checks a live exact slot.
 Collect first and last name, purpose/course, exact date and time zone, duration and arrangement.
-Use check_appointment_slot, then read its exact agreed details back and ask for confirmation. No reservation yet.
+Use check_appointment_slot. When readback_queued=true, the server sends instructions for one exact spoken readback.
+Read the quoted details exactly once, without a preface or paraphrase; ask the included question and wait. Do not add a second readback. No reservation yet.
+After complete readback and fresh unambiguous agreement, call book_appointment using the returned draft_id/check_id and a stable idempotency key.
+needs_consent means no write was attempted: the server queues a fresh exact readback. Wait for a new answer before booking; do not escalate solely for this repair.
+The server refreshes expired availability with a new real check before writing; it never extends stale evidence or the request deadline.
 Say you are checking only after dispatching actual work. Stay interruptible; do not finish the conversation while an operation is pending.
 Only book_appointment with verified state=confirmed permits saying the appointment is booked.
 Unknown/stale/incomplete coverage, outside hours, changed details, expired authority or an uncertain write require owner review.

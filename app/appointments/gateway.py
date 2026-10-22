@@ -6,7 +6,7 @@ import httpx
 from app.appointments.contracts import CalendarIdentity,ProviderFault
 from app.appointments.registry import Registry,appointment,name_key
 from app.appointments.service import BookingService,CallAuthority,ConsentEvidence
-from app.appointments.evidence import complete_readback,caller_identified,utterances
+from app.appointments.evidence import complete_readback,caller_identified,utterances,affirmative_answer
 from app.appointments.disclosure import PrivateNotices
 from app.appointments.schemas import SlotRequest,BookRequest,AppointmentLookup
 from app.storage.models import TERMINAL,CallUpdateRequest
@@ -24,6 +24,11 @@ def readback_text(value):
     start=value.interval.start.astimezone(ZoneInfo(value.interval.zone))
     minutes=int((value.interval.end-value.interval.start).total_seconds()/60)
     return f'{start.strftime("%B %d %Y at %I:%M %p")} {value.interval.zone}, {minutes} minutes, {value.purpose}, {value.location}. Is that correct?'
+
+
+def spoken_readback(value):
+    # An IANA identifier is storage data; use its unambiguous spoken equivalent.
+    return readback_text(value).replace(' America/New_York,',' Eastern Time,')
 
 
 class AppointmentGateway:
@@ -129,14 +134,60 @@ class AppointmentGateway:
                 if turn['start_ms']<readback_end:heard=False
                 else:last_caller.append(turn['text'])
             last_speaker=turn['speaker']
-        words=' '.join(''.join(last_caller).casefold().split()).strip(' .!?')
-        yes=bool(re.fullmatch(r"yes(?: please)?|yes[,]? (?:that is|that's) correct|correct|that works|так|так[,]? правильно",words))
+        yes=affirmative_answer(''.join(last_caller))
         # All current caller audio is part of the revision: any later changed detail/withdrawal fails closed.
         activity=getattr(self.m,'caller_activity',{}).get(draft['call_id'])
         caption_end=max((t['end_ms'] for t in turns if t['speaker']=='callee'),default=-1)
         audio_observed=not activity or caption_end>=activity['last_speech_ms']
         return ConsentEvidence(draft['payload_hash'],self.revision(draft['call_id']),
             bool(accepted and accepted['status']=='acknowledged' and heard and audio_observed),yes)
+
+    async def queue_readback(self,draft,*,repeat=False):
+        from uuid import UUID,uuid5
+        self.service.current(draft)
+        value=appointment(draft)
+        text=f'{value.first_name} {value.last_name}, '+spoken_readback(value)
+        instruction='Read these quoted details exactly, without a preface, then wait:\n'+text
+        if len(text.encode())>330 or len(instruction.encode())>400:return False
+        with self.m.db.connect() as db:cursor=db.execute('SELECT coalesce(max(id),0) FROM transcript_events WHERE call_id=?',(draft['call_id'],)).fetchone()[0]
+        uid=uuid5(UUID(draft['draft_id']),'readback-'+str(draft['revision'])+('-after-'+str(cursor) if repeat else ''))
+        with self.store.connect() as db:
+            conflict=('DO UPDATE SET update_id=excluded.update_id,created_at=excluded.created_at,after_transcript_id=excluded.after_transcript_id'
+                if repeat else 'DO NOTHING')
+            db.execute('INSERT INTO appointment_readbacks VALUES(?,?,?,?,?) ON CONFLICT(draft_id,draft_revision) '+conflict,
+                (draft['draft_id'],draft['revision'],str(uid),self.clock().isoformat(),cursor))
+        await self.m.send_call_update(draft['call_id'],CallUpdateRequest(mode='instructions',content=instruction,update_id=uid))
+        return True
+
+    async def retry_consent(self,call_id,args):
+        """Voice recovery only after a proven pre-write consent refusal; never replay a write."""
+        args=BookRequest.model_validate(args);draft=self.service.bound(call_id,str(args.draft_id))
+        self.service.current(draft)
+        if self.store.prior_call_write(call_id):raise ValueError('Reconcile the existing call operation')
+        check=self.store.get('appointment_checks','check_id',str(args.check_id))
+        if check['draft_id']!=draft['draft_id'] or check['draft_revision']!=draft['revision']:
+            raise ValueError('Check binding mismatch')
+        activity=getattr(self.m,'caller_activity',{}).get(call_id)
+        turns=self.transcript(call_id);answer='';last_speaker=None
+        for turn in turns:
+            if turn['speaker']=='callee':answer=(answer if last_speaker=='callee' else '')+turn['text']
+            last_speaker=turn['speaker']
+        captions=max((round(t['end_timestamp']*1000) for t in turns if t['speaker']=='callee'),default=-1)
+        # This answer only permits asking again, never authorizes a calendar write.
+        if not affirmative_answer(answer) or (activity and captions<activity['last_speech_ms']):
+            return {'state':'needs_consent','reason':'latest_caller_answer_requires_clarification',
+                'readback_queued':False,'calendar_write_attempted':False,
+                'instruction':'Nothing is booked. Wait for the complete caller answer. Respect a refusal or withdrawal; '
+                    'clarify corrections and check the changed details. Do not repeat the old proposal or book without fresh complete agreement.'}
+        queued=await self.queue_readback(draft,repeat=True)
+        return {'state':'needs_consent' if queued else 'needs_details',
+            'reason':'complete_readback_and_fresh_assent_required' if queued else 'arrangement_too_long_for_clear_readback',
+            'draft_id':draft['draft_id'],'check_id':str(args.check_id),'request_id':draft['request_id'],
+            'readback_queued':queued,'calendar_write_attempted':False,
+            'instruction':'Nothing is booked. The exact readback is queued; do not repeat or paraphrase it. '
+                'Wait for a new caller answer after the complete readback. Only then call book_appointment with the same IDs and idempotency key. '
+                'Do not retry automatically or request the supervisor solely for this recoverable consent step.' if queued
+                else 'Nothing is booked. Clarify shorter exact details before checking again.'}
 
     async def check(self,call_id,args):
         args=SlotRequest.model_validate(args);rid=self.request(call_id,args.request_id)
@@ -147,16 +198,9 @@ class AppointmentGateway:
             except KeyError:pass
             else:await self.progress(rid,'conflict',result['check_id'])
         if result['decision']=='available':
-            from uuid import UUID,uuid5
-            uid=uuid5(UUID(draft['draft_id']),'readback-'+str(draft['revision']))
-            value=appointment(draft);text=f'{value.first_name} {value.last_name}, '+readback_text(value)
-            if len(text.encode())>330:return {'state':'needs_details','reason':'arrangement_too_long_for_clear_readback'}
-            with self.m.db.connect() as db:cursor=db.execute('SELECT coalesce(max(id),0) FROM transcript_events WHERE call_id=?',(call_id,)).fetchone()[0]
-            with self.store.connect() as db:db.execute('INSERT OR IGNORE INTO appointment_readbacks VALUES(?,?,?,?,?)',
-                (draft['draft_id'],draft['revision'],str(uid),self.clock().isoformat(),cursor))
-            await self.m.send_call_update(call_id,CallUpdateRequest(mode='say',content=text,update_id=uid))
+            if not await self.queue_readback(draft):return {'state':'needs_details','reason':'arrangement_too_long_for_clear_readback'}
         return {**result,'draft_id':draft['draft_id'],'request_id':rid,'schema_version':'1.0',
-            'readback':readback_text(appointment(draft)),'readback_queued':result['decision']=='available',
+            'readback':spoken_readback(appointment(draft)),'readback_queued':result['decision']=='available',
             'instruction':'The readback is queued when available; do not repeat it. Wait for fresh caller agreement after complete readback. Nothing is booked.'}
 
     async def progress(self,request_id,phase,check_id=None):
@@ -201,9 +245,10 @@ class AppointmentGateway:
         uid=uuid5(UUID(result['operation_id']),'verified-booking-result')
         with self.store.connect() as db:db.execute('INSERT INTO appointment_delivery VALUES(?,?,?,NULL)',(result['operation_id'],str(uid),cursor))
         draft=self.store.get('appointment_drafts','draft_id',result['draft_id']);value=appointment(draft)
-        text='Calendar and private registry verified: confirmed '+readback_text(value).removesuffix(' Is that correct?')
+        text='Confirmed '+spoken_readback(value).removesuffix(' Is that correct?')
         try:
-            with self.store.measure('result_injection'):await self.m.send_call_update(call_id,CallUpdateRequest(mode='context',content=text,update_id=uid))
+            with self.store.measure('result_injection'):await self.m.send_call_update(call_id,CallUpdateRequest(mode='instructions',
+                content='Verified booking. Read exactly to the caller:\n'+text,update_id=uid))
         except Exception:
             with self.store.connect() as db:db.execute("UPDATE appointment_delivery SET error_code='call_ended_or_delivery_unconfirmed' WHERE operation_id=?",(result['operation_id'],))
 
