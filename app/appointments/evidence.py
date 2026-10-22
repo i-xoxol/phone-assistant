@@ -13,6 +13,11 @@ def contains_words(text,value):
     return bool(part) and any(tokens[i:i+len(part)]==part for i in range(len(tokens)-len(part)+1))
 
 
+def affirmative_answer(text):
+    text=' '.join(text.casefold().replace('’',"'").split()).strip(' .!?')
+    return bool(re.fullmatch(r"yes(?: please)?|yes[,]? (?:that is|that's|it is|it's) (?:correct|right)|correct|that works|так|так[,]? правильно",text))
+
+
 def speech_words(text):
     """Normalize supported transcription variants without dropping extra quantities or words."""
     text=unicodedata.normalize('NFKC',text).casefold().replace('’',"'")
@@ -23,6 +28,31 @@ def speech_words(text):
     text=re.sub(r'\b(\d{1,2}):00(?=\s*[ap]m\b)',r'\1',text)
     text=re.sub(r'(?<=\d)(?=[ap]m\b)',' ',text)
     return tuple(str(int(w)) if w.isdecimal() else w for w in words(text))
+
+
+def date_words(start):
+    """Exact spoken date variants, confined to the date field (never other quantities)."""
+    units=('zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen '
+        'fifteen sixteen seventeen eighteen nineteen').split()
+    ordinals=('zeroth first second third fourth fifth sixth seventh eighth ninth tenth eleventh '
+        'twelfth thirteenth fourteenth fifteenth sixteenth seventeenth eighteenth nineteenth').split()
+    def cardinal(n):
+        return units[n] if n<20 else ('twenty' if n<30 else 'thirty')+(' '+units[n%10] if n%10 else '')
+    day=start.day
+    ordinal=ordinals[day] if day<20 else ('twentieth' if day==20 else 'thirtieth' if day==30
+        else ('twenty' if day<30 else 'thirty')+' '+ordinals[day%10])
+    suffix='th' if 10<day<14 else {1:'st',2:'nd',3:'rd'}.get(day%10,'th')
+    days={str(day),str(day)+suffix,cardinal(day),ordinal,cardinal(day).replace(' ','-'),ordinal.replace(' ','-')}
+    years={str(start.year)}
+    # The service accepts ordinary near-term bookings. Unsupported centuries stay numeric.
+    if 2000<=start.year<=2099:
+        tail=start.year%100
+        if tail==0:years.add('two thousand')
+        elif tail<40:
+            for last in {cardinal(tail),cardinal(tail).replace(' ','-')}:
+                years.update({'two thousand '+last,'two thousand and '+last})
+                if tail>=10:years.add('twenty '+last)
+    return {speech_words(start.strftime('%B')+' '+d+' '+y) for d in days for y in years}
 
 
 def complete_readback(text,value,*,include_identity=True,require_confirmation=False):
@@ -42,11 +72,18 @@ def complete_readback(text,value,*,include_identity=True,require_confirmation=Fa
     if require_confirmation:prefixes=['Confirmed','Calendar and private registry verified confirmed']
     suffixes=['','Is that correct','Is that right','Is that okay','Does that work']
     actual=speech_words(text)
+    tails=[]
+    for prefix in prefixes:
+        before=speech_words(prefix)
+        if actual[:len(before)]!=before:continue
+        remaining=actual[len(before):]
+        for date in date_words(start):
+            if remaining[:len(date)]==date:tails.append(remaining[len(date):])
+    if not tails:return False
     for zone in zones:
-        core=f'{start.strftime("%B %d %Y at %I:%M %p")} {zone}, {int(seconds/60)} minutes, {value.purpose}, {value.location}'
-        for prefix in prefixes:
-            for suffix in suffixes:
-                if actual==speech_words(prefix+' '+core+' '+suffix):return True
+        core=f'{start.strftime("at %I:%M %p")} {zone}, {int(seconds/60)} minutes, {value.purpose}, {value.location}'
+        for suffix in suffixes:
+            if speech_words(core+' '+suffix) in tails:return True
     return False
 
 

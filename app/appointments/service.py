@@ -24,6 +24,10 @@ class ConsentEvidence:
     affirmative: bool
 
 
+class ConsentRequired(ValueError):
+    """A pre-write refusal that can be repaired by a new readback and fresh assent."""
+
+
 class BookingService:
     def __init__(self,registry,provider,authority,consent,policy=None,clock=None):
         self.store,self.provider=registry,provider
@@ -71,7 +75,7 @@ class BookingService:
         authority=self.current(draft);evidence=self.consent(draft,consent_id)
         if not (evidence.affirmative and evidence.readback_observed and evidence.payload_hash==draft['payload_hash']
                 and evidence.caller_revision==authority.revision):
-            raise ValueError('Fresh caller agreement after complete readback is required')
+            raise ConsentRequired('Fresh caller agreement after complete readback is required')
         latest=self.current(draft)
         if latest.revision!=authority.revision:raise ValueError('Caller changed during consent evaluation')
         return latest
@@ -91,8 +95,17 @@ class BookingService:
             authorization=self.verify_consent(draft,consent_id)
             check=self.store.get('appointment_checks','check_id',check_id)
             if (check['draft_id']!=draft_id or check['draft_revision']!=draft['revision'] or check['decision']!='available'
-                    or check['policy_version']!=self.policy.version or datetime.fromisoformat(check['expires_at'])<=self.clock()):
-                raise ValueError('An unexpired exact check for this revision is required')
+                    or check['policy_version']!=self.policy.version):
+                raise ValueError('An exact available check for this revision is required')
+            if datetime.fromisoformat(check['expires_at'])<=self.clock():
+                # Listening and answering can outlast the check TTL. Fetch new evidence;
+                # never extend the old coverage, request deadline, or caller consent.
+                check=await self.check(call_id,draft_id)
+                if check['decision']!='available':
+                    return {'state':'conflict' if check['decision']=='busy' else 'needs_owner',
+                        'step':'fresh_check','reason':check['reason']}
+                if self.verify_consent(draft,consent_id).revision!=authorization.revision:
+                    raise ConsentRequired('Caller changed while refreshing availability')
             if not self.provider.capabilities.safe_booking():return {'state':'needs_owner','reason':'unsupported_guarantees'}
             intended=self.provider.intended_identity(draft_id)
             operation,created=self.store.intent(draft,idempotency_key,intended)

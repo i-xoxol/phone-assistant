@@ -99,7 +99,13 @@ class VoiceTools:
             args=json.loads(item['arguments']);gateway=manager.appointments
             if name=='check_appointment_slot':return await gateway.check(self.bridge.call_id,args)
             if name=='book_appointment':
-                result=await gateway.book(self.bridge.call_id,args);result.pop('source_identity',None);return result
+                from app.appointments.service import ConsentRequired
+                try:result=await gateway.book(self.bridge.call_id,args)
+                except ConsentRequired:
+                    log_event('appointment_consent_required',call_id=self.bridge.call_id,
+                        reason='complete_readback_and_fresh_assent_required')
+                    return await gateway.retry_consent(self.bridge.call_id,args)
+                result.pop('source_identity',None);return result
             if name=='get_booking_status':
                 from app.appointments.schemas import OperationStatus
                 args=OperationStatus.model_validate(args)
@@ -188,7 +194,7 @@ class VoiceTools:
                     result = await self.operation(item)
                 except Exception as exc:
                     self.bridge.manager.db.finish_tool(self.bridge.call_id, item['call_id'], 'unconfirmed')
-                    log_event('voice_tool_unconfirmed', call_id=self.bridge.call_id, error_type=type(exc).__name__)
+                    log_event('voice_tool_unconfirmed', call_id=self.bridge.call_id, tool_name=item['name'],error_type=type(exc).__name__)
                     result = {'status': 'unconfirmed', 'instruction': 'Do not retry automatically. Ask the owner or end the call.'}
                 if self.bridge.handoff or self.bridge.closing:
                     # New Live session reads durable keypad history. Old socket is gone.
