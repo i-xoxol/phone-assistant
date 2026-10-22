@@ -92,7 +92,8 @@ flowchart LR
     App -->|Optional guarded workflow| Booking["Appointment policy + private journal"]
     Booking --> Adapter["CalendarProviderAdapter v1"]
     Adapter --> Google["Google Calendar adapter"]
-    Mirror["Existing upstream mirror + health evidence"] --> Google
+    Mirror["Existing upstream calendar mirror"] --> Google
+    Health["Mirror health / coverage evidence"] --> Adapter
     Coach["Optional private Realtime coach"] -->|Read-only owner schedule| Adapter
 ```
 
@@ -337,8 +338,8 @@ the distinction between owner and caller.
 | [Native Realtime coaching](docs/realtime-owner-coaching.md) | Full GPT-Realtime 2.1 receives separately labelled raw owner/caller audio and streams brief hints to the owner channel, bypassing Luna. | Optional read-only schedule tool; no booking, dialing, payment, or permission-changing tools. |
 
 Native Realtime offers an opt-in **two-leg local bridge** that relays both humans
-and mixes hints only into audio sent to the owner's earpiece. Model failure leaves human
-forwarding running; media loss closes the streams into a preloaded ordinary
+and mixes hints only into audio sent to the owner's earpiece. Model failure leaves
+human forwarding running; media loss closes the streams into a preloaded ordinary
 Twilio conference with coaching off. Recovery may interrupt audio. The alternative
 **managed conference** transport needs a same-account TwiML App and an extra
 application connection, with corresponding concurrency and cost limits.
