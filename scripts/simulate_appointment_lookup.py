@@ -206,7 +206,17 @@ def heard_details(text,details,now):
             tail=piece[-2:];right=cardinal(int(tail))
             if tail[0]=='0':right='zero '+right
             phrases.add(cardinal(int(piece[:-2]))+' '+right)
-        return {place_words(p) for p in phrases}
+        result={place_words(p) for p in phrases}
+        # ASR also renders spoken codes as digit groups, e.g. E-10-66.
+        # Accept only groups whose literal concatenation is the expected code;
+        # dropping a zero must not turn E-1-66 into E-1066.
+        for mask in range(1<<(len(piece)-1)):
+            groups=[];start=0
+            for i in range(len(piece)-1):
+                if mask&(1<<i):groups.append(piece[start:i+1]);start=i+1
+            groups.append(piece[start:])
+            if all(len(g)==1 or not g.startswith('0') for g in groups):result.add(tuple(groups))
+        return result
     actual,expected=place_words(text),place_words(details['location']);place=False
     # Numeric speech variants apply only inside the expected location. They do
     # not change caller identity, consent or the source's appointment details.

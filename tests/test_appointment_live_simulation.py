@@ -134,6 +134,7 @@ def test_a_tool_result_or_unheard_assistant_audio_alone_cannot_pass():
 @pytest.mark.parametrize('room,passed',[
     ('E 1066',True),('E, ten sixty-six',True),('E one zero six six',True),
     ('E one thousand sixty six',True),('E ten sixty-five',False),('E one sixty-six',False),
+    ('E-10-66',True),('E-1-0-6-6',True),('E-10-65',False),
 ])
 def test_location_scoring_accepts_equivalent_room_speech_only(room,passed):
     details={**DETAILS,'location':'East Building, West Campus, room E 1066'}
