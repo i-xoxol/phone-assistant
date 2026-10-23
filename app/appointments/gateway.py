@@ -6,7 +6,7 @@ import httpx
 from app.appointments.contracts import CalendarIdentity,ProviderFault
 from app.appointments.registry import Registry,appointment,name_key
 from app.appointments.service import BookingService,CallAuthority,ConsentEvidence
-from app.appointments.evidence import complete_readback,caller_identified,utterances,affirmative_answer,spoken_consent
+from app.appointments.evidence import complete_readback,caller_identified,caller_name_evidence,lookup_spelling_completed,lookup_spelled_names,lookup_name_card,utterances,affirmative_answer,spoken_consent
 from app.appointments.disclosure import PrivateNotices
 from app.appointments.schemas import SlotRequest,BookRequest,AppointmentLookup,FirstAvailableRequest
 from app.appointments import confirmation
@@ -434,7 +434,11 @@ class AppointmentGateway:
                 and not (bridge.closing or bridge.handoff or bridge.end_requested.is_set()))
         def pending():
             _,current=self.lookup_evidence(call_id,args)
-            return not current or time.monotonic()-getattr(bridge,'last_input_speech_at',0)<self.lookup_settle_seconds
+            # Letter-by-letter answers naturally have longer gaps than ordinary
+            # speech. Give their captions time to finish before treating a name
+            # as complete or asking another question.
+            settle=self.lookup_settle_seconds*(2 if any(lookup_spelled_names(self.transcript(call_id)).values()) else 1)
+            return not current or time.monotonic()-getattr(bridge,'last_input_speech_at',0)<settle
         def waiting():
             log_event('appointment_lookup',call_id=call_id,status='pending',reason='caller_captions_pending')
             return {'status':'pending','reason':'caller_captions_pending',
@@ -446,9 +450,18 @@ class AppointmentGateway:
                     if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}
                     if pending():
                         await asyncio.sleep(min(.05,self.lookup_settle_seconds));continue
+                    card=lookup_name_card(self.transcript(call_id))
+                    proposed={name:value or getattr(args,name) for name,value in card.items()}
+                    fields=caller_name_evidence(self.transcript(call_id),proposed['first_name'],proposed['last_name'],for_lookup=True)
+                    # The server owns literal spellings, not the model's memory
+                    # of its earlier tool arguments. Never reuse a component
+                    # unless the complete current transcript still proves it.
+                    args=AppointmentLookup.model_validate({name:proposed[name] if valid else getattr(args,name)
+                        for name,valid in zip(('first_name','last_name'),fields)})
                     result=await self.own(call_id,args.model_dump())
                     if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}
                     if pending():continue  # New audio during the read requires a fresh verified read.
+                    hint_fields=None
                     if search_names and result['status'] in ('not_found','needs_owner'):
                         candidates=self.store.close_appointment_names(args.first_name,args.last_name,self.clock())
                         log_event('appointment_lookup_spelling_search',call_id=call_id,status='limited' if candidates is None else 'complete')
@@ -459,6 +472,9 @@ class AppointmentGateway:
                         # independently supply the exact full name, including fresh
                         # separate components after a correction, before a source read.
                         proven=[c for c in candidates if self.lookup_evidence(call_id,AppointmentLookup.model_validate(c))[0]]
+                        if candidates:
+                            evidence=[caller_name_evidence(self.transcript(call_id),c['first_name'],c['last_name'],for_lookup=True) for c in candidates]
+                            hint_fields=tuple(all(e[i] for e in evidence) for i in range(2))
                         if len(proven)==1:
                             result=await self.own(call_id,proven[0])
                             if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}
@@ -472,22 +488,35 @@ class AppointmentGateway:
                                     'Do not say the appointment is missing or suggest any candidate names.'}
                         # An ASR spelling is not an authoritative name. Repair it
                         # without searching candidates or guessing a near match.
-                        assistant=' '.join(' '.join(t['text'] for t in utterances(self.transcript(call_id),join_sentences=True)
-                            if t['speaker']=='assistant').split())
-                        repaired=bool(re.search(r'\bspell\b[^.!?]{0,80}\byour (?:first name|given name|last name|surname|family name)\b',assistant,re.I))
+                        fields=caller_name_evidence(self.transcript(call_id),args.first_name,args.last_name,for_lookup=True)
+                        repaired=lookup_spelling_completed(self.transcript(call_id),first_matched=fields[0] or bool(hint_fields and hint_fields[0]))
                         if repaired:
                             return {'status':'not_found','reason':'exact_name_not_found_after_spelling',
                                 'instruction':'No exact matching indexed appointment was verified after the name clarification. '
                                     'Explain that bounded result once and offer owner review. Do not repeat the spelling loop or claim the whole calendar has no appointment.'}
+                        if hint_fields and hint_fields[0]:
+                            return {'status':'needs_name_spelling','reason':'last_name_spelling_needed','missing_fields':['last_name'],
+                                'instruction':'The caller already supplied the first name. Ask only: Could you spell your last name? '
+                                    'Reuse the first name, then retry search_appointment_name. Do not restart full-name intake or suggest a candidate name.'}
                         return {'status':'needs_name_spelling','reason':'no_exact_name_match','missing_fields':['first_name','last_name'],
                             'instruction':'The transcribed name has no exact indexed match; its spelling may be wrong. Do not say the appointment is missing. '
                                 'Ask one short question: Could you spell your first name? Then ask for the last name separately. '
                                 'Retry search_appointment_name with both fresh name components, using the caller\'s letters exactly. '
                                 'Do not suggest a candidate name, guess a similar spelling, search all appointments, or restart date/time/purpose intake.'}
                     if result['status']=='needs_owner' and not self.lookup_evidence(call_id,args)[0]:
-                        return {**result,'reason':'complete_current_name_required',
-                            'instruction':'Complete the current first and last name before retrying. After a spelling correction, collect both components separately; '
-                                'ask only the missing component. Do not infer the rest from an old name or ask for appointment dates or purpose.'}
+                        fields=caller_name_evidence(self.transcript(call_id),args.first_name,args.last_name,for_lookup=True)
+                        if hint_fields and hint_fields[0]:fields=(True,fields[1])
+                        if lookup_spelling_completed(self.transcript(call_id),first_matched=fields[0],first_missing=not fields[0]):
+                            return {**result,'reason':'name_clarification_exhausted',
+                                'instruction':'A spelling clarification has already been attempted without safe verification. Do not ask for the name or spelling again. '
+                                    'Explain once that the appointment could not be safely verified and offer owner review. Do not claim it is missing.'}
+                        missing=[name for name,matched in zip(('first_name','last_name'),fields) if not matched]
+                        log_event('appointment_name_clarification',call_id=call_id,missing_fields=missing,reason='current_components')
+                        return {**result,'status':'needs_name_spelling' if missing==['last_name'] else 'needs_owner','reason':'complete_current_name_required',
+                            'missing_fields':missing,
+                            'instruction':'Reuse name components already provided. Ask only the missing component, with one short spelling question; '
+                                'do not restart full-name intake. A spoken name followed by its letters is a valid clarification. '
+                                'After a first-name correction collect the last name separately. Do not infer an old name or ask for appointment dates or purpose.'}
                     return result
         except TimeoutError:
             if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}

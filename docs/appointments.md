@@ -125,6 +125,16 @@ own name fragments across that acknowledgment. Questions, substantive words,
 third-party references and changed or incomplete names retain their guards; this
 does not alter booking evidence.
 
+Native lookup projects a name card from the caller's own introduction, elicited
+components and explicit spellings. The model's name arguments are hints; a stale
+argument is replaced only when the complete current transcript independently
+proves the collected component. Assistant questions do not revoke known fields.
+A clear first name can be reused while only the surname is clarified. Name-plus-
+letters answers and short prompts such as “Now the last name, please” continue
+the same intake. Caller corrections and missing/contradictory components still
+block disclosure. A failed spelling clarification offers owner review once,
+without restarting the full-name questions. Booking evidence is unchanged.
+
 Native lookup waits up to eight seconds for current caller audio/captions and
 rechecks the complete name after calendar I/O. A harmless follow-up during a read
 does not by itself invalidate that identity. New uncaptioned audio requires

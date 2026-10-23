@@ -62,6 +62,11 @@ an unheard response, or an invented spoken confirmation cannot pass alone.
 Failures exit nonzero and retain evidence for diagnosis. Caller/assistant session
 finalization is also checked. Runs last at most 180 seconds plus bounded cleanup.
 
+Verification that succeeds only after a name loop is a failure too. Reports count
+full-name and component/spelling questions and reject repeated spelling cycles or
+a full-name question after the requested spellings were already supplied. A normal
+initial name intake plus one necessary spelling clarification remains allowed.
+
 `--save-audio` retains both generated raw `.pcmu` streams for diagnosis. Those are
 private test artifacts, not repository fixtures. Keep scenarios, audio, SQLite
 files and reports out of Git. Use synthetic names in public regression tests.
