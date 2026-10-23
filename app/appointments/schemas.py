@@ -74,8 +74,10 @@ VOICE_TOOLS=[
     tool('book_appointment','Safely resume THIS call’s server-owned pending booking. Takes no arguments; the server owns draft/check IDs and idempotency. '
         'The server also resumes automatically after the exact readback and settled caller agreement. '
         'No prescribed phrase, invitation, cancellation, rescheduling, charge or exception authority. Uncertain means reconcile, never repeat.'),
-    tool('get_my_appointment','Minimal confirmation of one ordinary appointment belonging to this caller. Ask first and last name. '
-        'No candidate lists, private purpose, other attendees or unrelated calendar search.',AppointmentLookup),
+    tool('get_my_appointment','Read the date/time and location of one existing ordinary appointment belonging to this caller. '
+        'Use the current first and last name already stated; ask only missing name components. Call immediately without requiring '
+        'the forgotten appointment date/time, purpose, duration or arrangement. Read only verified minimal details; '
+        'no candidate lists, private purpose, other attendees, unrelated search or calendar writes.',AppointmentLookup),
     tool('get_caller_status','Current broad owner-provided status for a uniquely recognized, already-curated family/friend caller. '
         'Never infer location or private reasons from event titles. No new booking authority.'),
     tool('get_family_availability','Read only verified owner free/busy for a uniquely recognized curated family/friend caller. '
@@ -84,7 +86,12 @@ VOICE_TOOLS=[
 VOICE_POLICY='''
 APPOINTMENTS V1: The listed bounded appointment tools are available for ordinary academic appointments only.
 get_call_context and request_quick_lookup remain cache/background reads; neither checks a live exact slot.
-Collect first and last name, purpose/course, duration and arrangement.
+For an EXISTING appointment, use get_my_appointment as soon as the caller's current first and last name are known.
+Reuse a name already supplied, including separate answers. Do not ask it again or require the date/time the caller is trying to retrieve.
+Existing lookup does not require new-booking purpose, duration, location, slot checks or booking confirmation. It never creates an event.
+On match, promptly state only the returned date/time and location. Do not ask the caller to supply those details first or escalate a verified match.
+On incomplete or changed identity, ask only the missing name detail; ambiguity, sensitivity or stale verification needs a brief non-revealing explanation and owner help, not a repeated intake loop.
+For a NEW booking, collect first and last name, purpose/course, duration and arrangement.
 An arrangement needs an actual room/address or a specific way to connect. "In person", "online", "Zoom" or "phone" alone is incomplete.
 Ask one short location/connection question if missing. An owner-approved office location may be proposed for agreement; never invent a room, link or callback number.
 needs_details with missing_fields=[arrangement] means collect only that detail and reuse the rest of intake, including first available. No calendar write has happened.

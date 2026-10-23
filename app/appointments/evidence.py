@@ -190,13 +190,14 @@ def complete_readback(text,value,*,include_identity=True,require_confirmation=Fa
     return False
 
 
-def utterances(turns,*,join_sentences=False):
+def utterances(turns,*,join_sentences=False,join_caller_pauses=False):
     """Reassemble adjacent transcript deltas, preserving speaker, pauses and sentence boundaries."""
     result=[]
     for turn in turns:
         start=turn.get('timestamp',turn.get('start_ms',0)/1000)
         end=turn.get('end_timestamp',turn.get('end_ms',start*1000)/1000)
-        if (result and result[-1]['speaker']==turn['speaker'] and start<=result[-1]['end']+.75
+        if (result and result[-1]['speaker']==turn['speaker']
+                and ((join_caller_pauses and turn['speaker']=='callee') or start<=result[-1]['end']+.75)
                 and (join_sentences or not re.search(r'[.!?]\s*$',result[-1]['text']))):
             separator=' ' if re.search(r'[.!?]$',result[-1]['text']) and not turn['text'][:1].isspace() else ''
             result[-1]['text']+=separator+turn['text'];result[-1]['end']=max(end,result[-1]['end'])
@@ -213,7 +214,9 @@ def caller_identified(turns,first,last):
     intro=fillers+r"(?:"+explicit+r"|this is|i am|i'm|it's|it is)\b\s*(.*)"
     component=fillers+r"(?:my|the) (first name|given name|last name|surname|family name)(?: is|'s)\b\s*(.*)"
     sentences=[]
-    for turn in utterances(turns,join_sentences=True):
+    # A pause in "Yes, [name]" does not end an elicited answer. Keep
+    # assistant turns separate so an unrelated question cannot elicit a name.
+    for turn in utterances(turns,join_sentences=True,join_caller_pauses=True):
         if turn['speaker']!='callee':sentences.append(turn);continue
         # A period inside a complete supplied name (for example St. John) is not a sentence boundary.
         text=turn['text'].casefold().replace('’',"'");spans=[]
@@ -240,11 +243,24 @@ def caller_identified(turns,first,last):
         name_cue=explicit+r"|\b(?:this is|i am|i'm|it's|it is|first name|last name|surname|family name|name)\b"
         followup=r"(?:(?:i am|i'm) (?:calling|phoning|asking|inquiring|checking) (?:about|regarding|for|on|to confirm|to check|to discuss)|(?:it's|it is) (?:about|regarding)) (?:my|the|an) (?:(?:existing|upcoming|scheduled) )?appointment(?: please| thank you)?"
         ordinary=re.fullmatch(followup,' '.join(words(text)))
-        if ordinary and question is None:continue
+        # A refusal to supply a forgotten appointment time is not a new name.
+        # Retain only an already complete claim across this closed vocabulary;
+        # names, third parties and incomplete identity corrections cannot pass.
+        recall_words=set("no no-no actually i just want wanted need would like to check confirm clarify with you my the "
+            "time date and of appointment don't do not really remember recall what was is it called um uh see".split())
+        tokens=words(text)
+        recall=bool(set(tokens)<=recall_words and {'check','confirm','clarify','remember','recall'}&set(tokens))
+        if (ordinary or recall) and question is None:continue
         if part:
             field,answer=part.groups();field='last' if field in ('last name','surname','family name') else 'first'
         elif claim:field,answer='full',claim[1]
-        elif question:field,answer=question,re.sub(fillers+r"(?:it's|it is)\s+",'',text)
+        elif question:
+            field,answer=question,text
+            # Preserve exact names (including a name that is also a filler).
+            # Otherwise remove only a leading acknowledgment on an elicited
+            # answer; the remaining complete name must still match exactly.
+            if words(answer) not in (full,expected_first,expected_last):
+                answer=re.sub('^'+fillers+r"(?:(?:it's|it is)\s+)?",'',answer,count=1)
         elif re.search(r"\b(?:not|isn't)\b",text) and (contains_words(text,first) or contains_words(text,last) or 'name' in text):
             given=surname=False;question=None;continue
         elif re.match(r'(?:actually|no|correction)\b',text):

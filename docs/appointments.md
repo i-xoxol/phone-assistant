@@ -111,6 +111,14 @@ identity, reconciliation and private indexing.
 
 ## Calendar and consent rules
 
+Existing-appointment lookup uses the caller's current complete first and last
+name, including elicited components and an acknowledgment followed by a paused
+name answer. A request to retrieve a forgotten appointment time does not erase
+that identity. Corrections, incomplete replacement names, third-party references
+and new uncaptioned speech still block disclosure. Lookup reuses the supplied
+name and retrieves minimal verified details without requiring new-booking
+intake, creating a draft, or starting another booking operation.
+
 ### Server-owned native voice workflow
 
 Native voice checks bind the call to a durable proposal revision and exact check.
