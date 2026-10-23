@@ -55,7 +55,7 @@ class CappedCalendar:
     def __init__(self,provider,expected,execute=False,window=None):
         self.provider=provider;self.expected=expected;self.execute=execute
         self.window=window
-        self.creates=0;self.events={};self.dispatching=False;self.owner_authorize=lambda:None
+        self.creates=0;self.events={};self.dispatching=False;self.owner_authorize=lambda:None;self.rejection=None
     def __getattr__(self,name):return getattr(self.provider,name)
     def permits(self,value):
         actual,expected=payload(value),payload(self.expected)
@@ -67,13 +67,26 @@ class CappedCalendar:
                     and value.interval.end-value.interval.start==self.expected.interval.end-self.expected.interval.start):return False
             for data in (actual,expected):
                 for key in ('start','end','local_intent'):data.pop(key)
-        for data in (actual,expected):data['purpose']=tuple(w for w in speech_words(data['purpose']) if w not in {'a','an','the','to'})
+        for data in (actual,expected):data['purpose']=tuple(w for w in speech_words(data['purpose']) if w not in {'a','an','the','to','discuss','discussion','about'})
         # "In person, room E-1066" and "room E 1066" are the same owner-approved
         # place. Never relax time/name/purpose or accept another room/address.
         def place(text):return re.sub(r'^in person(?:\s+at)?[,\s]+','',text,flags=re.I)
-        return actual==expected and exact_room(room_words(place(value.location)),place(self.expected.location))
+        a,b=place(value.location),place(self.expected.location)
+        same=exact_room(room_words(a),b)
+        if not same:
+            parts=[p.strip() for p in re.split('[,;]',a) if p.strip()]
+            remaining=[p.strip() for p in re.split('[,;]',b) if p.strip()]
+            if len(parts)==len(remaining):
+                for part in parts:
+                    match=next((i for i,target in enumerate(remaining) if exact_room(room_words(part),target)),None)
+                    if match is None:break
+                    remaining.pop(match)
+                else:same=not remaining
+        return actual==expected and same
     async def create(self,identity,value,*,authorize):
-        if self.creates or not self.permits(value):raise WriteNotAuthorized('Replay is capped to one exact approved appointment')
+        if self.creates or not self.permits(value):
+            self.rejection='second_create_forbidden' if self.creates else 'outside_owner_replay_grant'
+            raise WriteNotAuthorized('Replay is capped to the approved appointment')
         authorize();self.creates+=1
         if self.execute:
             self.dispatching=True
@@ -239,7 +252,7 @@ async def run_booking(source,scenario,output,*,execute=False,grant_path=None,cal
         op=g.store.prior_call_write(cid);report['operation']=g.safe_operation(op) if op else None
         report['caller_heard_confirmation']=heard_confirmation(report['transcript'],{'start_ms':report.get('result_ready_ms')})
         with g.store.connect() as db:
-            report['booking_intents']=[dict(r) for r in db.execute('SELECT action,offer_turn,answer_turn,checked_at FROM appointment_booking_intents WHERE call_id=? ORDER BY rowid',(cid,))]
+            report['booking_intents']=[dict(r) for r in db.execute('SELECT action,source,offer_turn,answer_turn,checked_at FROM appointment_booking_intents WHERE call_id=? ORDER BY rowid',(cid,))]
             report['booking_metrics']=[dict(r) for r in db.execute('SELECT stage,duration_ms,outcome FROM appointment_telemetry ORDER BY rowid')]
         report['evaluation']={'passed':bool(op and op['state']=='confirmed' and calendar.creates==1 and report.get('caller_heard_confirmation') and all(report['finalized'].values())),
             'reason':'verified_single_booking' if op and op['state']=='confirmed' else 'booking_not_confirmed'}
@@ -258,7 +271,7 @@ async def run_booking(source,scenario,output,*,execute=False,grant_path=None,cal
         for t in tasks:t.cancel()
         await asyncio.gather(*tasks,return_exceptions=True)
         if manager:await manager.stop_supervision()
-        if calendar:report['provider_creates']=calendar.creates
+        if calendar:report.update(provider_creates=calendar.creates,replay_cap_rejection=calendar.rejection)
         (output/'report.json').write_text(json.dumps(report,indent=2));(output/'report.json').chmod(0o600)
         if execute:Database(source.database_path).emit(scenario.source_call_id,'owner.authorized_booking_replay',
             {'grant_sha256':grant_hash,'evidence_directory':str(output),'stage':'finished','evaluation':report['evaluation'],'calendar_writes':report['calendar_writes']})

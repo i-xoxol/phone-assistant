@@ -46,6 +46,8 @@ def test_cap_accepts_same_room_format_but_not_a_different_number():
     cap=CappedCalendar(p,v)
     assert cap.permits(replace(v,location='In person, East Building, West Campus, room E-1066'))
     assert cap.permits(replace(v,location='In person at East Building, West Campus, room E 1066'))
+    assert cap.permits(replace(v,location='In person, room E 1066, East Building, West Campus'))
+    assert not cap.permits(replace(v,location='In person, room E 1066, West Building, East Campus'))
     assert not cap.permits(replace(v,location='East Building, West Campus, room E 1067'))
 
 
