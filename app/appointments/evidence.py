@@ -31,7 +31,7 @@ def affirmative_answer(text):
     return bool(re.fullmatch(unit+r'(?: (?:and )?'+unit+r')*',text) and re.search(r'\b(?:'+agree+r')\b',text))
 
 
-def appointment_continuation(text):
+def appointment_continuation(text,*,partial_pause=False):
     """Only status/acknowledgment or another question about this same booking may carry consent."""
     normalized=' '.join(words(text))
     if len(normalized.split())>60:return False
@@ -40,6 +40,12 @@ def appointment_continuation(text):
         r'(?:shall|can|may) i (?:book|schedule) '+target+r'|is that (?:correct|right|okay)|does that work(?: for you)?|'
         r'could you (?:please )?confirm (?:that )?you agree to '+target+r')')
     acknowledgment=r'(?:okay|ok|all right|alright|right|sure|great|perfect|thank you|thanks)'
+    # A live caption may end at "Okay, give me a" while a booking starts.
+    # This only preserves a prior complete readback AND caller agreement; it
+    # cannot establish either. Only a final, unfinished, non-question pause is
+    # accepted. Any later substantive completion is evaluated in full again.
+    if partial_pause and '?' not in text and re.fullmatch(
+            r'(?:'+acknowledgment+r' )*give me(?: just)?(?: (?:a|one))?',normalized):return True
     pause=r'(?:(?:just )?(?:a|one) moment(?: please)?|give me (?:just )?(?:a|one) moment(?: please)?)'
     status=(r"(?:let me|i will|i'll|i am|i'm) (?:check|checking|verify|verifying|finish|finalize|complete|book|booking|schedule|scheduling|process|processing) "
         r'(?:'+target+r'|the details|the final step|that step|the request)(?: (?:now|for you|with the calendar|on the calendar))?')
@@ -57,11 +63,12 @@ def spoken_consent(turns,value,*,matches=None):
             blocks[-1]['text']+=turn['text'];blocks[-1]['end_ms']=turn['end_ms']
         else:blocks.append(dict(turn))
     heard=False;answer='';readback_end=-1
-    for block in blocks:
+    for index,block in enumerate(blocks):
         if block['speaker']=='assistant':
             if (matches(block['text']) if matches else complete_readback(block['text'],value)):
                 heard=True;answer='';readback_end=block['end_ms']
-            elif not (heard and appointment_continuation(block['text'])):
+            elif not (heard and appointment_continuation(block['text'],
+                    partial_pause=index==len(blocks)-1 and affirmative_answer(answer))):
                 heard=False;answer=''
         elif block['speaker']=='callee' and heard and block['start_ms']>=readback_end:
             answer=block['text']
