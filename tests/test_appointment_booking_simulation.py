@@ -5,7 +5,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from scripts.simulate_appointment_booking import CappedCalendar,BookingScenario,caller_config,validate_execution
+from scripts.simulate_appointment_booking import CappedCalendar,BookingScenario,caller_config,validate_execution,heard_confirmation
 from tests.appointment_fixtures import NOW,SLOT,FakeProvider
 from app.appointments.contracts import Appointment
 from app.appointments.registry import payload_hash
@@ -71,3 +71,12 @@ def test_caller_is_a_separate_natural_booking_peer_without_tools():
     config=caller_config(Settings(_env_file=None),scenario,'marin')
     assert config['delegation']=={'type':'client'} and not config['store']
     assert 'That works for me' in config['instructions'] and 'BOOK' in config['instructions']
+
+
+def test_result_scoring_waits_for_playback_and_independent_positive_caller_audio():
+    events=[dict(side='caller',direction='input',start_ms=1000,text='Confirmed.')]
+    assert not heard_confirmation(events,{'start_ms':None})
+    assert not heard_confirmation(events,{'start_ms':2000})
+    assert heard_confirmation(events,{'start_ms':500})
+    assert not heard_confirmation([{**events[0],'text':'Not confirmed.'}],{'start_ms':500})
+    assert not heard_confirmation([{**events[0],'side':'assistant','direction':'output'}],{'start_ms':500})

@@ -106,6 +106,14 @@ def validate_execution(source,scenario,grant_path):
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
+def heard_confirmation(events,audio):
+    if not audio or audio['start_ms'] is None:return False
+    heard=''.join(e['text'] for e in events if e['side']=='caller' and e['direction']=='input'
+        and e.get('start_ms',0)>=audio['start_ms'])
+    tokens=speech_words(heard)
+    return 'confirmed' in tokens and not {'not',"isn't",'unconfirmed'}&set(tokens)
+
+
 async def run_booking(source,scenario,output,*,execute=False,grant_path=None,caller_voice='marin'):
     output=Path(output).resolve()
     if output.exists() or output.is_relative_to(source.database_path.parent) or output.is_relative_to(Path(__file__).resolve().parents[1]):
@@ -176,10 +184,7 @@ async def run_booking(source,scenario,output,*,execute=False,grant_path=None,cal
                     if not op or op['state']!='confirmed':continue
                     delivery=g.delivery_status(cid,op['operation_id'])
                     with g.store.connect() as db:audio=db.execute("SELECT * FROM appointment_voice_prompts WHERE call_id=? AND kind='result' ORDER BY rowid DESC LIMIT 1",(cid,)).fetchone()
-                    heard=''.join(e['text'] for e in report['transcript'] if e['side']=='caller' and e['direction']=='input'
-                        and audio and e.get('start_ms',0)>=audio['start_ms'])
-                    tokens=speech_words(heard)
-                    if delivery['spoken_observed'] and 'confirmed' in tokens and not {'not',"isn't",'unconfirmed'}&set(tokens) and not transport.to_caller.buffer:
+                    if delivery['spoken_observed'] and heard_confirmation(report['transcript'],audio) and not transport.to_caller.buffer:
                         report['caller_heard_confirmation']=True
                         transport.incoming.put_nowait({'event':'stop','streamSid':transport.stream});return await conversation
             tasks=[conversation,receiver,pacer,asyncio.create_task(done_booking())]
