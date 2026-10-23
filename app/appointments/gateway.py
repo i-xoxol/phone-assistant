@@ -472,8 +472,9 @@ class AppointmentGateway:
                                     'Do not say the appointment is missing or suggest any candidate names.'}
                         # An ASR spelling is not an authoritative name. Repair it
                         # without searching candidates or guessing a near match.
-                        assistant=' '.join(t['text'] for t in self.transcript(call_id) if t['speaker']=='assistant')
-                        repaired=bool(re.search(r'\bspell(?:ing)?\b',assistant,re.I))
+                        assistant=' '.join(' '.join(t['text'] for t in utterances(self.transcript(call_id),join_sentences=True)
+                            if t['speaker']=='assistant').split())
+                        repaired=bool(re.search(r'\bspell\b[^.!?]{0,80}\byour (?:first name|given name|last name|surname|family name)\b',assistant,re.I))
                         if repaired:
                             return {'status':'not_found','reason':'exact_name_not_found_after_spelling',
                                 'instruction':'No exact matching indexed appointment was verified after the name clarification. '

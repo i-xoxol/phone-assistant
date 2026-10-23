@@ -61,6 +61,7 @@ def test_native_exact_miss_requests_one_spelling_repair_then_matches_without_a_n
         assert result['status']=='needs_name_search' and 'Please hold' in result['instruction']
         assert 'search_appointment_name' in result['instruction']
         assert not {'start','end','location','candidates'}&set(result)
+        speech(m,cid,'assistant','Please hold while I check the upcoming appointments for a different spelling.',1600)
         result=await b.tools.operation({'name':'search_appointment_name','arguments':json.dumps(dict(first_name='Kasey',last_name='Example'))})
         assert result['status']=='needs_name_spelling' and result['reason']=='no_exact_name_match'
         assert result['missing_fields']==['first_name','last_name'] and 'spell your first name' in result['instruction']
