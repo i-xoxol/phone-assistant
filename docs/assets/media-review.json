@@ -1,0 +1,31 @@
+{
+  "review_date": "2026-10-23",
+  "review_scope": "Visual review of every published JPEG for private caller data, numbers, calendar/student/family details, credentials, and secrets. UI captures use fictional fixtures; video frames are conceptual art. A hash is provenance, not an automated privacy guarantee.",
+  "images": {
+    "monitor-desktop.jpg": {
+      "sha256": "ad3ae8cf37d0a9c1a4d176e394fb1d677a2921836ddf3555b963942c813fe08d",
+      "privacy_reviewed": true,
+      "source": "Actual repository monitor rendered on localhost with fictional documentation fixtures; full-page capture."
+    },
+    "monitor-inbox.jpg": {
+      "sha256": "1cd3d118621df4b1f87dca02b442e05a04a3d1e3bf74f03a07c6d1ab3d813777",
+      "privacy_reviewed": true,
+      "source": "Actual repository monitor inbox rendered on localhost with a fictional message and reserved example number; full-page capture."
+    },
+    "monitor-mobile.jpg": {
+      "sha256": "42328503e04214d2db5125d29adb65849138162fa83c20f97dde0ef819b600e8",
+      "privacy_reviewed": true,
+      "source": "Actual repository monitor rendered with fictional fixtures at a 390 by 844 mobile viewport; viewport capture."
+    },
+    "short-overview.jpg": {
+      "sha256": "03c6e6f311fd8229c5d3186ed54c7a6d3292de0987ff7ae80cb53c4cee94507c",
+      "privacy_reviewed": true,
+      "source": "Frame at 2 seconds of the owner-provided NotebookLM short overview; conceptual video art."
+    },
+    "cinematic-overview.jpg": {
+      "sha256": "d5cc017a3242e60bc5694958147eb6da6956d4684293775315bf6915af1c54d3",
+      "privacy_reviewed": true,
+      "source": "Frame at 2 seconds of the owner-provided NotebookLM cinematic overview; conceptual video art."
+    }
+  }
+}
