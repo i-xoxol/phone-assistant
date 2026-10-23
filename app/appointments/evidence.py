@@ -10,6 +10,19 @@ def words(text):
     return tuple(re.findall(r"[^\W_]+(?:['-][^\W_]+)*",text))
 
 
+def spelled_word(text):
+    """Decode a complete letter sequence within one explicitly identified name field."""
+    if any(not (c.isalpha() or c.isspace() or c in '.,-') for c in text):return None
+    tokens=words(text.replace('-',' ').replace('.',' '));letters=[];i=0
+    while i<len(tokens):
+        if len(tokens[i])!=1 or not tokens[i].isalpha():return None
+        letters.append(tokens[i]);i+=1
+        if tokens[i:i+2]==('as','in'):
+            if i+2>=len(tokens) or not tokens[i+2].isalpha():return None
+            i+=3
+    return ''.join(letters) if 2<=len(letters)<=64 else None
+
+
 def contains_words(text,value):
     tokens,part=words(text),words(value)
     return bool(part) and any(tokens[i:i+len(part)]==part for i in range(len(tokens)-len(part)+1))
@@ -210,10 +223,13 @@ def caller_identified(turns,first,last,*,for_lookup=False):
     expected_first,expected_last=words(first),words(last)
     full=expected_first+expected_last;given=surname=False;question=None
     fillers=r'(?:(?:hello|hi|yes|actually|sorry|no|correction)[,\s]+)*'
+    if for_lookup:fillers=r'(?:(?:hello|hi|hai|hey|yes|actually|sorry|no|correction|uh(?:-(?:hi|hai))?|um|ah|er)[,\s]+)*'
     explicit=r"(?:my name(?: is|'s)|call me|i go by)"
     intro=fillers+r"(?:"+explicit+r"|this is|i am|i'm|it's|it is)\b\s*(.*)"
     component=fillers+r"(?:my|the) (first name|given name|last name|surname|family name)(?: is|'s)\b\s*(.*)"
     recheck=r'(?:(?:no|please) )*(?:check|recheck|look up)(?: for)? '+re.escape(' '.join(full))
+    if for_lookup:
+        recheck=r"(?:(?:no|please) )*(?:(?:can|could) you )?(?:check|recheck|look up)(?: (?:uh|um))?(?: it's)?(?: for)? "+re.escape(' '.join(full))
     sentences=[]
     # A pause in "Yes, [name]" does not end an elicited answer. Keep
     # assistant turns separate so an unrelated question cannot elicit a name.
@@ -221,6 +237,14 @@ def caller_identified(turns,first,last,*,for_lookup=False):
         if turn['speaker']!='callee':sentences.append(turn);continue
         # A period inside a complete supplied name (for example St. John) is not a sentence boundary.
         text=turn['text'].casefold().replace('’',"'");spans=[]
+        if for_lookup:
+            raw_claim=re.fullmatch(intro,text);raw_part=re.fullmatch(component,text)
+            letter_answer=re.sub('^'+fillers,'',text,count=1)
+            if (spelled_word(letter_answer) or (raw_claim and spelled_word(raw_claim[1]))
+                    or (raw_part and spelled_word(raw_part[2]))):
+                # Letter punctuation ("C. A. S. E. Y.") is not a series of
+                # separate answers. Field boundaries are still required below.
+                sentences.append({**turn,'text':text});continue
         if for_lookup and re.fullmatch(recheck,' '.join(words(text))):
             # Keep "No, no. Check [same full name]" as one lookup request.
             # It may retain an earlier self-claim, never establish a new one.
@@ -259,7 +283,10 @@ def caller_identified(turns,first,last,*,for_lookup=False):
         if (ordinary or recall) and question is None:continue
         if part:
             field,answer=part.groups();field='last' if field in ('last name','surname','family name') else 'first'
-        elif claim:field,answer='full',claim[1]
+        elif claim:
+            field,answer='full',claim[1]
+            if for_lookup and question in ('first','last') and re.fullmatch(fillers+r"(?:it's|it is)\b\s*.*",text):
+                field=question
         elif question:
             field,answer=question,text
             # Preserve exact names (including a name that is also a filler).
@@ -274,7 +301,8 @@ def caller_identified(turns,first,last,*,for_lookup=False):
         elif re.search(name_cue,text):
             given=surname=False;question=None;continue
         else:continue
-        answer=words(answer)
+        spelling=spelled_word(answer) if for_lookup and field in ('first','last') else None
+        answer=(spelling,) if spelling else words(answer)
         if field=='full':given=answer in (full,expected_first);surname=answer==full
         elif field=='first':given=answer==expected_first;surname=False
         else:surname=answer==expected_last
