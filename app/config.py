@@ -98,8 +98,9 @@ class Settings(BaseSettings):
         return self
 
 
-    def backend_options(self) -> dict:
-        options = {'service_tier': 'priority'} if self.openai_backend_fast else {}
+    def backend_options(self,*,appointments=False) -> dict:
+        options = {'service_tier': 'priority'} if (self.openai_backend_fast or
+            (appointments and self.openai_backend_model=='gpt-6-luna')) else {}
         if self.openai_backend_model == 'gpt-6-luna':
             options['reasoning'] = {'effort': 'low'}
         return options

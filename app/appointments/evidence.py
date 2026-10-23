@@ -143,7 +143,7 @@ def non_substantive_status(text):
     status_words=set("i i'll i'm will am let me just a while finish finishing check checking verify verifying "
         "finalize finalizing complete completing book booking schedule scheduling process processing take taking "
         "care of get getting put putting add adding appointment booking request details step calendar it that this "
-        "the your for you with on in to through now please okay ok sure great perfect thank thanks all right alright".split())
+        "the your for you with on in to through now please okay ok sure great perfect thank thanks all right alright server catches up".split())
     return not re.search(changed,text.casefold()) and set(words(text))<=status_words
 
 

@@ -1,5 +1,6 @@
 """Brief server-issued confirmations, bound to the complete private appointment draft."""
 import re
+from functools import lru_cache
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 from app.appointments.evidence import words,speech_words,date_words,caller_identified,utterances,affirmative_answer,READBACK_PREFIXES
@@ -32,6 +33,43 @@ def details_text(value):
 
 def room_words(text):
     return speech_words(re.sub(r'(?<=[A-Za-z])[- ]?(?=\d)',' ',text))
+
+
+@lru_cache(maxsize=128)
+def room_number_forms(piece):
+    """Equivalent readings of this exact room code, never of times or durations."""
+    if not piece.isdecimal() or len(piece)>4:return {(piece,)}
+    units='zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen'.split()
+    def cardinal(n):
+        if n<20:return units[n]
+        if n<100:return ['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'][n//10]+(' '+units[n%10] if n%10 else '')
+        if n<1000:return units[n//100]+' hundred'+(' '+cardinal(n%100) if n%100 else '')
+        return units[n//1000]+' thousand'+(' '+cardinal(n%1000) if n%1000 else '')
+    phrases={piece,cardinal(int(piece)),' '.join(units[int(d)] for d in piece),
+        ' '.join('oh' if d=='0' else units[int(d)] for d in piece)}
+    if len(piece) in (3,4):
+        tail=piece[-2:];right=cardinal(int(tail))
+        if tail[0]=='0':right='zero '+right
+        phrases.add(cardinal(int(piece[:-2]))+' '+right)
+    result=set()
+    for phrase in phrases:
+        result.add(speech_words(phrase))
+        result.add(speech_words(re.sub(r'\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety) (one|two|three|four|five|six|seven|eight|nine)\b',r'\1-\2',phrase)))
+    for mask in range(1<<(len(piece)-1)):
+        groups=[];start=0
+        for i in range(len(piece)-1):
+            if mask&(1<<i):groups.append(piece[start:i+1]);start=i+1
+        groups.append(piece[start:])
+        if all(len(g)==1 or not g.startswith('0') for g in groups):result.add(tuple(groups))
+    return result
+
+
+def exact_room(tokens,location):
+    actual=room_words(' '.join(tokens));positions={0}
+    for part in room_words(location):
+        positions={i+len(form) for i in positions for form in room_number_forms(part) if actual[i:i+len(form)]==form}
+        if not positions:return False
+    return len(actual) in positions
 
 
 def established_details(turns,value):
@@ -80,7 +118,7 @@ def matches(text,value,*,short):
     core=start.strftime('%I:%M %p')
     if not short:
         minutes=int((value.interval.end-value.interval.start).total_seconds()/60)
-        core+=f', {minutes} minutes, {value.purpose}, {value.location}'
+        core+=f', {minutes} minutes, {value.purpose}'
     for prefix in prefixes:
         before=speech_words(prefix)
         if actual[:len(before)]!=before:continue
@@ -90,5 +128,10 @@ def matches(text,value,*,short):
             tail=rest[len(date):]
             for at in ('','at '):
                 for question in ('Is that correct','Is that right','Is that okay','Does that work'):
-                    if tail==speech_words(at+core+' '+question):return True
+                    if short:
+                        if tail==speech_words(at+core+' '+question):return True
+                    else:
+                        before,after=speech_words(at+core),speech_words(question)
+                        if tail[:len(before)]==before and tail[-len(after):]==after:
+                            if exact_room(tail[len(before):-len(after)],value.location):return True
     return False

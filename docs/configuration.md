@@ -37,7 +37,7 @@ validation is not a lookup proving a number exists or belongs to a person.
 | `OAUTH_DATABASE_PATH` | `data/oauth.sqlite3` | OAuth client/grant state; use a private writable path |
 | `LIVE_TOOLS_ENABLED` | `false` | Lets Live delegate keypad and ending decisions to the in-service Responses backend |
 | `OPENAI_BACKEND_MODEL` | `gpt-6-luna` | Used when voice tools are enabled; billed separately from Live |
-| `OPENAI_BACKEND_FAST` | `false` | Requests Fast/priority API delegation for incoming/outgoing Live tools; Luna uses low reasoning effort |
+| `OPENAI_BACKEND_FAST` | `false` | Requests Fast/priority API delegation for incoming/outgoing Live tools; Luna uses low reasoning effort. Appointment-enabled incoming concierge calls always request priority Luna. |
 | `SUBSCRIPTION_LOOKUP_FAST` | `false` | Requests Fast for subscription Luna lookups, pre-answer preparation and private coaching; 2.5× included allowance, no API fallback |
 | `WEBHOOK_URL` | Empty | Optional operator-owned generic HTTPS receiver for new call events |
 | `WEBHOOK_SECRET` | Empty | Separate random HMAC secret; required when `WEBHOOK_URL` is set |
