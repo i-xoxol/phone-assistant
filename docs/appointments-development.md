@@ -15,7 +15,7 @@ a production restart, a calendar write, a telephone test or a new credential gra
 | Bridge status | Healthy successful complete run, 30-day past / 365-day future configured coverage | Exact-range freshness gate; residual five-minute race remains |
 | Phone availability | Ten-minute TTL, first 40 windows, default minimum 30 minutes | Direct exact-interval reads; missing cached window means unknown |
 | Calendar writes | Mirror has unbounded reconciliation writes, no booking RPC | Separate bounded create/readback adapter; never invoke mirror CLI |
-| Imported identity | Mirror intentionally omits attendees | Missing participant identity requires owner review |
+| Imported identity | Mirror intentionally omits attendees | Native calls can match the caller's name anywhere in an upcoming title, then freshly verify time/location; no mirror changes |
 | Supervision | Existing native subscriptions and asynchronous request deadlines | Preserve delivery; add revisioned progress separately from terminal replies |
 
 The installed bridge is Python, not a PowerShell or MCP booking service. Its main

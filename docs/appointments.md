@@ -119,7 +119,26 @@ acceptable for these ordinary appointment details; this policy does not authoriz
 booking, change consent evidence or alter availability checks.
 
 An exact lookup still runs first. If it cannot establish the name or find the
-record, a private GPT-6 Luna request uses priority processing and low reasoning to
+record, native calls search current Google meeting titles in the next 60 days.
+Private GPT-6 Luna uses priority processing and low reasoning to match a name
+mentioned anywhere in the call to any meeting title. No participant metadata,
+special title format, or mirror-specific provenance is required. Surname-first
+titles, middle initials, omitted suffixes and similar spellings are accepted.
+If several meetings match, Luna is instructed to select the earliest. This is
+the owner's deliberate relaxed disclosure policy, not identity authentication.
+
+This title scan is bounded to 500 meetings and 64,000 title characters, with no
+partial search on overflow. Luna receives caller speech and titles only, without
+times, locations, descriptions, links, assistant statements or action tools.
+Titles are untrusted data, never instructions. The server validates quoted caller
+speech supporting both names, then freshly reads the selected event and checks
+its identity, revision, title, interval and location against the scan. Changed,
+cancelled, incomplete, expired or failed reads reveal no appointment details and
+produce one bounded explanation, without another spelling loop. Only the verified
+time/location reaches Live; no title, candidate list or meeting body is disclosed.
+This path reads Google directly and needs no index backfill or calendar writes.
+
+If no title matches, the existing private Luna name resolver can
 select a likely name from up to 500 current ordinary upcoming appointment names
 within 90 days. It sees only caller speech and names, never event contents,
 appointment times, locations, assistant statements or action tools. It tolerates
@@ -249,7 +268,7 @@ The private registry is separate from general context/facts. Names, purposes,
 source IDs, aliases and notices never become global FAQ entries. Operational logs
 contain safe codes/counts or opaque IDs, not transcript/name/token contents.
 
-Caller self-identification/full-name answer permits minimal confirmation of one
+The scoped MCP exact-name lookup's caller self-identification/full-name answer permits minimal confirmation of one
 unambiguous current ordinary meeting. The backend independently verifies the
 source revision and complete coverage before disclosure. Duplicate names,
 contradiction, missing participant provenance, sensitive/unknown meetings, stale
@@ -257,8 +276,9 @@ data or ambiguous aliases reveal no candidates.
 
 Initial backfill reads a bounded upcoming interval, defaults to dry-run, and
 indexes only supported ordinary records with verified participant metadata.
-The installed Outlook mirror omits attendees: those imported meetings generally
-need owner review and are **not** inferred from titles. Verified mirror aliases
+The installed Outlook mirror omits attendees: these records remain unsupported
+by the metadata index. Native voice lookup separately searches current meeting
+titles under the owner's relaxed policy described above. Verified mirror aliases
 require both trusted bridge metadata and configured source namespaces. Source
 authority stays with the original provider; no replacement event is created.
 

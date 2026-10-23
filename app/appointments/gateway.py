@@ -12,7 +12,8 @@ from app.appointments.evidence import complete_readback,caller_identified,caller
 from app.appointments.disclosure import PrivateNotices
 from app.appointments.schemas import SlotRequest,BookRequest,AppointmentLookup,FirstAvailableRequest
 from app.appointments import confirmation
-from app.appointments.name_match import resolve_name
+from app.appointments.name_match import resolve_name,resolve_title
+from app.appointments.title_lookup import TitleLookup
 from app.appointments.details import missing_arrangement,arrangement_clarification
 from app.logging_config import log_event
 from app.storage.models import TERMINAL,CallUpdateRequest
@@ -69,6 +70,7 @@ class AppointmentGateway:
                 mirror_source=CalendarIdentity('outlook',s.appointment_mirror_source_tenant,s.appointment_mirror_source_calendar)
                     if s.appointment_mirror_source_tenant and s.appointment_mirror_source_calendar else None)
         self.service=BookingService(self.store,provider,self.authority,self.consent,clock=self.clock)
+        self.title_lookup=TitleLookup(provider,partial(resolve_title,manager.settings),self.clock)
         from app.appointments.sync import IndexSync
         self.sync=IndexSync(self.store,provider,self.clock);self.sync_task=None
         with self.store.connect() as db:
@@ -504,6 +506,13 @@ class AppointmentGateway:
                     result=await self.own(call_id,args.model_dump())
                     if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}
                     if pending():continue  # New audio during the read requires a fresh verified read.
+                    if result['status'] in ('not_found','needs_owner') and self.service.provider.capabilities.title_lookup:
+                        title_result=await self.title_lookup.find(self.transcript(call_id))
+                        if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}
+                        if pending():continue
+                        if title_result is not None:
+                            log_event('appointment_title_lookup',call_id=call_id,status=title_result['status'])
+                            return lookup_voice_result(title_result)
                     resolver=getattr(self,'name_resolver',None)
                     if resolver and result['status'] in ('needs_owner','not_found'):
                         names=self.store.upcoming_appointment_names(self.clock())

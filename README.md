@@ -63,7 +63,7 @@ account credentials, or access to the author's deployment.
 | **Reach the owner** | One screened attempt rings a configured fixed mobile. Decline/no answer returns to the assistant. Optional observed handoffs offer coaching or captions only. [Owner contact →](docs/voice-and-owner-contact.md) |
 | **Coach the owner privately** | Optional TTS, hybrid caption-fed Live, or native audio Realtime coaching sends hints to the owner channel. The native mode has two-leg bridge and managed-conference transports. [Coaching options below](#private-owner-coaching-options) |
 | **Discover and book ordinary appointments** | Disabled-by-default tools find a first verified slot within fourteen days or check an exact slot, then require current call authority and observed spoken consent. Confirmation follows an independent provider readback and private registry commit. [Appointments below](#guarded-appointments-and-calendar-adapters) |
-| **Confirm a repeat caller's meeting** | Optional private indexing returns minimal details only for an unambiguous ordinary appointment with current source evidence. Ambiguity or missing participant provenance goes to owner review. |
+| **Confirm a repeat caller's meeting** | Native calls use the owner's relaxed name policy, private indexing and a fresh calendar-title fallback, including copied work meetings. Only verified time/location is returned. |
 | **Integrate with agents and events** | OAuth MCP, authenticated REST, signed per-call/line-wide events, and an operator-configured webhook share the same service. Event delivery requires a real receiver and renewal. [Events →](docs/webhooks.md) |
 
 > **Scope:** a small, single-owner service. Each person runs their own instance
@@ -303,9 +303,9 @@ Enabling calling does not enable booking. [Setup, policy, and recovery →](docs
   heard it are tracked separately. No invitations, cancellation, or rescheduling
   API is provided.
 - **Minimal disclosure:** private appointment records and bounded owner-provided
-  notices stay out of shared facts. Repeat-caller confirmation needs an
-  unambiguous ordinary meeting and current source/participant evidence; it is
-  not proof of caller identity. Existing curated-contact status is audience
+  notices stay out of shared facts. Native callers can confirm meetings whose
+  titles plausibly match a name mentioned anywhere in the call; current Google
+  evidence is required. This is not proof of caller identity. Existing curated-contact status is audience
   restricted and expiring, not inferred from private event titles.
 
 The core uses a **provider-neutral `CalendarProviderAdapter` v1 contract** with
@@ -446,8 +446,8 @@ deploy/            Example systemd unit
 - **Bounded appointments.** Optional ordinary academic-office booking only;
   no general-purpose calendar assistant, invitations, cancellation, or
   rescheduling API. Mirror lag and external edits can still race checks.
-  Unknown/stale coverage must remain unknown, and legacy meetings without
-  approved participant metadata need owner review.
+  Unknown/stale coverage must remain unknown. Native lookup also searches meeting
+  titles when legacy meetings lack participant metadata, within a 60-day horizon.
 - **Identity and speech are imperfect.** Caller ID and a stated name are not
   authentication. Code restricts tool access and validates appointment evidence,
   but prompts cannot guarantee every spoken response, interpretation, disclosure,
