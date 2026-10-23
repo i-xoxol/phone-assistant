@@ -23,6 +23,68 @@ def spelled_word(text):
     return ''.join(letters) if 2<=len(letters)<=64 else None
 
 
+LOOKUP_FILLERS=r'(?:(?:yes|yeah|sure|okay|ok|uh|um|oh|ah|of course)[.,\s]+)*'
+
+
+def lookup_acknowledgment(text):
+    return '?' not in text and bool(re.fullmatch(r'(?:yes|yeah|sure|okay|ok|uh|um|oh|ah|of course)(?: (?:yes|yeah|sure|okay|ok|uh|um|oh|ah|of course))*',' '.join(words(text))))
+
+
+def lookup_spelling(text):
+    """One elicited component: exact letters, optionally after its spoken label."""
+    text=re.sub('^'+LOOKUP_FILLERS,'',text.casefold().replace('’',"'").strip(),count=1).strip()
+    direct=spelled_word(text)
+    if direct:return direct
+    label_pattern=r"([^\W\d_]+(?:['-][^\W\d_]+)*)"
+    excluded={'not','no','for','friend','his','her','their','instead','but','if','unless','except','or','and','wrong'}
+    # ASR can put the spoken label before or after its letters. The explicit
+    # spelling corrects that label; never discard qualifiers or extra content.
+    for pattern,label_first in ((label_pattern+r'[.,:\s]+(.+)',True),
+                                (r'(.+?)[.,:\s]+'+label_pattern,False)):
+        match=re.fullmatch(pattern,text.rstrip(' .,'))
+        if not match:continue
+        label,letters=match.groups() if label_first else match.groups()[::-1]
+        spelling=spelled_word(letters)
+        if spelling and label not in excluded:return spelling
+    return None
+
+
+def lookup_name_question(text):
+    raw=text;text=' '.join(words(text))
+    bare=re.fullmatch(r'(?:(?:thank you|thanks|okay|ok|now|and|please|could you|can you|would you|spell|repeat|say) )*'
+        r'(?:(?:the|your) )?(first name|given name|last name|surname|family name|full name|first and last name|name)(?: (?:please|for me|again))*',text)
+    request=re.search(r"\b(?:repeat|spell|say|tell me|give me|what is|what's|who am i speaking|(?:could|can|would|may) (?:you|i) (?:please )?(?:have|confirm))\b",text)
+    if '?' not in raw and not request and not bare:return None
+    if re.search(r'\byour (?:full name|first and last name|name)\b|\bwho am i speaking (?:with|to)\b',text):return 'full'
+    if re.search(r'\byour (?:last name|surname|family name)\b',text):return 'last'
+    if re.search(r'\byour (?:first name|given name)\b',text):return 'first'
+    if bare:
+        if bare[1] in ('full name','first and last name','name'):return 'full'
+        return 'first' if bare[1] in ('first name','given name') else 'last'
+    return None
+
+
+def lookup_spelling_completed(turns,*,first_matched=False,first_missing=False):
+    first_asked=first_answered=last_asked=False
+    last_field=last_spell=False
+    for turn in utterances(turns,join_sentences=True,join_caller_pauses=True):
+        if turn['speaker']=='assistant':
+            field=lookup_name_question(turn['text'])
+            if field=='first' and re.search(r'\bspell\b',turn['text'],re.I):first_asked=True
+            if field=='last' and first_answered:last_asked=True
+            last_field=field=='last'
+            last_spell=last_field and bool(re.search(r'\bspell\b',turn['text'],re.I))
+        elif turn['speaker']=='callee':
+            if lookup_acknowledgment(turn['text']):continue
+            text=re.sub('^'+LOOKUP_FILLERS,'',turn['text'].casefold(),count=1).strip(' .,')
+            if not text:continue
+            if last_asked:return True
+            if first_matched and last_field and (last_spell or lookup_spelling(turn['text'])):return True
+            if first_asked:first_answered=True
+            if first_missing and first_asked and first_answered:return True
+    return False
+
+
 def contains_words(text,value):
     tokens,part=words(text),words(value)
     return bool(part) and any(tokens[i:i+len(part)]==part for i in range(len(tokens)-len(part)+1))
@@ -218,24 +280,84 @@ def utterances(turns,*,join_sentences=False,join_caller_pauses=False):
     return result
 
 
-def caller_identified(turns,first,last,*,for_lookup=False):
+def lookup_utterances(turns):
+    """Rejoin caller answers across complete, neutral assistant continuations."""
+    prepared=utterances(turns,join_sentences=True,join_caller_pauses=True)
+    joined=[]
+    for turn in prepared:
+        if (turn['speaker']=='assistant' and '?' not in turn['text']
+                and re.fullmatch(r'(?:m+h+m*|h+m+|m+ h+m+|uh huh|okay|ok|thanks|thank you|sure|go on(?: please)?|take your time)(?: (?:m+h+m*|h+m+|m+ h+m+|uh huh|okay|ok|thanks|thank you|sure|go on(?: please)?|take your time))*',
+                    ' '.join(words(turn['text'].replace('-',' '))))):continue
+        if joined and turn['speaker']=='callee' and joined[-1]['speaker']=='callee':
+            # Removing a backchannel must not fuse a new correction into the
+            # prior word or sentence (for example, 'appointmentNo, check ...').
+            correction=re.match(r"\s*(?:no|actually|correction|wait|not)\b",turn['text'],re.I)
+            separator='. ' if correction else ' ' if not turn['text'][:1].isspace() else ''
+            joined[-1]['text']+=separator+turn['text'];joined[-1]['end']=max(joined[-1]['end'],turn['end'])
+        else:joined.append(dict(turn))
+    return joined
+
+
+def lookup_spelled_names(turns):
+    """Collect literal component spellings; callers' later corrections still govern validity."""
+    result={'first_name':None,'last_name':None};question=None
+    for turn in lookup_utterances(turns):
+        if turn['speaker']=='assistant':question=lookup_name_question(turn['text']);continue
+        if turn['speaker']!='callee' or question not in ('first','last'):continue
+        body=re.sub(r"^(?:it's|it is)\s+",'',turn['text'].casefold().strip())
+        spelling=lookup_spelling(body)
+        if spelling:
+            result[question+'_name']=spelling
+            if question=='first':result['last_name']=None
+            question=None
+    return result
+
+
+def lookup_name_card(turns):
+    """Project caller-supplied components, never calendar candidates, into a name card."""
+    card={'first_name':None,'last_name':None};question=None;initial_claim=False
+    excluded={'no','not','my','for','friend','his','her','their','and','or','but','if','unless','instead',
+        'tomorrow','today','please','appointment','meeting','in','at','on','with','about','calling','checking',
+        'waiting','late','early','here','there','just','still','listening','ready','confused','looking','trying'}
+    def name_words(body):
+        parts=words(body)
+        return parts if len(parts) in (1,2) and not set(parts)&excluded and all(
+            re.fullmatch(r"[^\W\d_]+(?:['-][^\W\d_]+)*",p) for p in parts) else ()
+    for turn in lookup_utterances(turns):
+        if turn['speaker']=='assistant':question=lookup_name_question(turn['text']);continue
+        if turn['speaker']!='callee':continue
+        text=turn['text'].casefold().replace('’',"'").strip()
+        part=re.fullmatch(r"(?:my|the) (first name|given name|last name|surname|family name)(?: is|'s)\s+(.*)",text)
+        field=question;body=text
+        if part:field='first' if part[1] in ('first name','given name') else 'last';body=part[2]
+        if field in ('first','last'):
+            body=re.sub(r"^(?:it's|it is)\s+",'',body)
+            value=lookup_spelling(body)
+            literal=name_words(re.sub('^'+LOOKUP_FILLERS,'',body,count=1))
+            if not value and len(literal)==1:value=literal[0]
+            if value:
+                card[field+'_name']=value
+                if field=='first':card['last_name']=None
+                question=None
+                continue
+        if initial_claim:continue
+        for sentence in re.split(r'[.!?]+',text):
+            claim=re.fullmatch(r"(?:(?:hi|hello|yes|no|actually|sorry|correction|uh|um)[,\s]+)*(?:my name(?: is|'s)|this is|i am|i'm)\s+(.*)",sentence.strip())
+            body=claim[1] if claim else None
+            if body is None and question=='full':
+                body=re.sub(r'^(?:my\s+){1,2}name[-,:]\s*','',sentence.strip())
+                body=re.sub('^'+LOOKUP_FILLERS,'',body,count=1)
+            literal=name_words(body) if body is not None else ()
+            if literal and (claim is not None or len(literal)==2):
+                card['first_name']=literal[0];card['last_name']=literal[1] if len(literal)==2 else None
+                initial_claim=True;question=None;break
+    return card
+
+
+def caller_name_evidence(turns,first,last,*,for_lookup=False):
     """Only the current full claim or two explicitly elicited components may identify the caller."""
     expected_first,expected_last=words(first),words(last)
-    prepared=utterances(turns,join_sentences=True,join_caller_pauses=True)
-    if for_lookup:
-        # A full-duplex assistant can acknowledge halfway through the caller's
-        # name. Only a complete, non-question backchannel may be transparent;
-        # questions, name corrections and substantive assistant words stay.
-        joined=[]
-        for turn in prepared:
-            if (turn['speaker']=='assistant' and '?' not in turn['text']
-                    and re.fullmatch(r'(?:m+h+m*|h+m+|m+ h+m+|uh huh)(?: (?:m+h+m*|h+m+|m+ h+m+|uh huh))*',
-                        ' '.join(words(turn['text'].replace('-',' '))))):continue
-            if joined and turn['speaker']=='callee' and joined[-1]['speaker']=='callee':
-                separator=' ' if re.search(r'[.!?]$',joined[-1]['text']) and not turn['text'][:1].isspace() else ''
-                joined[-1]['text']+=separator+turn['text'];joined[-1]['end']=max(joined[-1]['end'],turn['end'])
-            else:joined.append(dict(turn))
-        prepared=joined
+    prepared=lookup_utterances(turns) if for_lookup else utterances(turns,join_sentences=True,join_caller_pauses=True)
     full=expected_first+expected_last;given=surname=False;question=None
     fillers=r'(?:(?:hello|hi|yes|actually|sorry|no|correction)[,\s]+)*'
     if for_lookup:fillers=r'(?:(?:hello|hi|hai|hey|yes|actually|sorry|no|correction|uh(?:-(?:hi|hai))?|um|ah|er)[,\s]+)*'
@@ -255,8 +377,8 @@ def caller_identified(turns,first,last,*,for_lookup=False):
         if for_lookup:
             raw_claim=re.fullmatch(intro,text);raw_part=re.fullmatch(component,text)
             letter_answer=re.sub('^'+fillers,'',text,count=1)
-            if (spelled_word(letter_answer) or (raw_claim and spelled_word(raw_claim[1]))
-                    or (raw_part and spelled_word(raw_part[2]))):
+            if (lookup_spelling(letter_answer) or (raw_claim and lookup_spelling(raw_claim[1]))
+                    or (raw_part and lookup_spelling(raw_part[2]))):
                 # Letter punctuation ("C. A. S. E. Y.") is not a series of
                 # separate answers. Field boundaries are still required below.
                 sentences.append({**turn,'text':text});continue
@@ -276,12 +398,18 @@ def caller_identified(turns,first,last,*,for_lookup=False):
         text=turn['text'].casefold().replace('’',"'").strip()
         text=re.sub(r'\b(first|last|family|given)[- ]?name\b',r'\1 name',text)
         if turn['speaker']=='assistant':
+            if for_lookup:
+                # The assistant asking again is not a caller correction. Keep
+                # established evidence until the caller actually replaces it.
+                question=lookup_name_question(text);continue
             if re.search(r'\byour (?:full name|first and last name|name)\b|\bwho am i speaking (?:with|to)\b',text):question='full';given=surname=False
             elif re.search(r'\byour (?:last name|surname|family name)\b',text):question='last';surname=False
             elif re.search(r'\byour (?:first name|given name)\b',text):question='first';given=surname=False
             else:question=None
             continue
         if turn['speaker']!='callee':continue
+        if for_lookup and question and words(text) not in (full,expected_first,expected_last):
+            if lookup_acknowledgment(text):continue
         if for_lookup and given and surname and question is None and re.fullmatch(recheck,' '.join(words(text))):continue
         claim=re.fullmatch(intro,text)
         part=re.fullmatch(component,text)
@@ -309,6 +437,8 @@ def caller_identified(turns,first,last,*,for_lookup=False):
             # answer; the remaining complete name must still match exactly.
             if words(answer) not in (full,expected_first,expected_last):
                 answer=re.sub('^'+fillers+r"(?:(?:it's|it is)\s+)?",'',answer,count=1)
+            if for_lookup and field=='full':
+                answer=re.sub(r'^(?:my\s+){1,2}name[-,:]\s*'+LOOKUP_FILLERS,'',answer,count=1)
         elif re.search(r"\b(?:not|isn't)\b",text) and (contains_words(text,first) or contains_words(text,last) or 'name' in text):
             given=surname=False;question=None;continue
         elif re.match(r'(?:actually|no|correction)\b',text):
@@ -316,10 +446,18 @@ def caller_identified(turns,first,last,*,for_lookup=False):
         elif re.search(name_cue,text):
             given=surname=False;question=None;continue
         else:continue
-        spelling=spelled_word(answer) if for_lookup and field in ('first','last') else None
+        spelling=lookup_spelling(answer) if for_lookup and field in ('first','last') else None
         answer=(spelling,) if spelling else words(answer)
-        if field=='full':given=answer in (full,expected_first);surname=answer==full
+        if field=='full':
+            given=answer in (full,expected_first);surname=answer==full
+            if (for_lookup and not given and len(answer)==len(full) and answer[:len(expected_first)]==expected_first
+                    and not set(answer)&{'for','my','friend','his','her','their','not','no','but','if','unless','instead','tomorrow','today','please','and','or','appointment','meeting'}):
+                given=True  # Exact first component of this complete current self-claim.
         elif field=='first':given=answer==expected_first;surname=False
         else:surname=answer==expected_last
         question=None
-    return bool(given and surname)
+    return bool(given),bool(surname)
+
+
+def caller_identified(turns,first,last,*,for_lookup=False):
+    return all(caller_name_evidence(turns,first,last,for_lookup=for_lookup))

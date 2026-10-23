@@ -26,7 +26,7 @@ from app.storage.database import Database
 from app.calling.call_manager import CallManager
 from app.calling.live_session import MediaBridge, live_client, optional_compaction_notice, start_session
 from app.calling.prompts import session_config
-from app.appointments.evidence import date_words, speech_words, utterances
+from app.appointments.evidence import date_words, speech_words, utterances,lookup_name_question,lookup_spelling_completed,caller_name_evidence
 from app.appointments.gateway import AppointmentGateway
 from app.appointments.registry import Registry
 
@@ -152,8 +152,8 @@ def caller_config(settings,scenario,script,voice):
         'delegation':{'type':'client'},
         'instructions':'''You are the CALLER in a private voice test, never the assistant. Listen to the office greeting first.
 Speak in the first person as a person trying to VERIFY an existing appointment, never book a new one.
-Use the first script line verbatim as your opening, including hesitations. The other lines are follow-ups:
-use the next one once only if the assistant cannot verify or misunderstands you. Do not recite the script all at once.
+Use the first script line verbatim as your opening, including hesitations. Use later script lines when they answer the assistant's question:
+prefer the supplied self-introduction for a name question and supplied name-plus-letters lines for spelling questions. Otherwise use a follow-up once if verification fails. Do not recite the script all at once.
 Respond naturally to clarification. If asked to spell, say the correct letters one by one for ONLY the requested name component.
 You know your name and this script, but do NOT know the appointment date/time/location. If asked, say you forgot and want to check.
 Wait quietly during a lookup or hold. After hearing a verified appointment, thank the assistant and say goodbye, then stay silent.
@@ -231,7 +231,28 @@ def heard_details(text,details,now):
     return {'date':any(contains(d) for d in dates),'time':any(contains(t) for t in times) and period,'location':place}
 
 
+def name_question_quality(events,caller_name=None):
+    turns=[dict(speaker='callee' if t['direction']=='input' else 'assistant',text=t['text'],
+        timestamp=t.get('start_ms',0)/1000,end_timestamp=t.get('end_ms',0)/1000) for t in events if t['side']=='assistant']
+    counts={'full':0,'first':0,'last':0};spelling={'first':0,'last':0};history=[];reasked=False;spelling_first=False
+    for turn in utterances(turns,join_sentences=True,join_caller_pauses=True):
+        if turn['speaker']=='assistant':
+            for sentence in re.split(r'[.!?]+',turn['text']):
+                field=lookup_name_question(sentence)
+                if field:
+                    counts[field]+=1
+                    if field=='first' and re.search(r'\bspell\b',sentence,re.I):spelling['first']+=1;spelling_first=True
+                    if field=='last' and (spelling_first or re.search(r'\bspell\b',sentence,re.I)):spelling['last']+=1
+                    first=bool(caller_name and caller_name_evidence(history,caller_name['first_name'],caller_name['last_name'],for_lookup=True)[0])
+                    if field=='full' and lookup_spelling_completed(history,first_matched=first,first_missing=bool(caller_name) and not first):reasked=True
+        history.append(turn)
+    return {'passed':not reasked and counts['full']<=2 and counts['first']<=2 and counts['last']<=2 and all(n<=1 for n in spelling.values()),
+        'name_questions':counts,'spelling_questions':spelling,'full_name_reasked_after_spelling':reasked}
+
+
 def evaluate(report):
+    quality=name_question_quality(report['transcript'],report.get('caller_name'))
+    if not quality['passed']:return {'passed':False,'reason':'name_clarification_loop',**{k:v for k,v in quality.items() if k!='passed'}}
     matches=[r for r in report['tools'] if r['result'].get('status')=='match']
     if not matches:return {'passed':False,'reason':'no_verified_tool_match'}
     match=matches[0];events=report['transcript'][match['transcript_index']:]
@@ -240,7 +261,8 @@ def evaluate(report):
         text=''.join(t['text'] for t in events if t['side']==side and t['direction']==direction)
         checks[label]=heard_details(text,match['result'],datetime.fromisoformat(report['started_at']))
     passed=all(all(c.values()) for c in checks.values()) and not report['blocked_tools']
-    return {'passed':passed,'reason':'verified_details_heard' if passed else 'spoken_result_not_verified',**checks}
+    return {'passed':passed,'reason':'verified_details_heard' if passed else 'spoken_result_not_verified',**checks,
+        'name_questions':quality['name_questions']}
 
 
 async def run_simulation(source,scenario,output,caller_voice='marin',save_audio=False):
@@ -250,7 +272,7 @@ async def run_simulation(source,scenario,output,caller_voice='marin',save_audio=
     if output.exists():raise ValueError('Use a new private output directory for each run')
     output.mkdir(parents=True,mode=0o700);output.chmod(0o700)
     report={'started_at':datetime.now(timezone.utc).isoformat(),'transport':'in_memory_pcmu_8000',
-        'transcript':[],'tools':[],'usage':{},'blocked_tools':[],'twilio_requests':0,'calendar_writes':0,
+        'transcript':[],'caller_name':{'first_name':scenario.first_name,'last_name':scenario.last_name},'tools':[],'usage':{},'blocked_tools':[],'twilio_requests':0,'calendar_writes':0,
         'production_database_writes':0,'context':'current_owner_context_and_matching_contact; no copied call history'}
     manager=None;tasks=[];caller_finalized=asyncio.Event()
     try:
