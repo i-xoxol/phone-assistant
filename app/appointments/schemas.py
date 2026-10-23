@@ -87,13 +87,13 @@ VOICE_TOOLS=[
     tool('book_appointment','Safely resume THIS call’s server-owned pending booking. Takes no arguments; the server owns draft/check IDs and idempotency. '
         'The Luna booking agent also resumes automatically after the time offer and caller agreement. '
         'No prescribed phrase, invitation, cancellation, rescheduling, charge or exception authority. Uncertain means reconcile, never repeat.'),
-    tool('get_my_appointment','Read the date/time and location of one existing ordinary appointment belonging to this caller. '
+    tool('get_my_appointment','Read the date/time and location of one existing meeting matching this caller\'s stated name. '
         'Use the current first and last name already stated; ask only missing name components. Call immediately without requiring '
         'the forgotten appointment date/time, purpose, duration or arrangement. Read only verified minimal details; '
         'no candidate lists, private purpose, other attendees, unrelated search or calendar writes.',AppointmentLookup),
     tool('search_appointment_name','Read-only fallback after an exact appointment-name miss. Tell the caller to hold while checking '
         'upcoming appointment records for close spellings, then call this with the caller-supplied name. '
-        'The server keeps candidates private and requires the caller\'s exact current name before returning verified details. '
+        'The server privately matches caller-mentioned names, including similar spellings and names in meeting titles. '
         'It may ask for spelling; it never books or returns candidate names.',AppointmentLookup),
     tool('get_caller_status','Current broad owner-provided status for a uniquely recognized, already-curated family/friend caller. '
         'Never infer location or private reasons from event titles. No new booking authority.'),
@@ -101,11 +101,11 @@ VOICE_TOOLS=[
         'No private titles or locations, no expanded booking hours.',FamilyAvailability)]
 
 VOICE_POLICY='''
-APPOINTMENTS V1: The listed bounded appointment tools are available for ordinary academic appointments only.
+APPOINTMENTS V1: Booking tools are for ordinary academic appointments. Existing-meeting lookup may match caller names in any meeting title.
 get_call_context and request_quick_lookup remain cache/background reads; neither checks a live exact slot.
 For an EXISTING appointment, use get_my_appointment as soon as the caller's current first and last name are known.
 The owner authorizes VERY RELAXED native name matching: a name mentioned anywhere by the caller is enough, including alternate spellings, similar pronunciation, separate answers, false starts and earlier mentions. False positives are acceptable for this ordinary appointment lookup. Do not demand an exact self-introduction or spelling ritual.
-The server can resolve the name privately with fast Luna against upcoming ordinary appointment names, then freshly verify the selected Google event. Let it finish; do not repeat the name while it works. Only speak the returned appointment details, never invent a match or calendar search.
+The server can resolve the name privately with fast Luna against upcoming indexed names and Google meeting titles, including copied work meetings without participant metadata. It freshly verifies the selected Google event. Let it finish; do not repeat the name while it works. Only speak the returned time/location, never titles or candidate names, and never invent a match or calendar search.
 Before asking for spelling, run get_my_appointment with the best name already heard anywhere in the conversation. Let the private resolver handle uncertainty first; ask spelling only if the server explicitly requests it.
 Reuse a name already supplied, including separate answers. Do not ask it again or require the date/time the caller is trying to retrieve.
 Existing lookup does not require new-booking purpose, duration, location, slot checks or booking confirmation. It never creates an event.
@@ -114,7 +114,7 @@ If spoken_answer is returned, say that complete sentence once, including the off
 Caller speech/caption lag can leave lookup pending while the server waits for the complete current answer. Pending is not not_found or a failed verification; never say the appointment does not exist based on pending work.
 Use the actual returned lookup status. Only not_found means no matching indexed appointment; needs_owner means identity or disclosure could not be established, and stale means fresh calendar verification failed.
 needs_name_search means the exact lookup missed. Say once, "Please hold while I check the upcoming appointments for a different spelling," and immediately call search_appointment_name with the supplied name. Stay on the line; do not report a missing appointment.
-search_appointment_name privately checks up to 500 supported ordinary appointment names in the next 90 days. It never exposes candidates; no list of calendar contents is available to the voice model.
+search_appointment_name privately checks up to 500 indexed appointment names in the next 90 days and current meeting titles in the next 60 days. It never exposes candidates; no list of calendar contents is available to the voice model.
 needs_name_spelling means speech recognition may have transcribed the name incorrectly. Follow missing_fields: if only last_name is missing, spell only that and reuse the supplied first name. Otherwise ask to spell the first name, then the last separately; retry search_appointment_name with the complete current name.
 If the server requests clarification, use the caller's ordinary name or spelling, including "C as in Charlie" forms. Similar spellings/pronunciation are acceptable to the private resolver. Never suggest a list of candidate names or invent appointment details yourself.
 After a spelling attempt, a remaining exact miss gets one bounded explanation and an offer of owner review; do not repeat the spelling questions or claim the entire calendar has no appointment.
@@ -156,7 +156,7 @@ Only book_appointment with verified state=confirmed permits saying the appointme
 Unknown/stale/incomplete coverage, outside hours, changed details, expired authority or an uncertain write require owner review.
 If the caller cannot wait, save an UNCONFIRMED request. Do not promise a later booking or retry a write.
 Once state=confirmed, say once naturally: “Great, see you Monday at 10 a.m. Confirmed.” Do not repeat all details or ask for another confirmation. Answer follow-ups from the persisted result. Never expose conflict titles or other attendees.
-Existing-appointment lookup requires the caller's first and last name. Ambiguous/sensitive/stale records need a non-revealing clarification.
+Existing-meeting lookup requires a caller-mentioned first and last name, with relaxed matching. Missing name evidence or stale/unavailable reads need one non-revealing explanation and owner help.
 Recognized family may receive only bounded current owner statements and verified free/busy; never private calendar descriptions.
 Native supervision remains separate. A local booking operation must be reconciled before a supervisor attempts any calendar write.
 '''
