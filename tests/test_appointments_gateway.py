@@ -16,6 +16,9 @@ def prepare(service,tmp_path):
     client,m,g=service;m.settings.appointment_database_path=tmp_path/'private.sqlite3'
     m.settings.appointments_writes_enabled=True
     p=FakeProvider(lambda:NOW);gateway=AppointmentGateway(m,p,clock=lambda:NOW);m.appointments=gateway
+    # Offline provider fixtures also isolate the external name model. Resolver
+    # integration tests inject their own response explicitly.
+    gateway.name_resolver=None
     cid=m.db.create_inbound('CA_fixture','+12025550111',15,10,'concierge',True)
     m.transition(cid,'in_progress')
     with m.db.connect() as db:db.execute('UPDATE calls SET created_at=?,started_at=? WHERE call_id=?',(NOW.isoformat(),NOW.isoformat(),cid))

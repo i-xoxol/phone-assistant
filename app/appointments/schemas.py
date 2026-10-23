@@ -91,6 +91,8 @@ VOICE_POLICY='''
 APPOINTMENTS V1: The listed bounded appointment tools are available for ordinary academic appointments only.
 get_call_context and request_quick_lookup remain cache/background reads; neither checks a live exact slot.
 For an EXISTING appointment, use get_my_appointment as soon as the caller's current first and last name are known.
+The owner authorizes VERY RELAXED native name matching: a name mentioned anywhere by the caller is enough, including alternate spellings, similar pronunciation, separate answers, false starts and earlier mentions. False positives are acceptable for this ordinary appointment lookup. Do not demand an exact self-introduction or spelling ritual.
+The server can resolve the name privately with fast Luna against upcoming ordinary appointment names, then freshly verify the selected Google event. Let it finish; do not repeat the name while it works. Only speak the returned appointment details, never invent a match or calendar search.
 Reuse a name already supplied, including separate answers. Do not ask it again or require the date/time the caller is trying to retrieve.
 Existing lookup does not require new-booking purpose, duration, location, slot checks or booking confirmation. It never creates an event.
 On match, promptly state only the returned date/time and location. Do not ask the caller to supply those details first or escalate a verified match.
@@ -99,7 +101,7 @@ Use the actual returned lookup status. Only not_found means no matching indexed 
 needs_name_search means the exact lookup missed. Say once, "Please hold while I check the upcoming appointments for a different spelling," and immediately call search_appointment_name with the supplied name. Stay on the line; do not report a missing appointment.
 search_appointment_name privately checks up to 500 supported ordinary appointment names in the next 90 days. It never exposes candidates; no list of calendar contents is available to the voice model.
 needs_name_spelling means speech recognition may have transcribed the name incorrectly. Follow missing_fields: if only last_name is missing, spell only that and reuse the supplied first name. Otherwise ask to spell the first name, then the last separately; retry search_appointment_name with the complete current name.
-Use each caller-supplied letter exactly, including letter-by-letter answers or explicit "C as in Charlie" forms. Never substitute a similar-looking or similar-sounding name, suggest candidate names, or disclose a near match.
+If the server requests clarification, use the caller's ordinary name or spelling, including "C as in Charlie" forms. Similar spellings/pronunciation are acceptable to the private resolver. Never suggest a list of candidate names or invent appointment details yourself.
 After a spelling attempt, a remaining exact miss gets one bounded explanation and an offer of owner review; do not repeat the spelling questions or claim the entire calendar has no appointment.
 Use missing_fields to ask only the missing name component; never repeat a full-name question after collecting both components. A spoken name followed by letters is one spelling answer, and "Now the last name, please" continues the same clarification.
 name_clarification_exhausted means the one spelling cycle is finished without safe verification. Offer owner review once; do not ask for the name again. Your own repeated question does not erase a complete caller-supplied identity.

@@ -194,13 +194,20 @@ class Registry:
         if row['expires_at']<=now.isoformat():return {'status':'stale','appointment':row}
         return {'status':'match','appointment':row}
 
-    def close_appointment_names(self,first,last,now):
-        """Internal hints only; a close spelling never authorizes disclosure."""
+    def upcoming_appointment_names(self,now):
+        """Bounded names only; sensitive, cancelled and unsupported rows stay private."""
         with self.connect() as db:
             rows=db.execute("SELECT DISTINCT first_name,last_name FROM private_appointments "
                 "WHERE state='current' AND disclosure='ordinary' AND end>? AND start<? "
                 "ORDER BY first_name,last_name LIMIT 501",(instant(now),instant(now+timedelta(days=90)))).fetchall()
         if len(rows)>500:return None  # Never treat a truncated scan as complete.
+        return [dict(first_name=r['first_name'],last_name=r['last_name']) for r in rows
+            if r['first_name'].strip() and r['last_name'].strip()]
+
+    def close_appointment_names(self,first,last,now):
+        """Internal hints for the exact-name fallback, never calendar contents."""
+        rows=self.upcoming_appointment_names(now)
+        if rows is None:return None
         def similar(a,b):return SequenceMatcher(None,name_key(a),name_key(b),autojunk=False).ratio()
         return [dict(first_name=r['first_name'],last_name=r['last_name']) for r in rows
             if r['first_name'].strip() and r['last_name'].strip()
