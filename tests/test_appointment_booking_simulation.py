@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from scripts.simulate_appointment_booking import CappedCalendar,BookingScenario,caller_config,validate_execution,heard_confirmation
 from tests.appointment_fixtures import NOW,SLOT,FakeProvider
-from app.appointments.contracts import Appointment
+from app.appointments.contracts import Appointment,WriteNotAuthorized
 from app.appointments.registry import payload_hash
 from app.storage.database import Database
 from app.config import Settings
@@ -22,7 +22,7 @@ def test_dry_run_creates_only_a_private_local_event_and_reconciles_it():
         assert (await capped.read_event(identity)).booking_details_verified
         assert len((await capped.read_interval(SLOT)).events)==2
         assert len((await capped.read_interval(SLOT,exclude=identity)).events)==1
-        with pytest.raises(ValueError):await capped.create(identity,value,authorize=lambda:None)
+        with pytest.raises(WriteNotAuthorized):await capped.create(identity,value,authorize=lambda:None)
     asyncio.run(exercise())
 
 
@@ -36,7 +36,7 @@ def test_execution_cap_rejects_changed_booking_before_provider_dispatch(change):
                 **({'start':SLOT.start+timedelta(days=1),'end':SLOT.end+timedelta(days=1)} if change=='date' else
                 {'start':SLOT.start+timedelta(minutes=1),'end':SLOT.end+timedelta(minutes=1)} if change=='time' else
                 {'end':SLOT.end+timedelta(minutes=1)}))}))
-        with pytest.raises(ValueError):await capped.create(provider.intended_identity('real'),changed,authorize=lambda:None)
+        with pytest.raises(WriteNotAuthorized):await capped.create(provider.intended_identity('real'),changed,authorize=lambda:None)
         assert provider.writes==0 and capped.creates==0
     asyncio.run(exercise())
 
@@ -45,7 +45,17 @@ def test_cap_accepts_same_room_format_but_not_a_different_number():
     p=FakeProvider(lambda:NOW);v=Appointment('Casey','Example','course guidance',SLOT,'East Building, West Campus, room E 1066')
     cap=CappedCalendar(p,v)
     assert cap.permits(replace(v,location='In person, East Building, West Campus, room E-1066'))
+    assert cap.permits(replace(v,location='In person at East Building, West Campus, room E 1066'))
     assert not cap.permits(replace(v,location='East Building, West Campus, room E 1067'))
+
+
+def test_explicit_flexible_window_accepts_a_free_selected_slot_without_requiring_the_stale_hint():
+    p=FakeProvider(lambda:NOW);v=Appointment('Casey','Example','course guidance',SLOT,'Office A')
+    cap=CappedCalendar(p,v,window=(SLOT.start,SLOT.start+timedelta(hours=2)))
+    moved=replace(v,interval=replace(SLOT,start=SLOT.start+timedelta(minutes=30),end=SLOT.end+timedelta(minutes=30)))
+    assert cap.permits(moved)
+    assert not cap.permits(replace(moved,interval=replace(moved.interval,end=moved.interval.end+timedelta(minutes=1))))
+    assert not cap.permits(replace(moved,interval=replace(SLOT,start=SLOT.start+timedelta(days=1),end=SLOT.end+timedelta(days=1))))
 
 
 def test_real_mode_requires_current_private_exact_owner_grant_and_idle_source(tmp_path):

@@ -1,34 +1,42 @@
 # Appointment verification without a telephone call
 
-Booking has a separate harness, `python -m scripts.simulate_appointment_booking`.
-It uses the same two Live peers and production bridge, including server-owned
-short proposal playback and its transport acknowledgments. Its default mode
-reads the real calendar and simulates creation in a private scratch journal;
-it makes no calendar writes. A busy slot remains busy. Supply a private scenario
-with `source_call_id`, `appointment` (the ordinary exact-slot request fields),
-and caller `script`, then pass `--env-file`, `--scenario` and a new `--output`.
+Booking uses a separate module, `python -m scripts.simulate_appointment_booking`.
+The Live model speaks naturally; priority fast Luna reads the conversation,
+chooses from fourteen days of verified free office-hours blocks and interprets
+agreement. Python handles the calendar request, current availability, live-call
+authority, duplicate prevention and provider result. It does not compare a full
+recital or require exact caller wording. Ordinary defaults and vague positive
+agreement are accepted; explicit refusal or a changed time is respected.
 
-Actual booking is an explicit owner operation: `--execute-approved-booking
---owner-grant /private/grant.json`. The owner must authorize the real event and
-the operator must back up first. The mode requires zero active calls, a completed
-source call and a private, owner-controlled grant file with action
-`one_real_booking_without_telephone`, that `source_call_id`, the exact
-`app.appointments.registry.payload_hash` of the approved appointment, `max_events: 1`
-and a future ISO `expires_at`. It creates a fresh request, never extends the old
-deadline or reactivates the original call, and caps provider dispatch to that one
-appointment. Equivalent room-code punctuation is accepted; changed dates, times,
-names, purposes or rooms are rejected. A prior operation requires reconciliation.
-Replay speech stays in private scratch state; the real operation journal and an
-honest owner-replay audit event reference the original call. No fake production
-call is inserted. A success requires a verified operation, played result and the
-caller model independently hearing “confirmed”; real mode also reads Google again.
+The booking harness connects the same two real Live peers through the production
+bridge. By default it reads the real calendar and simulates one create in private
+scratch state. Supply a private scenario with `source_call_id`, `appointment`
+(the exact-slot request fields) and caller `script`, then pass `--env-file`,
+`--scenario` and a new `--output`. A busy slot remains busy. Results contain the
+actual tool calls, Luna action, calendar timings and independently received audio.
 
-For normal calls the server offers the concrete date/time once, accepts clear
-natural agreement, refreshes availability, creates once and independently reads
-the event back. It then plays one short verified confirmation. Main-model
-paraphrases and holding phrases do not decide whether an offer was heard.
-Refusals, corrections, pending caller captions, expired authority, unavailable
-slots and uncertain provider writes retain their existing protections.
+One real booking requires explicit owner authorization and backups first, plus
+`--execute-approved-booking --owner-grant /private/grant.json`. The owner-controlled
+mode-600 grant contains action `one_real_booking_without_telephone`, that
+`source_call_id`, the approved `app.appointments.registry.payload_hash`,
+`max_events: 1` and a future ISO `expires_at`. It requires zero active calls and a
+completed source call. It creates a fresh request; the old call is never reopened
+and its expired request is never extended. A write cap accepts the same approved
+room with ordinary punctuation/“in person at” variants, and rejects a different
+time/name/purpose/room or a second create. Rejected pre-dispatch writes are known
+not to have been sent. Any existing operation must be reconciled instead.
+
+Replay speech stays in a private scratch database. The real operation journal and
+an honest owner-replay audit event reference the original call; no fake production
+call is inserted. Real-mode success also requires an independent Google readback.
+No telephone adapter is available in either mode.
+
+For an explicitly authorized first-available replay, set `first_available: true`
+and aware `not_before`/`not_after` bounds in both scenario and owner grant. The
+calendar cap then accepts the selected free slot within that window at the same
+duration; the scenario's historical start/end are a hint rather than a fixed
+time. The real booking still performs its fresh office-hours/conflict checks.
+This prevents a stale test hint from rejecting a newly available earlier slot.
 
 `python -m scripts.simulate_appointment_lookup` connects two independent real
 GPT-Live sessions. One plays the caller from a script; the other uses the normal

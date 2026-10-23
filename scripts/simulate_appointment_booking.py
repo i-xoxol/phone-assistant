@@ -15,13 +15,14 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import time
 
-from pydantic import BaseModel,ConfigDict,Field
-from app.appointments.contracts import Appointment,CalendarEvent
+from pydantic import AwareDatetime,BaseModel,ConfigDict,Field,model_validator
+from app.appointments.contracts import Appointment,CalendarEvent,WriteNotAuthorized
 from app.appointments.gateway import AppointmentGateway
-from app.appointments.registry import payload,payload_hash,event_identity
+from app.appointments.registry import Registry,payload,payload_hash,event_identity
 from app.appointments.confirmation import exact_room,room_words
 from app.appointments.evidence import speech_words
 from app.appointments.schemas import SlotRequest
@@ -39,28 +40,46 @@ class BookingScenario(BaseModel):
     appointment:SlotRequest
     script:list[str]=Field(min_length=1,max_length=10)
     timeout_seconds:int=Field(default=150,ge=30,le=180)
+    first_available:bool=False
+    not_before:AwareDatetime | None=None
+    not_after:AwareDatetime | None=None
+    @model_validator(mode='after')
+    def window(self):
+        if self.first_available and not (self.not_before and self.not_after and self.not_before<self.not_after):
+            raise ValueError('Flexible replay requires an explicit owner-approved window')
+        return self
 
 
 class CappedCalendar:
     """No arbitrary writes: one exact owner-approved payload, or a local dry run."""
-    def __init__(self,provider,expected,execute=False):
+    def __init__(self,provider,expected,execute=False,window=None):
         self.provider=provider;self.expected=expected;self.execute=execute
+        self.window=window
         self.creates=0;self.events={};self.dispatching=False;self.owner_authorize=lambda:None
     def __getattr__(self,name):return getattr(self.provider,name)
     def permits(self,value):
         actual,expected=payload(value),payload(self.expected)
         actual.pop('location');expected.pop('location')
+        for data in (actual,expected):
+            for key in ('first_name','last_name'):data[key]=speech_words(data[key])
+        if self.window:
+            if not (self.window[0]<=value.interval.start<value.interval.end<=self.window[1]
+                    and value.interval.end-value.interval.start==self.expected.interval.end-self.expected.interval.start):return False
+            for data in (actual,expected):
+                for key in ('start','end','local_intent'):data.pop(key)
         for data in (actual,expected):data['purpose']=tuple(w for w in speech_words(data['purpose']) if w not in {'a','an','the','to'})
         # "In person, room E-1066" and "room E 1066" are the same owner-approved
         # place. Never relax time/name/purpose or accept another room/address.
-        def place(text):return text.removeprefix('In person, ').removeprefix('in person, ')
+        def place(text):return re.sub(r'^in person(?:\s+at)?[,\s]+','',text,flags=re.I)
         return actual==expected and exact_room(room_words(place(value.location)),place(self.expected.location))
     async def create(self,identity,value,*,authorize):
-        if self.creates or not self.permits(value):raise ValueError('Replay is capped to one exact approved appointment')
+        if self.creates or not self.permits(value):raise WriteNotAuthorized('Replay is capped to one exact approved appointment')
         authorize();self.creates+=1
         if self.execute:
             self.dispatching=True
-            def dispatch_authorize():self.owner_authorize();authorize()
+            def dispatch_authorize():
+                try:self.owner_authorize();authorize()
+                except ValueError:raise WriteNotAuthorized() from None
             try:return await self.provider.create(identity,value,authorize=dispatch_authorize)
             finally:self.dispatching=False
         self.events[identity.event]=CalendarEvent(identity,'dry-run-only',value.interval,
@@ -75,6 +94,9 @@ class CappedCalendar:
 
 def caller_config(settings,scenario,voice):
     v=scenario.appointment
+    selection=('The caller asked for first available within the approved window. Accept the first offered free slot within that window; '
+        'the appointment start/end below are only a historical hint, not a constraint. Do not reject an earlier valid slot.' if scenario.first_available else
+        'If offered a different date/time from the approved appointment, decline. If that exact slot is busy, finish politely.')
     return {'model':settings.openai_live_model,'store':False,
         'audio':{'format':{'type':'audio/pcmu','rate':8000},'output':{'voice':voice}},'delegation':{'type':'client'},
         'instructions':'''You are the CALLER, never the office assistant. Listen to the greeting first.
@@ -82,11 +104,11 @@ You want to BOOK the appointment described in CALLER DATA. Use the first script 
 Supply the other details naturally when asked; do not read all data at once or invent a different time.
 When giving your name, say your first and last name and spell your surname once, so the approved event keeps its correct spelling.
 When offered the approved concrete date and time, say “That works for me, thank you.” once.
-If offered any different date/time, decline. If the approved slot is busy, finish politely without booking; do not accept another slot.
 Do not require any special booking phrase. Wait quietly while the office books it. If asked again whether that works,
 say “Yes, please.” After hearing it is confirmed, say “Thank you, goodbye.” then remain silent.
 Do not claim success yourself, impersonate the assistant, or ask for a second appointment. No tools.
-CALLER DATA: '''+json.dumps({'appointment':v.model_dump(mode='json'),'script':scenario.script})}
+CALLER SELECTION: '''+selection+'\nCALLER DATA: '+json.dumps({'appointment':v.model_dump(mode='json'),'script':scenario.script,
+            'approved_window':{'not_before':scenario.not_before.isoformat(),'not_after':scenario.not_after.isoformat()} if scenario.first_available else None})}
 
 
 def validate_execution(source,scenario,grant_path):
@@ -99,10 +121,14 @@ def validate_execution(source,scenario,grant_path):
             or grant.get('payload_hash')!=payload_hash(scenario.appointment.appointment())
             or not now<datetime.fromisoformat(grant['expires_at']) or grant.get('max_events')!=1):
         raise ValueError('Grant does not authorize this exact current booking')
+    if scenario.first_available and not (grant.get('first_available') is True
+            and datetime.fromisoformat(grant['not_before'])==scenario.not_before
+            and datetime.fromisoformat(grant['not_after'])==scenario.not_after):
+        raise ValueError('Grant does not authorize this flexible time window')
     with readonly(source.database_path) as db:
         call=db.execute('SELECT status FROM calls WHERE call_id=?',(scenario.source_call_id,)).fetchone()
         if not call or call['status'] not in ('completed','failed'):raise ValueError('Replay needs a completed source call')
-        if db.execute("SELECT 1 FROM calls WHERE status IN ('queued','initiated','ringing','in_progress')").fetchone():
+        if db.execute("SELECT 1 FROM calls WHERE status NOT IN ('completed','failed','busy','no_answer','cancelled')").fetchone():
             raise ValueError('Wait for zero active calls before the approved real replay')
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
@@ -112,7 +138,8 @@ def heard_confirmation(events,audio):
     heard=''.join(e['text'] for e in events if e['side']=='caller' and e['direction']=='input'
         and e.get('start_ms',0)>=audio['start_ms'])
     tokens=speech_words(heard)
-    return 'confirmed' in tokens and not {'not',"isn't",'unconfirmed'}&set(tokens)
+    positive=bool({'confirmed','booked','scheduled'}&set(tokens) or ('all','set') in tuple(zip(tokens,tokens[1:])))
+    return positive and not {'not',"isn't","couldn't","cannot","can't",'unconfirmed','pending'}&set(tokens)
 
 
 async def run_booking(source,scenario,output,*,execute=False,grant_path=None,caller_voice='marin'):
@@ -143,7 +170,11 @@ async def run_booking(source,scenario,output,*,execute=False,grant_path=None,cal
         cid=scenario.source_call_id;manager.transition(cid,'in_progress');local.appointments_enabled=True
         manager.appointments=AppointmentGateway(manager);g=manager.appointments
         if g.store.prior_call_write(cid):raise ValueError('Existing operation: reconcile it; do not replay another create')
-        calendar=CappedCalendar(g.service.provider,scenario.appointment.appointment(),execute);g.service.provider=calendar
+        if execute:
+            from app.appointments.workflow import VoiceBookingWorkflow
+            g.voice_workflow=VoiceBookingWorkflow(g,Registry(output/'workflow.sqlite3'))
+        calendar=CappedCalendar(g.service.provider,scenario.appointment.appointment(),execute,
+            window=(scenario.not_before,scenario.not_after) if scenario.first_available else None);g.service.provider=calendar
         if execute:calendar.owner_authorize=lambda:validate_execution(source,scenario,grant_path)
         async def guard(request):
             if request.method=='GET' or (request.method=='POST' and request.url.host=='oauth2.googleapis.com' and request.url.path=='/token'):return
@@ -160,14 +191,21 @@ async def run_booking(source,scenario,output,*,execute=False,grant_path=None,cal
             started=await start_session(assistant,config);peer=await start_session(caller,caller_config(source,scenario,caller_voice))
             if started['session']['id']==peer['session']['id']:raise ValueError('Expected independent Live sessions')
             manager.db.update(cid,openai_session_id=started['session']['id'])
-            bridge=MediaBridge(transport,EventTap(assistant,'assistant',report),manager,cid,transport.stream,server_booking=True)
+            bridge=MediaBridge(transport,EventTap(assistant,'assistant',report),manager,cid,transport.stream,luna_booking=True)
             manager.attach_bridge(cid,bridge);operation=bridge.tools.operation
+            deliver=g.deliver
+            async def measured_delivery(call_id,result):
+                report.setdefault('result_ready_ms',transport.frames*20)
+                await deliver(call_id,result)
+            g.deliver=measured_delivery
             async def bounded(item):
-                if item['name'] not in {'get_call_context','check_appointment_slot','find_first_available_slot','book_appointment','get_booking_status','end_call'}:
+                if item['name'] not in {'get_call_context','get_appointment_availability','check_appointment_slot','find_first_available_slot','book_appointment','get_booking_status','end_call'}:
                     return {'state':'unsupported','instruction':'Only the one approved booking is in scope.'}
-                before=time.monotonic();result=await operation(item)
-                report['tools'].append({'name':item['name'],'arguments':json.loads(item['arguments']),
-                    'result':result,'elapsed_seconds':round(time.monotonic()-before,3)})
+                before=time.monotonic();entry={'name':item['name'],'arguments':json.loads(item['arguments'])};report['tools'].append(entry)
+                try:result=await operation(item)
+                except Exception as exc:
+                    entry.update(error_type=type(exc).__name__,elapsed_seconds=round(time.monotonic()-before,3));raise
+                entry.update(result=result,elapsed_seconds=round(time.monotonic()-before,3))
                 return result
             bridge.tools.operation=bounded
             async def receive_caller():
@@ -183,9 +221,7 @@ async def run_booking(source,scenario,output,*,execute=False,grant_path=None,cal
                     await asyncio.sleep(.1)
                     op=g.store.prior_call_write(cid)
                     if not op or op['state']!='confirmed':continue
-                    delivery=g.delivery_status(cid,op['operation_id'])
-                    with g.store.connect() as db:audio=db.execute("SELECT * FROM appointment_voice_prompts WHERE call_id=? AND kind='result' ORDER BY rowid DESC LIMIT 1",(cid,)).fetchone()
-                    if delivery['spoken_observed'] and heard_confirmation(report['transcript'],audio) and not transport.to_caller.buffer:
+                    if heard_confirmation(report['transcript'],{'start_ms':report.get('result_ready_ms')}) and not transport.to_caller.buffer:
                         report['caller_heard_confirmation']=True
                         transport.incoming.put_nowait({'event':'stop','streamSid':transport.stream});return await conversation
             tasks=[conversation,receiver,pacer,asyncio.create_task(done_booking())]
@@ -201,12 +237,16 @@ async def run_booking(source,scenario,output,*,execute=False,grant_path=None,cal
             report['audio_frames_each_direction']=transport.frames
             report['finalized']={'assistant':bridge.finalized.is_set(),'caller':caller_closed.is_set()}
         op=g.store.prior_call_write(cid);report['operation']=g.safe_operation(op) if op else None
+        report['caller_heard_confirmation']=heard_confirmation(report['transcript'],{'start_ms':report.get('result_ready_ms')})
+        with g.store.connect() as db:
+            report['booking_intents']=[dict(r) for r in db.execute('SELECT action,offer_turn,answer_turn,checked_at FROM appointment_booking_intents WHERE call_id=? ORDER BY rowid',(cid,))]
+            report['booking_metrics']=[dict(r) for r in db.execute('SELECT stage,duration_ms,outcome FROM appointment_telemetry ORDER BY rowid')]
         report['evaluation']={'passed':bool(op and op['state']=='confirmed' and calendar.creates==1 and report.get('caller_heard_confirmation') and all(report['finalized'].values())),
             'reason':'verified_single_booking' if op and op['state']=='confirmed' else 'booking_not_confirmed'}
         if execute and op:
             independent=await calendar.provider.read_event(event_identity(op))
             report['independent_provider_readback']=bool(independent and independent.state!='cancelled' and independent.booking_details_verified
-                and independent.interval==scenario.appointment.appointment().interval and calendar.permits(
+                and (scenario.first_available or independent.interval==scenario.appointment.appointment().interval) and calendar.permits(
                     Appointment(independent.participant_first,independent.participant_last,
                         independent.purpose,independent.interval,independent.location)))
             report['evaluation']['passed'] &= report['independent_provider_readback']

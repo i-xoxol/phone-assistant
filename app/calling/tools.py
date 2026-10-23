@@ -57,12 +57,23 @@ class VoiceTools:
         self.bridge = bridge
         self.responses = {}
 
+    def booking_context(self):
+        gateway=getattr(self.bridge.manager,'appointments',None)
+        if not getattr(self.bridge,'luna_booking',False) or not gateway:return None
+        bound=gateway.voice_workflow.bound(self.bridge.call_id)
+        if not bound:return None
+        draft,_=bound
+        return dict(draft_id=draft['draft_id'],draft_revision=draft['revision'],payload_hash=draft['payload_hash'],
+            caller_revision=gateway.revision(self.bridge.call_id))
+
     def handle(self, envelope):
         event = envelope['event']
         delegation = envelope['delegation_id']
         kind = event['type']
         if kind == 'response.created':
             self.responses[delegation] = {'id': event['response']['id'], 'calls': [], 'running': False}
+            context=self.booking_context()
+            if context:self.responses[delegation]['booking_context']=context
         elif kind == 'response.output_item.done':
             state = self.responses.get(delegation)
             item = event.get('item', {})
@@ -90,14 +101,17 @@ class VoiceTools:
         manager = self.bridge.manager
         name = item['name']
         inbound = manager.db.get(self.bridge.call_id).get('direction') == 'inbound'
-        if name in ('find_first_available_slot','check_appointment_slot','book_appointment','get_booking_status','get_my_appointment','search_appointment_name','get_caller_status','get_family_availability'):
+        if name in ('get_appointment_availability','find_first_available_slot','check_appointment_slot','book_appointment','get_booking_status','get_my_appointment','search_appointment_name','get_caller_status','get_family_availability'):
             record=manager.db.get(self.bridge.call_id)
             if (not inbound or record['inbound_mode']!='concierge' or not manager.settings.appointments_enabled or not manager.appointments
                     or manager.bridges.get(self.bridge.call_id) is not self.bridge or self.bridge.closing
                     or self.bridge.handoff or self.bridge.call_id in manager.stopping):
                 raise ValueError('Appointment capability unavailable in this voice session')
             args=json.loads(item['arguments']);gateway=manager.appointments
+            if getattr(self.bridge,'luna_booking',False) and name in ('book_appointment','get_booking_status'):args={}
+            if name=='get_appointment_availability':return await gateway.availability(self.bridge.call_id,args)
             if name in ('find_first_available_slot','check_appointment_slot'):
+                args.pop('request_id',None)
                 handler=gateway.first_available if name=='find_first_available_slot' else gateway.check
                 result=await handler(self.bridge.call_id,args)
                 gateway.voice_workflow.bind(self.bridge.call_id,result)
@@ -106,10 +120,18 @@ class VoiceTools:
                     result['server_managed']=True
                     result['instruction']='The server owns this proposal and resumes booking after complete readback and settled caller agreement. Do not repeat the proposal or ask again whether to book. Never invent booking IDs or claim success before the verified result.'
                 result.pop('readback',None)  # The queued voice instruction owns the single readback.
+                if getattr(self.bridge,'luna_booking',False) and result.get('draft_id'):
+                    draft=gateway.service.bound(self.bridge.call_id,result['draft_id'])
+                    result['proposed_slot']={k:draft[k] for k in ('start','end','zone')}
+                    for key in ('draft_id','check_id','request_id'):result.pop(key,None)
                 return result
             if name=='book_appointment':
+                bound=gateway.voice_workflow.bound(self.bridge.call_id)
+                if bound and getattr(self.bridge,'luna_booking',False):gateway.booking_agent.accept_backend(bound[0],item.get('_booking_context'))
                 if gateway.voice_workflow.bound(self.bridge.call_id) or not args:
                     result=await gateway.voice_workflow.book(self.bridge.call_id,args)
+                    if getattr(self.bridge,'luna_booking',False):
+                        result.pop('caller_delivery',None);result.pop('delivery',None)
                     result.pop('source_identity',None);return result
                 from app.appointments.service import ConsentRequired
                 try:result=await gateway.book(self.bridge.call_id,args)
@@ -121,6 +143,8 @@ class VoiceTools:
             if name=='get_booking_status':
                 if gateway.voice_workflow.bound(self.bridge.call_id) or not args:
                     result=await gateway.voice_workflow.status(self.bridge.call_id)
+                    if getattr(self.bridge,'luna_booking',False):
+                        result.pop('caller_delivery',None);result.pop('delivery',None)
                     result.pop('source_identity',None);return result
                 from app.appointments.schemas import OperationStatus
                 args=OperationStatus.model_validate(args)
@@ -162,8 +186,6 @@ class VoiceTools:
         elif name == 'press_digits' and not inbound:
             args = KeypadArguments.model_validate_json(item['arguments'])
         elif name == 'end_call':
-            if getattr(self.bridge,'owned_booking',None):
-                return {'status':'booking_pending','instruction':'The server is delivering the booking proposal or verified result. Do not end the call or repeat it; listen for the caller. A real caller hangup is always respected.'}
             args = EndArguments.model_validate_json(item['arguments'])
         else:
             raise ValueError('Tool unavailable')
@@ -209,7 +231,8 @@ class VoiceTools:
         try:
             for item in state['calls']:
                 try:
-                    result = await self.operation(item)
+                    command={**item,'_booking_context':state['booking_context']} if state.get('booking_context') and item['name']=='book_appointment' else item
+                    result = await self.operation(command)
                 except Exception as exc:
                     self.bridge.manager.db.finish_tool(self.bridge.call_id, item['call_id'], 'unconfirmed')
                     log_event('voice_tool_unconfirmed', call_id=self.bridge.call_id, tool_name=item['name'],error_type=type(exc).__name__)

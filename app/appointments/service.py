@@ -98,6 +98,58 @@ class BookingService:
             cursor+=timedelta(minutes=1)
         return finish('no_available_slot',reason='no_verified_slot_in_search_window')
 
+    async def availability_blocks(self,call_id,request_id,duration_minutes=15,not_before=None,not_after=None):
+        """Give Luna fourteen days of verified free office blocks, without event contents."""
+        authority=self.current({'call_id':call_id,'request_id':request_id});now=self.clock()
+        if isinstance(duration_minutes,bool) or not isinstance(duration_minutes,int) or not 1<=duration_minutes<=120:
+            raise ValueError('Use a whole-minute duration from 1 to 120')
+        limit=now+timedelta(days=14)
+        if any(t is not None and t.tzinfo is None for t in (not_before,not_after)):raise ValueError('Use aware search bounds')
+        start=max(now,not_before or now).astimezone(timezone.utc);end=(not_after or limit).astimezone(timezone.utc)
+        if not start<end<=limit:raise ValueError('Availability window must end within fourteen days')
+        window=Interval(start-timedelta(minutes=self.policy.buffer_before),end+timedelta(minutes=self.policy.buffer_after),self.policy.zone)
+        result={'reservation':False,'search_start':start.isoformat(),'search_end':end.isoformat(),'time_zone':self.policy.zone,'blocks':[]}
+        try:
+            caps=self.provider.capabilities
+            if not (caps.exact_reads and caps.recurrence_expansion and caps.availability_search):raise ProviderFault('unsupported')
+            async with asyncio.timeout(max(.001,min(6,(authority.deadline-self.clock()).total_seconds()))):
+                with self.store.measure('calendar_blocks'):coverage=await self.provider.read_availability(window)
+            now=self.clock();reason=coverage_failure(coverage,window,now)
+            if not reason and any(e.state=='unknown' for e in coverage.events):reason='unknown_event_state'
+        except (ProviderFault,TimeoutError) as exc:reason=exc.code if isinstance(exc,ProviderFault) else 'deadline_budget'
+        self.current({'call_id':call_id,'request_id':request_id})
+        if reason:return {**result,'decision':'unknown','reason':reason}
+        def scan():
+            cursor=max(start,now).replace(second=0,microsecond=0)
+            if cursor<start or cursor<=now:cursor+=timedelta(minutes=1)
+            minute=timedelta(minutes=1);duration=timedelta(minutes=duration_minutes);blocks=[];began=None
+            def finish(at):
+                if began is not None and at-began>=duration:
+                    # Every block fits one real designated office occurrence.
+                    for event in coverage.events:
+                        if event.kind!='availability' or not event.interval or event.state=='cancelled':continue
+                        a,b=max(began,event.interval.start),min(at,event.interval.end)
+                        if b-a<duration:continue
+                        block=Interval(a,b,self.policy.zone)
+                        if self.policy.decide(block,coverage,now)[0]!='available':continue
+                        item={'start':a.isoformat(),'end':b.isoformat(),'time_zone':self.policy.zone}
+                        if item not in blocks:blocks.append(item)
+            while cursor+minute<=end:
+                candidate=Interval(cursor,cursor+minute,self.policy.zone)
+                free=self.policy.office_hours(candidate) and self.policy.decide(candidate,coverage,now)[0]=='available'
+                if free and began is None:began=cursor
+                elif not free and began is not None:finish(cursor);began=None
+                cursor+=minute
+            finish(cursor)
+            return blocks
+        # Calendar formatting must not stall the 20 ms live audio clock.
+        blocks=await asyncio.to_thread(scan)
+        self.current({'call_id':call_id,'request_id':request_id})
+        stale=coverage_failure(coverage,window,self.clock())
+        if stale:return {**result,'decision':'unknown','reason':stale}
+        return {**result,'decision':'available' if blocks else 'no_available_slot','reason':'verified_free_office_blocks',
+            'blocks':blocks,'expires_at':min(coverage.valid_until,authority.deadline).isoformat()}
+
     async def check(self,call_id,draft_id):
         draft=self.bound(call_id,draft_id);authority=self.current(draft)
         try:
