@@ -129,7 +129,9 @@ false starts, interrupted spelling prompts and caption markers such as
 Luna must select an existing candidate and quote actual caller speech supporting
 both name components. The server validates those quotes, caches the proof for
 this call and independently reads the selected Google event. The voice assistant
-receives only verified date/time/location and never a candidate list. Model
+receives only verified date/time/location and never a candidate list. A server-formatted
+`spoken_answer` includes the complete date, local time and office/location for one
+readout, without another booking or appointment-correctness question. Model
 failures retain the existing bounded clarification fallback; a remaining miss
 gets one explanation and owner-review offer. The candidate scan fails closed
 if truncated. Sensitive, cancelled and unsupported records are excluded.

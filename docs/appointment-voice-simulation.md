@@ -76,3 +76,9 @@ The simulated caller has a generated voice; it does not reproduce the owner's
 accent or a handset/Twilio network path. Results can vary between model runs.
 Inspect all four transcript streams when diagnosing a failure, especially caller
 output versus assistant input and assistant output versus caller input.
+
+The simulated caller may hang up after independently hearing every verified detail
+and saying thanks or goodbye. The harness waits for two seconds of caller quiet
+and empty audio playback queues, then sends an in-memory media stop and finalizes
+both sessions. This models a caller hangup without a telephone action. Missing or
+unheard details, blocked actions and repeated name loops cannot trigger it.

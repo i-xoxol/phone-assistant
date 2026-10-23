@@ -121,6 +121,8 @@ def test_success_requires_the_verified_date_time_and_location_to_be_spoken(text,
 def test_a_tool_result_or_unheard_assistant_audio_alone_cannot_pass():
     report={'started_at':NOW.isoformat(),'transcript':[],'tools':[],'blocked_tools':[]}
     assert evaluate(report)['passed'] is False
+
+
     report['tools']=[{'result':DETAILS,'transcript_index':0}]
     text='October 26th at 3:15 p.m., Office A.'
     report['transcript']=[{'side':'assistant','direction':'output','text':text}]
@@ -130,6 +132,16 @@ def test_a_tool_result_or_unheard_assistant_audio_alone_cannot_pass():
     report['blocked_tools']=['book_appointment']
     assert evaluate(report)['passed'] is False
 
+
+@pytest.mark.parametrize('mode',['done','unheard','no_closing','still_speaking','wrong_location','blocked_action'])
+def test_simulated_caller_hangs_up_only_after_a_verified_heard_answer_and_closing(mode):
+    from scripts.simulate_appointment_lookup import simulation_caller_done
+    text='October 26th at 3:15 p.m., Office A.'
+    events=[dict(side='assistant',direction='output',text=text,start_ms=1000,end_ms=2000)]
+    if mode!='unheard':events.append(dict(side='caller',direction='input',text=text if mode!='wrong_location' else text.replace('A.','B.'),start_ms=2000,end_ms=3000))
+    if mode!='no_closing':events.append(dict(side='caller',direction='output',text='Okay, thanks.',start_ms=3000,end_ms=4000))
+    report=dict(started_at=NOW.isoformat(),transcript=events,tools=[dict(result=DETAILS,transcript_index=0)],blocked_tools=['book_appointment'] if mode=='blocked_action' else [])
+    assert simulation_caller_done(report,5000 if mode=='still_speaking' else 7000)==(mode=='done')
 
 @pytest.mark.parametrize('room,passed',[
     ('E 1066',True),('E, ten sixty-six',True),('E one zero six six',True),
