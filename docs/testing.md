@@ -119,3 +119,9 @@ do not establish that end-to-end result.
 The saved-context update passed 140 offline tests on both development hosts.
 The actual Live context-reader probe and a calendar time-only dry run passed;
 these still do not replace a real caller/supervisor acceptance test.
+# Two-model appointment voice simulation
+
+For a real audio verification test without Twilio, see
+[the appointment voice simulation module](appointment-voice-simulation.md).
+It reuses the production bridge and appointment readers with private scratch call
+state and blocked calendar writes; it is not part of the offline test suite.

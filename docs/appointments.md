@@ -119,6 +119,12 @@ and new uncaptioned speech still block disclosure. Lookup reuses the supplied
 name and retrieves minimal verified details without requiring new-booking
 intake, creating a draft, or starting another booking operation.
 
+A complete neutral assistant backchannel such as “Mm-hmm” can occur inside the
+caller’s spoken full name in a full-duplex conversation. Lookup joins the caller’s
+own name fragments across that acknowledgment. Questions, substantive words,
+third-party references and changed or incomplete names retain their guards; this
+does not alter booking evidence.
+
 Native lookup waits up to eight seconds for current caller audio/captions and
 rechecks the complete name after calendar I/O. A harmless follow-up during a read
 does not by itself invalidate that identity. New uncaptioned audio requires
