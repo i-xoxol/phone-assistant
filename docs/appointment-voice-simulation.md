@@ -1,5 +1,35 @@
 # Appointment verification without a telephone call
 
+Booking has a separate harness, `python -m scripts.simulate_appointment_booking`.
+It uses the same two Live peers and production bridge, including server-owned
+short proposal playback and its transport acknowledgments. Its default mode
+reads the real calendar and simulates creation in a private scratch journal;
+it makes no calendar writes. A busy slot remains busy. Supply a private scenario
+with `source_call_id`, `appointment` (the ordinary exact-slot request fields),
+and caller `script`, then pass `--env-file`, `--scenario` and a new `--output`.
+
+Actual booking is an explicit owner operation: `--execute-approved-booking
+--owner-grant /private/grant.json`. The owner must authorize the real event and
+the operator must back up first. The mode requires zero active calls, a completed
+source call and a private, owner-controlled grant file with action
+`one_real_booking_without_telephone`, that `source_call_id`, the exact
+`app.appointments.registry.payload_hash` of the approved appointment, `max_events: 1`
+and a future ISO `expires_at`. It creates a fresh request, never extends the old
+deadline or reactivates the original call, and caps provider dispatch to that one
+appointment. Equivalent room-code punctuation is accepted; changed dates, times,
+names, purposes or rooms are rejected. A prior operation requires reconciliation.
+Replay speech stays in private scratch state; the real operation journal and an
+honest owner-replay audit event reference the original call. No fake production
+call is inserted. A success requires a verified operation, played result and the
+caller model independently hearing “confirmed”; real mode also reads Google again.
+
+For normal calls the server offers the concrete date/time once, accepts clear
+natural agreement, refreshes availability, creates once and independently reads
+the event back. It then plays one short verified confirmation. Main-model
+paraphrases and holding phrases do not decide whether an offer was heard.
+Refusals, corrections, pending caller captions, expired authority, unavailable
+slots and uncertain provider writes retain their existing protections.
+
 `python -m scripts.simulate_appointment_lookup` connects two independent real
 GPT-Live sessions. One plays the caller from a script; the other uses the normal
 `session_config`, Responses backend, `MediaBridge`, caption processing, raw-speech

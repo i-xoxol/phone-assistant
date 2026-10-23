@@ -162,6 +162,8 @@ class VoiceTools:
         elif name == 'press_digits' and not inbound:
             args = KeypadArguments.model_validate_json(item['arguments'])
         elif name == 'end_call':
+            if getattr(self.bridge,'owned_booking',None):
+                return {'status':'booking_pending','instruction':'The server is delivering the booking proposal or verified result. Do not end the call or repeat it; listen for the caller. A real caller hangup is always respected.'}
             args = EndArguments.model_validate_json(item['arguments'])
         else:
             raise ValueError('Tool unavailable')

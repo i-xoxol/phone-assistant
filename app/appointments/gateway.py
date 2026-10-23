@@ -84,6 +84,8 @@ class AppointmentGateway:
                 created_at TEXT NOT NULL,check_id TEXT,delivery_error TEXT,UNIQUE(request_id,revision));''')
         from app.appointments.workflow import VoiceBookingWorkflow
         self.voice_workflow=VoiceBookingWorkflow(self)
+        from app.appointments.voice_confirmation import VoiceConfirmation
+        self.voice_confirmation=VoiceConfirmation(self)
 
     def transcript(self,call_id):return self.m.db.get(call_id)['transcript']
     def revision(self,call_id):
@@ -136,6 +138,8 @@ class AppointmentGateway:
         return rid
 
     def consent(self,draft,unused):
+        native=self.voice_confirmation.evidence(draft)
+        if native is not None:return native
         value=appointment(draft)
         with self.store.connect() as db:readback=db.execute('SELECT * FROM appointment_readbacks WHERE draft_id=? AND draft_revision=?',
             (draft['draft_id'],draft['revision'])).fetchone()
@@ -218,8 +222,12 @@ class AppointmentGateway:
     async def queue_readback(self,draft,*,repeat=False):
         from uuid import UUID,uuid5
         self.service.current(draft)
+        previous=self.voice_confirmation.proposal(draft)
+        if previous and previous['state'] in ('withdrawn','failed'):repeat=True
         prefix,text=self.readback_plan(draft,fresh=repeat);instruction=prefix+text
-        if len(text.encode())>330 or len(instruction.encode())>400:return False
+        native=(self.voice_confirmation.bridge(draft['call_id']) and confirmation.eligible(appointment(draft),self.clock(),
+            self.service.policy.zone,self.transcript(draft['call_id'])))
+        if not native and (len(text.encode())>330 or len(instruction.encode())>400):return False
         with self.m.db.connect() as db:cursor=db.execute('SELECT coalesce(max(id),0) FROM transcript_events WHERE call_id=?',(draft['call_id'],)).fetchone()[0]
         uid=uuid5(UUID(draft['draft_id']),'readback-'+str(draft['revision'])+('-after-'+str(cursor) if repeat else ''))
         with self.store.connect() as db:
@@ -227,6 +235,8 @@ class AppointmentGateway:
                 if repeat else 'DO NOTHING')
             db.execute('INSERT INTO appointment_readbacks VALUES(?,?,?,?,?) ON CONFLICT(draft_id,draft_revision) '+conflict,
                 (draft['draft_id'],draft['revision'],str(uid),self.clock().isoformat(),cursor))
+        if native:
+            return await self.voice_confirmation.issue(draft,uid)
         await self.m.send_call_update(draft['call_id'],CallUpdateRequest(mode='instructions',content=instruction,update_id=uid))
         return True
 
@@ -299,7 +309,9 @@ class AppointmentGateway:
         return {**result,'draft_id':draft['draft_id'],'request_id':rid,'schema_version':'1.0',
             'readback':self.readback_plan(draft)[1],'readback_queued':result['decision']=='available' and not reused,
             'consent_observed':reused,
-            'instruction':'The identical complete readback and current caller agreement are already observed. Do not repeat the details or ask for another confirmation; call book_appointment with these IDs and a stable idempotency key. Nothing is booked yet.' if reused
+            'instruction':('That time is unavailable. Nothing is booked. Offer to find the next verified free office-hours slot, reusing the intake details; do not say you are waiting for confirmation.' if result['decision']=='busy'
+                else 'Availability could not be verified. Nothing is booked. Explain the bounded failure once and offer owner review; do not keep waiting for confirmation.') if result['decision']!='available' else
+                'The identical complete readback and current caller agreement are already observed. Do not repeat the details or ask for another confirmation; call book_appointment with these IDs and a stable idempotency key. Nothing is booked yet.' if reused
                 else 'The server owns the single queued readback when available. Do not add a second summary or readback. Natural contextual agreement is sufficient; never demand a prescribed booking phrase. Then call book_appointment. Nothing is booked yet.'}
 
     async def progress(self,request_id,phase,check_id=None):
@@ -344,6 +356,9 @@ class AppointmentGateway:
         uid=uuid5(UUID(result['operation_id']),'verified-booking-result')
         with self.store.connect() as db:db.execute('INSERT INTO appointment_delivery VALUES(?,?,?,NULL)',(result['operation_id'],str(uid),cursor))
         draft=self.store.get('appointment_drafts','draft_id',result['draft_id']);value=appointment(draft)
+        if self.voice_confirmation.bridge(call_id) and self.voice_confirmation.proposal(draft):
+            await self.voice_confirmation.issue(draft,uid,kind='result')
+            return
         text=('Confirmed. '+confirmation.time_text(value)+'.' if confirmation.eligible(value,self.clock(),self.service.policy.zone,self.transcript(call_id))
             else 'Confirmed '+spoken_readback(value).removesuffix(' Is that correct?'))
         try:
@@ -377,6 +392,8 @@ class AppointmentGateway:
                 said=''
                 if spoken and turn['speaker']=='callee' and normalized(turn['text']) in ('yes','correct','thankyou','thanks'):receipt=True
         accepted=bool(update and update['status']=='acknowledged')
+        audio=self.voice_confirmation.row(row['update_id'])
+        if audio:spoken=audio['state']=='played'
         with self.store.connect() as db:
             outbox=db.execute("SELECT outbox_id FROM booking_outbox WHERE operation_id=? AND kind='result' ORDER BY operation_revision DESC LIMIT 1",(oid,)).fetchone()
             if outbox:
@@ -593,6 +610,7 @@ class AppointmentGateway:
 
     async def close(self):
         await self.voice_workflow.close()
+        await self.voice_confirmation.close()
         if self.sync_task:
             self.sync_task.cancel();await asyncio.gather(self.sync_task,return_exceptions=True)
         if self.http:await self.http.aclose()

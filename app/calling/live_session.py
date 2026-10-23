@@ -126,7 +126,7 @@ def has_speech(payload: bytes) -> bool:
 
 
 class MediaBridge:
-    def __init__(self, websocket, connection, manager, call_id, stream_sid):
+    def __init__(self, websocket, connection, manager, call_id, stream_sid, *, server_booking=False):
         self.ws, self.connection, self.manager = websocket, connection, manager
         self.call_id, self.stream_sid = call_id, stream_sid
         self.finalized = asyncio.Event()
@@ -156,6 +156,11 @@ class MediaBridge:
         self.input_speech_frames=0
         self.last_input_speech_at=0.0
         self.startup_started=time.monotonic()
+        self.server_booking=server_booking
+        self.owned_booking=None
+        self.booking_audio_tasks=set()
+        self.booking_marks={}
+        self.input_media_ms=0
         self.tools = VoiceTools(self)
         previous = manager.db.get(call_id)['transcript']
         self.transcript_offset_ms = int(max((e['end_timestamp'] for e in previous), default=0) * 1000)
@@ -172,6 +177,11 @@ class MediaBridge:
                         self.call_id, row['update_id'], self.session_id):
                     continue
                 event_id = 'call_update_' + row['update_id']
+                gateway=getattr(self.manager,'appointments',None)
+                packet=gateway.voice_confirmation.row(row['update_id']) if self.server_booking and gateway else None
+                if packet:
+                    gateway.voice_confirmation.start(self,packet)
+                    continue
                 channel = {'context': 'thinking', 'say': 'commentary', 'instructions': 'instructions'}[row['mode']]
                 try:
                     await asyncio.wait_for(getattr(self.connection.session, channel).append(
@@ -255,6 +265,7 @@ class MediaBridge:
                 raise ValueError('Stream mismatch')
             if message['event'] == 'media':
                 if message['media'].get('track') == 'inbound':
+                    self.input_media_ms=int(message['media'].get('timestamp',0))+self.transcript_offset_ms
                     if self.manager.settings.appointments_enabled:
                         raw=base64.b64decode(message['media']['payload'],validate=True)
                         if has_speech(raw):
@@ -270,6 +281,8 @@ class MediaBridge:
                     # Forward all codec frames, including silence. GPT-Live is full duplex.
                     await self.connection.session.input_audio.append(audio=message['media']['payload'])
             elif message['event'] == 'mark':
+                if message['mark']['name'] in self.booking_marks:
+                    self.booking_marks[message['mark']['name']].set()
                 if self.pending_marks.pop(message['mark']['name'], None) is not None:
                     self.playback_progress.set()
                 if self.playback_sealed and message['mark']['name'] == self.end_mark:
@@ -278,7 +291,20 @@ class MediaBridge:
                 log_event('twilio_media_stopped', call_id=self.call_id)
                 return
 
-    async def send_live_audio(self, payload: bytes):
+    def media_time_ms(self):
+        return self.input_media_ms or self.transcript_offset_ms
+
+    async def play_booking_audio(self,payload,key):
+        name='booking:'+self.session_id+':'+key
+        played=asyncio.Event();self.booking_marks[name]=played
+        try:
+            await self.send_live_audio(payload,booking=True)
+            if self.closing or self.handoff or self.end_requested.is_set():raise BridgeFailure('booking_playback_interrupted')
+            await self.ws.send_json({'event':'mark','streamSid':self.stream_sid,'mark':{'name':name}})
+            await asyncio.wait_for(played.wait(),len(payload)/8000+5)
+        finally:self.booking_marks.pop(name,None)
+
+    async def send_live_audio(self, payload: bytes, *, booking=False):
         # Provider deltas can arrive in bursts. Bound Twilio's queue while its
         # independent receive task keeps accepting audio and playback ACKs.
         for offset in range(0, len(payload), PLAYBACK_CHUNK_BYTES):
@@ -293,7 +319,7 @@ class MediaBridge:
                     log_event('twilio_playback_stalled', call_id=self.call_id,
                               pending_bytes=sum(self.pending_marks.values()))
                     raise BridgeFailure('twilio_playback_stalled') from None
-            if self.closing or self.playback_sealed:
+            if self.closing or self.playback_sealed or (self.owned_booking and not booking):
                 return
             name = str(self.mark_index)
             self.mark_index += 1
@@ -309,6 +335,7 @@ class MediaBridge:
             if self.update_event(data):
                 continue
             if event.type == 'session.output_audio.delta' and not self.closing and not self.playback_sealed:
+                if self.owned_booking:continue
                 payload = base64.b64decode(data['delta'], validate=True)
                 if not self.assistant_spoke and has_speech(payload): self.assistant_spoke=True
                 if not self.first_audio_logged:
@@ -319,6 +346,9 @@ class MediaBridge:
                     self.last_speech_at = asyncio.get_running_loop().time()
                 await self.send_live_audio(payload)
             elif event.type in ('session.input_transcript.delta', 'session.output_transcript.delta'):
+                # Unheard model output cannot become consent evidence or end a
+                # call while the server owns its short proposal/result audio.
+                if event.type=='session.output_transcript.delta' and self.owned_booking:continue
                 if data.get('delta','').strip():
                     if event.type=='session.output_transcript.delta': self.assistant_spoke=True
                     else: self.caller_spoke=True
@@ -403,6 +433,8 @@ class MediaBridge:
         finally:
             receiver_failed_before_cleanup = receiver.done() and not receiver.cancelled() and receiver.exception()
             self.closing = True
+            for task in list(self.booking_audio_tasks):task.cancel()
+            await asyncio.gather(*list(self.booking_audio_tasks),return_exceptions=True)
             sender.cancel()
             ending.cancel()
             updates.cancel()
@@ -492,7 +524,7 @@ async def handle_media(websocket: WebSocket, call_id: str):
             manager.db.restore_updates(call_id, record['call_updates'])
             manager.db.update(call_id, openai_session_id=started['session']['id'], voice_finalized=0)
             log_event('gpt_live_connected', call_id=call_id)
-            bridge = MediaBridge(websocket, connection, manager, call_id, stream_sid)
+            bridge = MediaBridge(websocket, connection, manager, call_id, stream_sid,server_booking=True)
             bridge.startup_started=startup_started
             manager.attach_bridge(call_id, bridge)
             manager.connecting.discard(call_id)

@@ -56,6 +56,10 @@ class VoiceBookingWorkflow:
         if check['decision']!='available':
             return {**self.waiting('checking',check['reason']),'state':'conflict' if check['decision']=='busy' else 'needs_owner'}
         evidence=self.g.consent(draft,None)
+        packet=self.g.voice_confirmation.proposal(draft)
+        if packet and packet['state'] in ('failed','withdrawn'):
+            return {**self.waiting('collecting_details','proposal_withdrawn_or_audio_unconfirmed'),
+                'instruction':'Nothing is booked. Respond to the caller’s correction or explain the failed audio delivery once. Collect only missing or changed details; do not claim you are waiting for a booking confirmation.'}
         if evidence.readback_observed and evidence.affirmative:
             return {'state':'ready','phase':'consented','server_managed':True,'calendar_write_attempted':False}
         return self.waiting('awaiting_answer' if evidence.readback_observed else 'awaiting_readback',
@@ -108,6 +112,7 @@ class VoiceBookingWorkflow:
         bound=self.bound(call_id)
         if not bound:return
         draft,check=bound
+        if self.g.voice_confirmation.proposal(draft):return
         if not self.g.consent(draft,None).readback_observed:return
         with self.g.m.db.connect() as db:
             rows=[dict(r) for r in db.execute("SELECT id,speaker,text FROM transcript_events WHERE call_id=? ORDER BY start_ms,id",(call_id,))]
@@ -138,6 +143,7 @@ class VoiceBookingWorkflow:
                 if self.g.store.prior_call_write(cid):return
                 pending=self.pending(cid)
                 if pending['state']!='ready':
+                    await self.g.voice_confirmation.release_answer(bridge)
                     if pending.get('phase')=='awaiting_answer':await self.clarify(cid)
                     if generation!=self.generations.get(cid,0):continue
                     return
