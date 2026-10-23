@@ -95,6 +95,7 @@ def test_native_relaxed_lookup_ignores_model_spelling_but_preserves_live_reads_a
         result=await bridge.tools.operation({'name':'get_my_appointment','arguments':json.dumps(dict(first_name='Misheard',last_name='Oldargument'))})
         if mode in ('normal','cached'):
             assert result['status']=='match' and result['location']=='Office A'
+            assert 'Office A' in result['spoken_answer'] and 'once in full' in result['instruction']
             if mode=='cached':
                 again=await bridge.tools.operation({'name':'get_my_appointment','arguments':json.dumps(dict(first_name='Misheard',last_name='Oldargument'))})
                 assert again['status']=='match' and resolver.await_count==1

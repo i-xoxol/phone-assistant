@@ -265,6 +265,24 @@ def evaluate(report):
         'name_questions':quality['name_questions']}
 
 
+def simulation_caller_done(report,now_ms):
+    """A simulated hangup needs a heard verified answer, a caller closing and quiet."""
+    if not evaluate(report)['passed']:return False
+    match=next(t for t in report['tools'] if t['result'].get('status')=='match')
+    events=report['transcript'][match['transcript_index']:]
+    heard='';heard_end=None
+    for event in events:
+        if event['side']=='caller' and event['direction']=='input':
+            heard+=event['text']
+            if all(heard_details(heard,match['result'],datetime.fromisoformat(report['started_at'])).values()):
+                heard_end=event.get('end_ms',0);break
+    closing=[e for e in events if e['side']=='caller' and e['direction']=='output']
+    if heard_end is None or not closing or closing[-1].get('end_ms',0)<heard_end:return False
+    tokens=speech_words(''.join(e['text'] for e in closing))
+    courtesy=bool({'thanks','goodbye','bye'}&set(tokens) or any(tokens[i:i+2]==('thank','you') for i in range(len(tokens)-1)))
+    return courtesy and now_ms>=closing[-1].get('end_ms',0)+2000
+
+
 async def run_simulation(source,scenario,output,caller_voice='marin',save_audio=False):
     output=Path(output).resolve()
     if output.is_relative_to(Path(__file__).resolve().parents[1]):raise ValueError('Private output must be outside the source checkout')
@@ -327,7 +345,18 @@ async def run_simulation(source,scenario,output,caller_voice='marin',save_audio=
                             content='No tools. Continue as the caller using your supplied name/script; do not invent appointment details.')
             caller_task=asyncio.create_task(receive_caller());pacer=asyncio.create_task(transport.pace(caller))
             conversation=asyncio.create_task(bridge.run(math.ceil(scenario.timeout_seconds/60)))
-            tasks=[conversation,caller_task,pacer]
+            async def caller_hangup():
+                while not conversation.done():
+                    await asyncio.sleep(.1)
+                    if (simulation_caller_done(report,transport.frames*20)
+                            and not transport.to_assistant.buffer and not transport.to_caller.buffer):
+                        # A caller can hang up after hearing the answer and
+                        # thanking the assistant, without an assistant end tool.
+                        report['simulated_caller_hangup']=True
+                        transport.incoming.put_nowait({'event':'stop','streamSid':transport.stream})
+                        await conversation
+                        return
+            tasks=[conversation,caller_task,pacer,asyncio.create_task(caller_hangup())]
             try:
                 async with asyncio.timeout(scenario.timeout_seconds):
                     done,_=await asyncio.wait(tasks,return_when=asyncio.FIRST_COMPLETED)

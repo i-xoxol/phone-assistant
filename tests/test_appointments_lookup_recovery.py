@@ -78,7 +78,8 @@ def test_native_lookup_after_a_booking_retrieves_only_verified_details_without_a
             speech(m,lookup,'callee',"No, I want to clarify my time. I don't really remember.",7500)
         answer=await bridge.tools.operation({'name':'get_my_appointment','arguments':json.dumps(dict(first_name='Casey',last_name='Example'))})
         assert answer['status']=='match'
-        assert set(answer)=={'status','start','end','zone','location','duration_seconds','current_delay_notices'}
+        assert set(answer)=={'status','start','end','zone','location','duration_seconds','current_delay_notices','spoken_answer','instruction'}
+        assert 'Office A' in answer['spoken_answer'] and 'in full' in answer['instruction']
         assert answer['location']=='Office A' and p.writes==1 and not connection.updates
         with g.store.connect() as db:
             assert db.execute('SELECT count(*) FROM booking_operations WHERE call_id=?',(lookup,)).fetchone()[0]==0

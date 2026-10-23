@@ -2,6 +2,7 @@
 import asyncio,hashlib,re,sqlite3,time
 from functools import partial
 from datetime import datetime,timedelta,timezone
+from zoneinfo import ZoneInfo
 from uuid import uuid4
 import httpx
 from app.appointments.contracts import CalendarIdentity,ProviderFault
@@ -34,6 +35,17 @@ def readback_text(value):
 def spoken_readback(value):
     # An IANA identifier is storage data; use its unambiguous spoken equivalent.
     return readback_text(value).replace(' America/New_York,',' Eastern Time,')
+
+
+def lookup_voice_result(result):
+    if result.get('status')!='match':return result
+    start=datetime.fromisoformat(result['start']).astimezone(ZoneInfo(result['zone']))
+    hour=start.hour%12 or 12;period='a.m.' if start.hour<12 else 'p.m.'
+    answer=f"Your appointment is {start.strftime('%B')} {start.day} at {hour}:{start.minute:02d} {period}, {result['location']}."
+    return {**result,'spoken_answer':answer,
+        'instruction':'Say spoken_answer once in full, including the office/location. This is a verified existing appointment; '
+            'do not ask whether the caller wants to book it or whether the appointment is correct. '
+            'Mention any current_delay_notices separately. After the caller is done, close politely.'}
 
 
 class AppointmentGateway:
@@ -488,7 +500,7 @@ class AppointmentGateway:
                             if pending():continue
                             # The name is resolved. A source failure requires a
                             # bounded explanation, never another identity ritual.
-                            return result
+                            return lookup_voice_result(result)
                     hint_fields=None
                     if search_names and result['status'] in ('not_found','needs_owner'):
                         candidates=self.store.close_appointment_names(args.first_name,args.last_name,self.clock())
@@ -545,7 +557,7 @@ class AppointmentGateway:
                             'instruction':'Reuse name components already provided. Ask only the missing component, with one short spelling question; '
                                 'do not restart full-name intake. A spoken name followed by its letters is a valid clarification. '
                                 'After a first-name correction collect the last name separately. Do not infer an old name or ask for appointment dates or purpose.'}
-                    return result
+                    return lookup_voice_result(result)
         except TimeoutError:
             if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}
             if pending():return waiting()
