@@ -42,9 +42,10 @@ def lookup_voice_result(result):
     if result.get('status')!='match':return result
     start=datetime.fromisoformat(result['start']).astimezone(ZoneInfo(result['zone']))
     hour=start.hour%12 or 12;period='a.m.' if start.hour<12 else 'p.m.'
-    answer=f"Your appointment is {start.strftime('%B')} {start.day} at {hour}:{start.minute:02d} {period}, {result['location']}."
+    answer=f"Your appointment is {start.strftime('%A, %B')} {start.day} at {hour}:{start.minute:02d} {period}, {result['location']}."
     return {**result,'spoken_answer':answer,
         'instruction':'Say spoken_answer once in full, including the office/location. This is a verified existing appointment; '
+            'Use the weekday, date and time in spoken_answer; do not calculate or substitute a different weekday. '
             'do not ask whether the caller wants to book it or whether the appointment is correct. '
             'Mention any current_delay_notices separately. After the caller is done, close politely.'}
 
@@ -506,7 +507,7 @@ class AppointmentGateway:
                     result=await self.own(call_id,args.model_dump())
                     if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}
                     if pending():continue  # New audio during the read requires a fresh verified read.
-                    if result['status'] in ('not_found','needs_owner') and self.service.provider.capabilities.title_lookup:
+                    if result['status'] in ('not_found','needs_owner','ambiguous') and self.service.provider.capabilities.title_lookup:
                         title_result=await self.title_lookup.find(self.transcript(call_id))
                         if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}
                         if pending():continue

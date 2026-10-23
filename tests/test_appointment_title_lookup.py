@@ -119,33 +119,52 @@ async def test_bounded_title_search_never_reads_an_unselected_event(mode):
     await p.http.aclose()
 
 
-@pytest.mark.parametrize('mode',['normal','hangup','pending_audio'])
+@pytest.mark.parametrize('mode',['normal','ambiguous','ambiguous_changed','hangup','pending_audio'])
 def test_voice_lookup_falls_back_to_titles_once_without_creating_booking(service,tmp_path,mode):
     client,m,p,g,cid,_=prepare(service,tmp_path)
     m.transition(cid,'completed');cid=m.db.create_inbound('CA_TITLE_LOOKUP','+12025550101',3,10,'concierge',True)
     m.transition(cid,'in_progress');m.settings.appointments_enabled=True
     speech(m,cid,'callee','I am Kasey Exammple.',1000)
     p.capabilities=replace(p.capabilities,title_lookup=True)
-    from app.appointments.contracts import CalendarEvent,EventIdentity
+    from app.appointments.contracts import CalendarEvent,EventIdentity,ChangePage
     event=CalendarEvent(EventIdentity(p.identity,'work-booking'),'r1',SLOT,
         owner_label='Example Jr, Casey D. - Unstructured meeting [Work]',location='Microsoft Teams Meeting')
+    if mode.startswith('ambiguous'):
+        # The prior event was cancelled externally, then a new booking with the
+        # same name was immediately persisted before the next index poll.
+        indexed=replace(event,participant_first='Kasey',participant_last='Exammple',disclosure='ordinary')
+        previous=replace(indexed,identity=EventIdentity(p.identity,'previous-booking'))
+        g.store.ingest(ChangePage((previous,indexed),'before-cancellation-poll',True),p.identity,NOW,dry_run=False)
+        assert g.store.own_appointment('Kasey','Exammple',NOW)['status']=='ambiguous'
     async def scan(window):return Coverage(window,NOW,NOW+timedelta(seconds=30),True,(event,))
     async def reread(identity):
         if mode=='hangup':m.transition(cid,'completed')
         if mode=='pending_audio':m.caller_activity[cid]={'last_speech_ms':999999}
-        return event
+        return replace(event,revision='changed') if mode=='ambiguous_changed' else event
     p.read_lookup_titles=scan;p.read_lookup_event=reread
     g.title_lookup.resolver=AsyncMock(return_value=choice());g.name_resolver=AsyncMock()
     g.lookup_wait_seconds=.2;g.lookup_settle_seconds=.001
     async def check():
         bridge=MediaBridge(None,UpdateConnection(),m,cid,'MZ_TITLES');m.attach_bridge(cid,bridge)
         result=await bridge.tools.operation({'name':'get_my_appointment','arguments':json.dumps(dict(first_name='Kasey',last_name='Exammple'))})
-        if mode=='normal':
+        if mode in ('normal','ambiguous'):
             assert result['status']=='match' and 'Microsoft Teams Meeting' in result['spoken_answer']
             assert 'Example Jr' not in str(result) and g.title_lookup.resolver.await_count==1
         else:assert result['status']!='match' and not {'start','end','location'}&set(result)
+        if mode=='ambiguous_changed':assert result['status']=='stale'
         g.name_resolver.assert_not_awaited()
         assert p.writes==0
         with g.store.connect() as db:
             assert db.execute('SELECT count(*) FROM booking_operations').fetchone()[0]==0
     client.portal.call(check)
+
+
+@pytest.mark.parametrize('start,time',[
+    ('2026-10-26T14:15:00+00:00','10:15 a.m.'),
+    ('2026-10-27T01:15:00+00:00','9:15 p.m.'),
+])
+def test_lookup_spoken_weekday_uses_the_appointment_local_date(start,time):
+    from app.appointments.gateway import lookup_voice_result
+    result=lookup_voice_result({'status':'match','start':start,'zone':'America/New_York','location':'Office A'})
+    assert result['spoken_answer']==f'Your appointment is Monday, October 26 at {time}, Office A.'
+    assert 'weekday' in result['instruction'] and '2026' not in result['spoken_answer']
