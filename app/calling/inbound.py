@@ -512,4 +512,5 @@ If caller_identity_ambiguous is true, do not offer the presented number for call
         'audio':{'format':{'type':'audio/pcmu', 'rate':8000}, 'output':{'voice':record.get('voice_name') or settings.openai_voice}},
         'delegation':{'type':'responses', 'responses':{'model':settings.openai_backend_model,
             'instructions':backend, 'tools':tools, 'tool_choice':'auto',
-            'parallel_tool_calls':False, 'max_output_tokens':2000,**settings.backend_options()}}, 'store':False}
+            'parallel_tool_calls':False, 'max_output_tokens':2000,
+            **settings.backend_options(appointments=settings.appointments_enabled and concierge)}}, 'store':False}

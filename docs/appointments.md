@@ -145,6 +145,18 @@ appointment. Logs contain bounded statuses, never transcript quotes or names.
 The scoped MCP exact-name lookup and all booking evidence retain their existing
 rules. Lookup never creates a draft, booking operation, invitation or event.
 
+Booking confirmation accepts equivalent spoken room-code numbers inside the
+location field, such as `E ten sixty-six`, `E 10 66` and `E 1066`. The full room,
+other location words, date, time, duration and purpose must still match the bound
+proposal. Normalization never applies room-number rules to appointment times or
+durations. Clear agreement remains valid through a non-substantive server-catchup
+holding phrase; refusals, changed details and uncaptioned speech retain their guards.
+
+Appointment-enabled incoming concierge calls use GPT-6 Luna with priority
+processing and low reasoning even when the general backend Fast setting is off.
+Other call modes retain their existing backend settings. The server still owns
+availability, exact consent, one-write identity and verified calendar readback.
+
 ### Server-owned native voice workflow
 
 Native voice checks bind the call to a durable proposal revision and exact check.

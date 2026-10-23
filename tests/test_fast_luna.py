@@ -22,3 +22,14 @@ def test_fast_live_delegation_applies_to_inbound_and_outbound():
         assert responses['reasoning']=={'effort':'low'}
     settings.openai_backend_fast=False
     assert 'service_tier' not in session_config(settings,outbound)['delegation']['responses']
+
+
+def test_appointment_concierge_uses_priority_luna_with_the_general_fast_setting_off():
+    settings=Settings(_env_file=None,openai_backend_fast=False)
+    settings.appointments_enabled=True
+    record={'direction':'inbound','phone_number':'+12025550101','inbound_mode':'concierge'}
+    responses=session_config(settings,record)['delegation']['responses']
+    assert responses['model']=='gpt-6-luna' and responses['service_tier']=='priority'
+    assert responses['reasoning']=={'effort':'low'}
+    record['inbound_mode']='messages'
+    assert 'service_tier' not in session_config(settings,record)['delegation']['responses']
