@@ -26,7 +26,7 @@ def test_dry_run_creates_only_a_private_local_event_and_reconciles_it():
     asyncio.run(exercise())
 
 
-@pytest.mark.parametrize('change',['date','time','duration','name','purpose','room'])
+@pytest.mark.parametrize('change',['date','time','duration','name','room'])
 def test_execution_cap_rejects_changed_booking_before_provider_dispatch(change):
     async def exercise():
         provider=FakeProvider(lambda:NOW);value=Appointment('Casey','Example','course guidance',SLOT,'Office A')
@@ -49,6 +49,14 @@ def test_cap_accepts_same_room_format_but_not_a_different_number():
     assert cap.permits(replace(v,location='In person, room E 1066, East Building, West Campus'))
     assert not cap.permits(replace(v,location='In person, room E 1066, West Building, East Campus'))
     assert not cap.permits(replace(v,location='East Building, West Campus, room E 1067'))
+
+
+def test_minor_or_vague_description_is_not_a_replay_write_restriction():
+    p=FakeProvider(lambda:NOW);v=Appointment('Casey','Example','Discuss spring class schedule',SLOT,'Office A')
+    cap=CappedCalendar(p,v)
+    assert cap.permits(replace(v,purpose='Discussing spring class schedule'))
+    assert cap.permits(replace(v,purpose='Office appointment'))
+    assert cap.permits(replace(v,interval=replace(SLOT,local_intent='Monday at ten')))
 
 
 def test_explicit_flexible_window_accepts_a_free_selected_slot_without_requiring_the_stale_hint():

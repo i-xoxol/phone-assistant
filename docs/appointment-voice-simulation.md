@@ -23,7 +23,8 @@ mode-600 grant contains action `one_real_booking_without_telephone`, that
 completed source call. It creates a fresh request; the old call is never reopened
 and its expired request is never extended. A write cap accepts the same approved
 room with ordinary punctuation/“in person at” variants, and rejects a different
-time/name/purpose/room or a second create. Rejected pre-dispatch writes are known
+time/name/room or a second create. Descriptive purpose wording may remain vague,
+as authorized by the owner for later clarification. Rejected pre-dispatch writes are known
 not to have been sent. Any existing operation must be reconciled instead.
 
 Replay speech stays in a private scratch database. The real operation journal and

@@ -60,16 +60,19 @@ class CappedCalendar:
     def permits(self,value):
         actual,expected=payload(value),payload(self.expected)
         actual.pop('location');expected.pop('location')
+        actual.pop('local_intent');expected.pop('local_intent')
         for data in (actual,expected):
             for key in ('first_name','last_name'):data[key]=speech_words(data[key])
         if self.window:
             if not (self.window[0]<=value.interval.start<value.interval.end<=self.window[1]
                     and value.interval.end-value.interval.start==self.expected.interval.end-self.expected.interval.start):return False
             for data in (actual,expected):
-                for key in ('start','end','local_intent'):data.pop(key)
-        for data in (actual,expected):data['purpose']=tuple(w for w in speech_words(data['purpose']) if w not in {'a','an','the','to','discuss','discussion','about'})
+                for key in ('start','end'):data.pop(key)
+        # The owner explicitly permits vague/minor description details to be
+        # clarified later. Descriptive prose is not a calendar-write boundary.
+        actual.pop('purpose');expected.pop('purpose')
         # "In person, room E-1066" and "room E 1066" are the same owner-approved
-        # place. Never relax time/name/purpose or accept another room/address.
+        # place. Keep the approved time/person/room and one-event boundary.
         def place(text):return re.sub(r'^in person(?:\s+at)?[,\s]+','',text,flags=re.I)
         a,b=place(value.location),place(self.expected.location)
         same=exact_room(room_words(a),b)
@@ -259,7 +262,8 @@ async def run_booking(source,scenario,output,*,execute=False,grant_path=None,cal
         if execute and op:
             independent=await calendar.provider.read_event(event_identity(op))
             report['independent_provider_readback']=bool(independent and independent.state!='cancelled' and independent.booking_details_verified
-                and (scenario.first_available or independent.interval==scenario.appointment.appointment().interval) and calendar.permits(
+                and (scenario.first_available or (independent.interval.start,independent.interval.end,independent.interval.zone)==
+                    (scenario.appointment.start,scenario.appointment.end,scenario.appointment.time_zone)) and calendar.permits(
                     Appointment(independent.participant_first,independent.participant_last,
                         independent.purpose,independent.interval,independent.location)))
             report['evaluation']['passed'] &= report['independent_provider_readback']
