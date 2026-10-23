@@ -129,12 +129,19 @@ authorize a booking. Pending captions are reported as pending, never as a missin
 appointment. Bounded lookup diagnostics contain status/reason, not names or event
 contents.
 
-An exact native lookup miss requests one spelling clarification rather than
-declaring the appointment missing. The assistant asks for the first and last
+After an exact native lookup miss, the assistant asks the caller to hold and
+dispatches `search_appointment_name`. Its internal review reads only names from
+up to 500 supported ordinary current appointment records within the next 90 days;
+it never gives the voice model candidate names, private contents or a calendar
+list. Close spellings are hints, not identity evidence. A truncated review fails
+closed. If needed, it requests one spelling clarification rather than declaring
+the appointment missing. The assistant asks for the first and last
 name separately; lookup evidence accepts complete letter sequences, including
 explicit “C as in Charlie” forms, only within those name fields. Both current
-components must match exactly before disclosure. No phonetic aliases, candidate
-names or fuzzy matching are used. A remaining exact miss after that clarification
+components must match exactly before disclosure and the event is freshly read.
+Server-side hints can recover from a stale model spelling only when the caller's
+current exact full name independently matches. No phonetic alias or approximate
+match authorizes disclosure. A remaining exact miss after that clarification
 gets one bounded explanation and an offer of owner review. Booking consent and
 name evidence keep their existing rules.
 

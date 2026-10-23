@@ -90,7 +90,7 @@ class VoiceTools:
         manager = self.bridge.manager
         name = item['name']
         inbound = manager.db.get(self.bridge.call_id).get('direction') == 'inbound'
-        if name in ('find_first_available_slot','check_appointment_slot','book_appointment','get_booking_status','get_my_appointment','get_caller_status','get_family_availability'):
+        if name in ('find_first_available_slot','check_appointment_slot','book_appointment','get_booking_status','get_my_appointment','search_appointment_name','get_caller_status','get_family_availability'):
             record=manager.db.get(self.bridge.call_id)
             if (not inbound or record['inbound_mode']!='concierge' or not manager.settings.appointments_enabled or not manager.appointments
                     or manager.bridges.get(self.bridge.call_id) is not self.bridge or self.bridge.closing
@@ -125,7 +125,8 @@ class VoiceTools:
                 from app.appointments.schemas import OperationStatus
                 args=OperationStatus.model_validate(args)
                 result=await gateway.status(self.bridge.call_id,str(args.operation_id));result.pop('source_identity',None);return result
-            if name=='get_my_appointment':return await gateway.own_voice(self.bridge.call_id,args,self.bridge)
+            if name in ('get_my_appointment','search_appointment_name'):
+                return await gateway.own_voice(self.bridge.call_id,args,self.bridge,search_names=name=='search_appointment_name')
             if name=='get_family_availability':return await gateway.family_availability(self.bridge.call_id,args)
             if args!={}:raise ValueError('Caller status takes no model-selected identity')
             return gateway.family(self.bridge.call_id)

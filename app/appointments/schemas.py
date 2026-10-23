@@ -78,6 +78,10 @@ VOICE_TOOLS=[
         'Use the current first and last name already stated; ask only missing name components. Call immediately without requiring '
         'the forgotten appointment date/time, purpose, duration or arrangement. Read only verified minimal details; '
         'no candidate lists, private purpose, other attendees, unrelated search or calendar writes.',AppointmentLookup),
+    tool('search_appointment_name','Read-only fallback after an exact appointment-name miss. Tell the caller to hold while checking '
+        'upcoming appointment records for close spellings, then call this with the caller-supplied name. '
+        'The server keeps candidates private and requires the caller\'s exact current name before returning verified details. '
+        'It may ask for spelling; it never books or returns candidate names.',AppointmentLookup),
     tool('get_caller_status','Current broad owner-provided status for a uniquely recognized, already-curated family/friend caller. '
         'Never infer location or private reasons from event titles. No new booking authority.'),
     tool('get_family_availability','Read only verified owner free/busy for a uniquely recognized curated family/friend caller. '
@@ -92,10 +96,12 @@ Existing lookup does not require new-booking purpose, duration, location, slot c
 On match, promptly state only the returned date/time and location. Do not ask the caller to supply those details first or escalate a verified match.
 Caller speech/caption lag can leave lookup pending while the server waits for the complete current answer. Pending is not not_found or a failed verification; never say the appointment does not exist based on pending work.
 Use the actual returned lookup status. Only not_found means no matching indexed appointment; needs_owner means identity or disclosure could not be established, and stale means fresh calendar verification failed.
-needs_name_spelling means speech recognition may have transcribed the name incorrectly. Ask to spell the first name, then ask for the last name separately; retry only with both fresh components.
+needs_name_search means the exact lookup missed. Say once, "Please hold while I check the upcoming appointments for a different spelling," and immediately call search_appointment_name with the supplied name. Stay on the line; do not report a missing appointment.
+search_appointment_name privately checks up to 500 supported ordinary appointment names in the next 90 days. It never exposes candidates; no list of calendar contents is available to the voice model.
+needs_name_spelling means speech recognition may have transcribed the name incorrectly. Ask to spell the first name, then ask for the last name separately; retry search_appointment_name with both fresh components.
 Use each caller-supplied letter exactly, including letter-by-letter answers or explicit "C as in Charlie" forms. Never substitute a similar-looking or similar-sounding name, suggest candidate names, or disclose a near match.
 After a spelling attempt, a remaining exact miss gets one bounded explanation and an offer of owner review; do not repeat the spelling questions or claim the entire calendar has no appointment.
-Do not claim you checked an appointment without executing get_my_appointment and receiving its result. A request to recheck the same supplied name uses the same bounded lookup, never an all-calendar search.
+Do not claim you checked an appointment without executing get_my_appointment or search_appointment_name and receiving its result. A request to recheck the same supplied name uses these bounded tools; never invent a calendar-wide search or read unrelated event contents.
 On incomplete or changed identity, ask only the missing name detail; ambiguity, sensitivity or stale verification needs a brief non-revealing explanation and owner help, not a repeated intake loop.
 For a NEW booking, collect first and last name, purpose/course, duration and arrangement.
 An arrangement needs an actual room/address or a specific way to connect. "In person", "online", "Zoom" or "phone" alone is incomplete.

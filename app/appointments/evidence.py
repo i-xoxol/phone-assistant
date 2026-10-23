@@ -223,10 +223,13 @@ def caller_identified(turns,first,last,*,for_lookup=False):
     expected_first,expected_last=words(first),words(last)
     full=expected_first+expected_last;given=surname=False;question=None
     fillers=r'(?:(?:hello|hi|yes|actually|sorry|no|correction)[,\s]+)*'
+    if for_lookup:fillers=r'(?:(?:hello|hi|hai|hey|yes|actually|sorry|no|correction|uh(?:-(?:hi|hai))?|um|ah|er)[,\s]+)*'
     explicit=r"(?:my name(?: is|'s)|call me|i go by)"
     intro=fillers+r"(?:"+explicit+r"|this is|i am|i'm|it's|it is)\b\s*(.*)"
     component=fillers+r"(?:my|the) (first name|given name|last name|surname|family name)(?: is|'s)\b\s*(.*)"
     recheck=r'(?:(?:no|please) )*(?:check|recheck|look up)(?: for)? '+re.escape(' '.join(full))
+    if for_lookup:
+        recheck=r"(?:(?:no|please) )*(?:(?:can|could) you )?(?:check|recheck|look up)(?: (?:uh|um))?(?: it's)?(?: for)? "+re.escape(' '.join(full))
     sentences=[]
     # A pause in "Yes, [name]" does not end an elicited answer. Keep
     # assistant turns separate so an unrelated question cannot elicit a name.
