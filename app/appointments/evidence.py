@@ -35,14 +35,18 @@ def lookup_spelling(text):
     text=re.sub('^'+LOOKUP_FILLERS,'',text.casefold().replace('’',"'").strip(),count=1).strip()
     direct=spelled_word(text)
     if direct:return direct
-    match=re.fullmatch(r"([^\W\d_]+(?:['-][^\W\d_]+)*)[.,:\s]+(.+)",text)
-    if not match:return None
-    label,letters=match.groups();spelling=spelled_word(letters)
-    if not spelling or label in {'not','no','for','friend','his','her','their','instead','but','if','unless','except','or','and','wrong'}:return None
-    # In an explicitly requested component, the caller's complete letters
-    # correct the spoken label, which ASR may transcribe very differently.
-    # The entire answer must still be consumed; qualifiers above are rejected.
-    return spelling
+    label_pattern=r"([^\W\d_]+(?:['-][^\W\d_]+)*)"
+    excluded={'not','no','for','friend','his','her','their','instead','but','if','unless','except','or','and','wrong'}
+    # ASR can put the spoken label before or after its letters. The explicit
+    # spelling corrects that label; never discard qualifiers or extra content.
+    for pattern,label_first in ((label_pattern+r'[.,:\s]+(.+)',True),
+                                (r'(.+?)[.,:\s]+'+label_pattern,False)):
+        match=re.fullmatch(pattern,text.rstrip(' .,'))
+        if not match:continue
+        label,letters=match.groups() if label_first else match.groups()[::-1]
+        spelling=spelled_word(letters)
+        if spelling and label not in excluded:return spelling
+    return None
 
 
 def lookup_name_question(text):

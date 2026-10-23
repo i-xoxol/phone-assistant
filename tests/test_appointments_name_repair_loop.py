@@ -24,6 +24,7 @@ def repaired(first='Sure. Uh, Casey, C A S E Y',last='Exammple. E X A M P L E',r
     ('Yes. Um, Kasey, C A S E Y','Example, E X A M P L E'),
     (' Sure. Uh, Casey, C A S E Y',' Exammple. E X A M P L E'),
     ('Jordan C A S E Y','Exemplar. E X A M P L E'),
+    ('C A S E Y. Casey','E X A M P L E. Exemplar'),
 ])
 def test_name_labels_plus_exact_letters_and_bare_last_name_prompt_complete_one_lookup(first,last):
     rows=repaired(first,last)
