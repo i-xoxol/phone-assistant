@@ -111,55 +111,37 @@ identity, reconciliation and private indexing.
 
 ## Calendar and consent rules
 
-Existing-appointment lookup uses the caller's current complete first and last
-name, including elicited components and an acknowledgment followed by a paused
-name answer. A request to retrieve a forgotten appointment time does not erase
-that identity. Corrections, incomplete replacement names, third-party references
-and new uncaptioned speech still block disclosure. Lookup reuses the supplied
-name and retrieves minimal verified details without requiring new-booking
-intake, creating a draft, or starting another booking operation.
+Native existing-appointment lookup follows the owner's explicitly relaxed name
+policy: a caller mentioning first and last names anywhere in the conversation is
+acceptable evidence, including separate answers, alternate spellings, similar
+pronunciation, earlier mentions and natural corrections. False positives are
+acceptable for these ordinary appointment details; this policy does not authorize
+booking, change consent evidence or alter availability checks.
 
-A complete neutral assistant backchannel such as “Mm-hmm” can occur inside the
-caller’s spoken full name in a full-duplex conversation. Lookup joins the caller’s
-own name fragments across that acknowledgment. Questions, substantive words,
-third-party references and changed or incomplete names retain their guards; this
-does not alter booking evidence.
+An exact lookup still runs first. If it cannot establish the name or find the
+record, a private GPT-6 Luna request uses priority processing and low reasoning to
+select a likely name from up to 500 current ordinary upcoming appointment names
+within 90 days. It sees only caller speech and names, never event contents,
+appointment times, locations, assistant statements or action tools. It tolerates
+false starts, interrupted spelling prompts and caption markers such as
+`[clear throat]`. No formal self-introduction or perfect spelling is required.
 
-Native lookup projects a name card from the caller's own introduction, elicited
-components and explicit spellings. The model's name arguments are hints; a stale
-argument is replaced only when the complete current transcript independently
-proves the collected component. Assistant questions do not revoke known fields.
-A clear first name can be reused while only the surname is clarified. Name-plus-
-letters answers and short prompts such as “Now the last name, please” continue
-the same intake. Caller corrections and missing/contradictory components still
-block disclosure. A failed spelling clarification offers owner review once,
-without restarting the full-name questions. Booking evidence is unchanged.
+Luna must select an existing candidate and quote actual caller speech supporting
+both name components. The server validates those quotes, caches the proof for
+this call and independently reads the selected Google event. The voice assistant
+receives only verified date/time/location and never a candidate list. Model
+failures retain the existing bounded clarification fallback; a remaining miss
+gets one explanation and owner-review offer. The candidate scan fails closed
+if truncated. Sensitive, cancelled and unsupported records are excluded.
 
-Native lookup waits up to eight seconds for current caller audio/captions and
-rechecks the complete name after calendar I/O. A harmless follow-up during a read
-does not by itself invalidate that identity. New uncaptioned audio requires
-waiting and a fresh read; a changed name, ended call or replaced voice session
-blocks disclosure. An exact request to recheck the same already proven full name
-can retain that identity for lookup only; it cannot establish a new identity or
-authorize a booking. Pending captions are reported as pending, never as a missing
-appointment. Bounded lookup diagnostics contain status/reason, not names or event
-contents.
+Native lookup retains its eight-second budget and current-audio/session guards.
+New uncaptioned speech requires waiting and a fresh read; an ended call or replaced
+voice session blocks disclosure. A later name correction does not erase an
+earlier mention under the owner's relaxed native policy. Pending is not a missing
+appointment. Logs contain bounded statuses, never transcript quotes or names.
 
-After an exact native lookup miss, the assistant asks the caller to hold and
-dispatches `search_appointment_name`. Its internal review reads only names from
-up to 500 supported ordinary current appointment records within the next 90 days;
-it never gives the voice model candidate names, private contents or a calendar
-list. Close spellings are hints, not identity evidence. A truncated review fails
-closed. If needed, it requests one spelling clarification rather than declaring
-the appointment missing. The assistant asks for the first and last
-name separately; lookup evidence accepts complete letter sequences, including
-explicit “C as in Charlie” forms, only within those name fields. Both current
-components must match exactly before disclosure and the event is freshly read.
-Server-side hints can recover from a stale model spelling only when the caller's
-current exact full name independently matches. No phonetic alias or approximate
-match authorizes disclosure. A remaining exact miss after that clarification
-gets one bounded explanation and an offer of owner review. Booking consent and
-name evidence keep their existing rules.
+The scoped MCP exact-name lookup and all booking evidence retain their existing
+rules. Lookup never creates a draft, booking operation, invitation or event.
 
 ### Server-owned native voice workflow
 

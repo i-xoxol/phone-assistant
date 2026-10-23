@@ -1,5 +1,6 @@
 """Call-bound facade. Consent evidence is read from storage, never a model-provided flag."""
 import asyncio,hashlib,re,sqlite3,time
+from functools import partial
 from datetime import datetime,timedelta,timezone
 from uuid import uuid4
 import httpx
@@ -10,6 +11,7 @@ from app.appointments.evidence import complete_readback,caller_identified,caller
 from app.appointments.disclosure import PrivateNotices
 from app.appointments.schemas import SlotRequest,BookRequest,AppointmentLookup,FirstAvailableRequest
 from app.appointments import confirmation
+from app.appointments.name_match import resolve_name
 from app.appointments.details import missing_arrangement,arrangement_clarification
 from app.logging_config import log_event
 from app.storage.models import TERMINAL,CallUpdateRequest
@@ -37,6 +39,8 @@ def spoken_readback(value):
 class AppointmentGateway:
     def __init__(self,manager,provider=None,clock=None):
         self.m=manager;self.clock=clock or (lambda:datetime.now(timezone.utc))
+        self.name_resolver=partial(resolve_name,manager.settings)
+        self.name_proofs={}
         self.store=Registry(manager.settings.appointment_database_path);self.notices=PrivateNotices(self.store)
         self.http=None
         if provider is None:
@@ -392,21 +396,22 @@ class AppointmentGateway:
         result['delivery']=self.delivery_status(call_id,oid)
         return result
 
-    def lookup_evidence(self,call_id,args):
+    def lookup_evidence(self,call_id,args,*,name_proof=None):
         turns=self.transcript(call_id)
         activity=getattr(self.m,'caller_activity',{}).get(call_id)
         caption_end=max((t['end_timestamp']*1000 for t in turns if t['speaker']=='callee'),default=-1)
-        return (caller_identified(turns,args.first_name,args.last_name,for_lookup=True),
+        return (name_proof.supports(turns,args.first_name,args.last_name) if name_proof else
+            caller_identified(turns,args.first_name,args.last_name,for_lookup=True),
             not activity or caption_end>=activity['last_speech_ms'])
 
-    async def own(self,call_id,args):
+    async def own(self,call_id,args,*,name_proof=None):
         args=AppointmentLookup.model_validate(args)
-        identified,current=self.lookup_evidence(call_id,args)
+        identified,current=self.lookup_evidence(call_id,args,name_proof=name_proof)
         result=await self.service.own_appointment(args.first_name,args.last_name,contradictory=not (identified and current))
         # New speech can simply ask whether the read is done. Re-evaluate the
         # current complete identity and raw-audio coverage after I/O; a changed
         # revision alone says nothing about whether that identity changed.
-        identified,current=self.lookup_evidence(call_id,args)
+        identified,current=self.lookup_evidence(call_id,args,name_proof=name_proof)
         reason='verified_read' if result['status']=='match' else 'provider_or_index_'+result['status']
         if not (identified and current):
             result={'status':'needs_owner'};reason='caller_captions_pending' if not current else 'current_name_not_established'
@@ -461,6 +466,29 @@ class AppointmentGateway:
                     result=await self.own(call_id,args.model_dump())
                     if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}
                     if pending():continue  # New audio during the read requires a fresh verified read.
+                    resolver=getattr(self,'name_resolver',None)
+                    if resolver and result['status'] in ('needs_owner','not_found'):
+                        names=self.store.upcoming_appointment_names(self.clock())
+                        if names is None:
+                            return {'status':'needs_owner','reason':'name_search_limit',
+                                'instruction':'The bounded name review could not finish. Offer owner review once; do not repeat name questions.'}
+                        proofs=getattr(self,'name_proofs',{})
+                        proof=proofs.get(call_id)
+                        if proof and (dict(first_name=proof.first_name,last_name=proof.last_name) not in names
+                                or not proof.supports(self.transcript(call_id),proof.first_name,proof.last_name)):proof=None
+                        if proof is None:proof=await resolver(self.transcript(call_id),names)
+                        if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}
+                        if pending():continue
+                        if proof and dict(first_name=proof.first_name,last_name=proof.last_name) in names:
+                            if len(proofs)>=128:proofs.pop(next(iter(proofs)))
+                            proofs[call_id]=proof;self.name_proofs=proofs
+                            result=await self.own(call_id,dict(first_name=proof.first_name,last_name=proof.last_name),name_proof=proof)
+                            log_event('appointment_relaxed_name_lookup',call_id=call_id,status=result['status'])
+                            if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}
+                            if pending():continue
+                            # The name is resolved. A source failure requires a
+                            # bounded explanation, never another identity ritual.
+                            return result
                     hint_fields=None
                     if search_names and result['status'] in ('not_found','needs_owner'):
                         candidates=self.store.close_appointment_names(args.first_name,args.last_name,self.clock())
