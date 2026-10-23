@@ -221,6 +221,21 @@ def utterances(turns,*,join_sentences=False,join_caller_pauses=False):
 def caller_identified(turns,first,last,*,for_lookup=False):
     """Only the current full claim or two explicitly elicited components may identify the caller."""
     expected_first,expected_last=words(first),words(last)
+    prepared=utterances(turns,join_sentences=True,join_caller_pauses=True)
+    if for_lookup:
+        # A full-duplex assistant can acknowledge halfway through the caller's
+        # name. Only a complete, non-question backchannel may be transparent;
+        # questions, name corrections and substantive assistant words stay.
+        joined=[]
+        for turn in prepared:
+            if (turn['speaker']=='assistant' and '?' not in turn['text']
+                    and re.fullmatch(r'(?:m+h+m*|h+m+|m+ h+m+|uh huh)(?: (?:m+h+m*|h+m+|m+ h+m+|uh huh))*',
+                        ' '.join(words(turn['text'].replace('-',' '))))):continue
+            if joined and turn['speaker']=='callee' and joined[-1]['speaker']=='callee':
+                separator=' ' if re.search(r'[.!?]$',joined[-1]['text']) and not turn['text'][:1].isspace() else ''
+                joined[-1]['text']+=separator+turn['text'];joined[-1]['end']=max(joined[-1]['end'],turn['end'])
+            else:joined.append(dict(turn))
+        prepared=joined
     full=expected_first+expected_last;given=surname=False;question=None
     fillers=r'(?:(?:hello|hi|yes|actually|sorry|no|correction)[,\s]+)*'
     if for_lookup:fillers=r'(?:(?:hello|hi|hai|hey|yes|actually|sorry|no|correction|uh(?:-(?:hi|hai))?|um|ah|er)[,\s]+)*'
@@ -233,7 +248,7 @@ def caller_identified(turns,first,last,*,for_lookup=False):
     sentences=[]
     # A pause in "Yes, [name]" does not end an elicited answer. Keep
     # assistant turns separate so an unrelated question cannot elicit a name.
-    for turn in utterances(turns,join_sentences=True,join_caller_pauses=True):
+    for turn in prepared:
         if turn['speaker']!='callee':sentences.append(turn);continue
         # A period inside a complete supplied name (for example St. John) is not a sentence boundary.
         text=turn['text'].casefold().replace('’',"'");spans=[]
