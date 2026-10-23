@@ -237,7 +237,7 @@ def name_question_quality(events,caller_name=None):
     counts={'full':0,'first':0,'last':0};spelling={'first':0,'last':0};history=[];reasked=False;spelling_first=False
     for turn in utterances(turns,join_sentences=True,join_caller_pauses=True):
         if turn['speaker']=='assistant':
-            for sentence in re.split(r'[.!?]+',turn['text']):
+            for sentence in re.findall(r'[^.!?]+[.!?]?',turn['text']):
                 field=lookup_name_question(sentence)
                 if field:
                     counts[field]+=1

@@ -17,6 +17,12 @@ def rows(*pairs):
     return [dict(speaker=s,text=t,timestamp=i,end_timestamp=i+.5) for i,(s,t) in enumerate(pairs)]
 
 
+def test_audio_grader_counts_a_natural_name_question_without_losing_its_question_mark():
+    from scripts.simulate_appointment_lookup import name_question_quality
+    events=[dict(side='assistant',direction='output',text='Okay, could I get your first and last name, please?',start_ms=0,end_ms=1000)]
+    assert name_question_quality(events)['name_questions']['full']==1
+
+
 def model(monkeypatch,choice=None,error=None):
     parse=AsyncMock(return_value=SimpleNamespace(output_parsed=choice),side_effect=error)
     client=MagicMock();client.responses.parse=parse
