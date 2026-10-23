@@ -119,7 +119,9 @@ acceptable for these ordinary appointment details; this policy does not authoriz
 booking, change consent evidence or alter availability checks.
 
 An exact lookup still runs first. If it cannot establish the name or find the
-record, native calls search current Google meeting titles in the next 60 days.
+record, or if stale duplicate index entries make the name ambiguous, native calls
+search current Google meeting titles in the next 60 days. A cancelled old meeting
+and newly booked replacement do not require waiting for the next index poll.
 Private GPT-6 Luna uses priority processing and low reasoning to match a name
 mentioned anywhere in the call to any meeting title. No participant metadata,
 special title format, or mirror-specific provenance is required. Surname-first
@@ -149,7 +151,7 @@ Luna must select an existing candidate and quote actual caller speech supporting
 both name components. The server validates those quotes, caches the proof for
 this call and independently reads the selected Google event. The voice assistant
 receives only verified date/time/location and never a candidate list. A server-formatted
-`spoken_answer` includes the complete date, local time and office/location for one
+`spoken_answer` includes the computed local weekday, date, time and office/location for one
 readout, without another booking or appointment-correctness question. Model
 failures retain the existing bounded clarification fallback; a remaining miss
 gets one explanation and owner-review offer. The candidate scan fails closed
