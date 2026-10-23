@@ -126,7 +126,7 @@ def has_speech(payload: bytes) -> bool:
 
 
 class MediaBridge:
-    def __init__(self, websocket, connection, manager, call_id, stream_sid):
+    def __init__(self, websocket, connection, manager, call_id, stream_sid, *, luna_booking=False):
         self.ws, self.connection, self.manager = websocket, connection, manager
         self.call_id, self.stream_sid = call_id, stream_sid
         self.finalized = asyncio.Event()
@@ -156,6 +156,7 @@ class MediaBridge:
         self.input_speech_frames=0
         self.last_input_speech_at=0.0
         self.startup_started=time.monotonic()
+        self.luna_booking=luna_booking
         self.tools = VoiceTools(self)
         previous = manager.db.get(call_id)['transcript']
         self.transcript_offset_ms = int(max((e['end_timestamp'] for e in previous), default=0) * 1000)
@@ -492,7 +493,7 @@ async def handle_media(websocket: WebSocket, call_id: str):
             manager.db.restore_updates(call_id, record['call_updates'])
             manager.db.update(call_id, openai_session_id=started['session']['id'], voice_finalized=0)
             log_event('gpt_live_connected', call_id=call_id)
-            bridge = MediaBridge(websocket, connection, manager, call_id, stream_sid)
+            bridge = MediaBridge(websocket, connection, manager, call_id, stream_sid,luna_booking=True)
             bridge.startup_started=startup_started
             manager.attach_bridge(call_id, bridge)
             manager.connecting.discard(call_id)

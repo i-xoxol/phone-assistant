@@ -84,6 +84,8 @@ class AppointmentGateway:
                 created_at TEXT NOT NULL,check_id TEXT,delivery_error TEXT,UNIQUE(request_id,revision));''')
         from app.appointments.workflow import VoiceBookingWorkflow
         self.voice_workflow=VoiceBookingWorkflow(self)
+        from app.appointments.booking_agent import BookingAgent
+        self.booking_agent=BookingAgent(self)
 
     def transcript(self,call_id):return self.m.db.get(call_id)['transcript']
     def revision(self,call_id):
@@ -136,6 +138,8 @@ class AppointmentGateway:
         return rid
 
     def consent(self,draft,unused):
+        native=self.booking_agent.evidence(draft)
+        if native is not None:return native
         value=appointment(draft)
         with self.store.connect() as db:readback=db.execute('SELECT * FROM appointment_readbacks WHERE draft_id=? AND draft_revision=?',
             (draft['draft_id'],draft['revision'])).fetchone()
@@ -200,6 +204,12 @@ class AppointmentGateway:
         return False
 
     def readback_plan(self,draft,*,fresh=False):
+        if self.booking_agent.native(draft['call_id']):
+            value=appointment(draft);start=value.interval.start.astimezone(ZoneInfo(value.interval.zone))
+            text=start.strftime('%A')+', '+confirmation.time_text(value)
+            if not confirmation.eligible(value,self.clock(),self.service.policy.zone,self.transcript(draft['call_id'])):
+                text+=' '+str(start.year)+' '+value.interval.zone
+            return 'Offer this time naturally once, then listen. No full recap or exact wording is needed:\n',text+'. Does that work for you?'
         if not fresh:
             with self.store.connect() as db:row=db.execute('SELECT update_id FROM appointment_readbacks WHERE draft_id=? AND draft_revision=?',
                 (draft['draft_id'],draft['revision'])).fetchone()
@@ -227,6 +237,7 @@ class AppointmentGateway:
                 if repeat else 'DO NOTHING')
             db.execute('INSERT INTO appointment_readbacks VALUES(?,?,?,?,?) ON CONFLICT(draft_id,draft_revision) '+conflict,
                 (draft['draft_id'],draft['revision'],str(uid),self.clock().isoformat(),cursor))
+        if self.booking_agent.native(draft['call_id']):self.booking_agent.issued(draft,uid)
         await self.m.send_call_update(draft['call_id'],CallUpdateRequest(mode='instructions',content=instruction,update_id=uid))
         return True
 
@@ -277,6 +288,14 @@ class AppointmentGateway:
         return {**checked,'search_start':result['search_start'],'search_end':result['search_end'],
             'selection':'first_available_in_search_window'}
 
+    async def availability(self,call_id,args):
+        from app.appointments.schemas import AvailabilityRequest
+        args=AvailabilityRequest.model_validate(args);rid=self.request(call_id,None)
+        result=await self.service.availability_blocks(call_id,rid,args.duration_minutes,args.not_before,args.not_after)
+        return {**result,'instruction':'Use these verified free office blocks and the conversation to choose a suitable slot. '
+            'Check the chosen exact interval once with the caller details; offer its date/time briefly. '
+            'Accept natural vague agreement. No full recap, spelling ritual or second confirmation.'}
+
     async def check(self,call_id,args):
         args=SlotRequest.model_validate(args)
         if missing_arrangement(args.arrangement):return arrangement_clarification()
@@ -299,7 +318,9 @@ class AppointmentGateway:
         return {**result,'draft_id':draft['draft_id'],'request_id':rid,'schema_version':'1.0',
             'readback':self.readback_plan(draft)[1],'readback_queued':result['decision']=='available' and not reused,
             'consent_observed':reused,
-            'instruction':'The identical complete readback and current caller agreement are already observed. Do not repeat the details or ask for another confirmation; call book_appointment with these IDs and a stable idempotency key. Nothing is booked yet.' if reused
+            'instruction':('That time is unavailable. Nothing is booked. Offer the next verified free office-hours slot after the requested time, reusing intake. Do not say confirmation is pending.' if result['decision']=='busy'
+                else 'Availability could not be verified. Nothing is booked. Explain that once and offer owner review; do not keep waiting for confirmation.') if result['decision']!='available' else
+                'The identical proposal and caller agreement are already established. Do not ask again; finish booking.' if reused
                 else 'The server owns the single queued readback when available. Do not add a second summary or readback. Natural contextual agreement is sufficient; never demand a prescribed booking phrase. Then call book_appointment. Nothing is booked yet.'}
 
     async def progress(self,request_id,phase,check_id=None):
@@ -332,6 +353,7 @@ class AppointmentGateway:
     async def book(self,call_id,args):
         args=BookRequest.model_validate(args)
         if not self.m.settings.appointments_writes_enabled:return {'state':'needs_owner','reason':'write_capability_not_enabled'}
+        await self.booking_agent.resolve(self.service.bound(call_id,str(args.draft_id)))
         result=await self.service.book(call_id,str(args.draft_id),str(args.check_id),'stored-caller-evidence',args.idempotency_key)
         if result.get('state')=='confirmed':await self.deliver(call_id,result)
         return self.safe_operation(result)
@@ -346,9 +368,13 @@ class AppointmentGateway:
         draft=self.store.get('appointment_drafts','draft_id',result['draft_id']);value=appointment(draft)
         text=('Confirmed. '+confirmation.time_text(value)+'.' if confirmation.eligible(value,self.clock(),self.service.policy.zone,self.transcript(call_id))
             else 'Confirmed '+spoken_readback(value).removesuffix(' Is that correct?'))
+        if self.booking_agent.native(call_id):
+            local=value.interval.start.astimezone(ZoneInfo(value.interval.zone))
+            text='Great, see you '+local.strftime('%A')+' at '+local.strftime('%I:%M %p').lstrip('0')+'. Confirmed.'
         try:
             with self.store.measure('result_injection'):await self.m.send_call_update(call_id,CallUpdateRequest(mode='instructions',
-                content='Verified booking. Read exactly to the caller:\n'+text,update_id=uid))
+                content=('Google verified this booking. Tell the caller once naturally; no further approval is needed:\n' if self.booking_agent.native(call_id)
+                    else 'Verified booking. Read exactly to the caller:\n')+text,update_id=uid))
         except Exception:
             with self.store.connect() as db:db.execute("UPDATE appointment_delivery SET error_code='call_ended_or_delivery_unconfirmed' WHERE operation_id=?",(result['operation_id'],))
 
@@ -593,6 +619,7 @@ class AppointmentGateway:
 
     async def close(self):
         await self.voice_workflow.close()
+        await self.booking_agent.close()
         if self.sync_task:
             self.sync_task.cancel();await asyncio.gather(self.sync_task,return_exceptions=True)
         if self.http:await self.http.aclose()
