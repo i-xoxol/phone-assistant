@@ -44,6 +44,7 @@ async def prepared(service,tmp_path,*,ack=True):
 
 
 async def finish(b,receiver):
+    if b.booking_expiry:b.booking_expiry.cancel()
     receiver.cancel();await asyncio.gather(receiver,return_exceptions=True)
     for t in list(b.booking_audio_tasks):t.cancel()
     await asyncio.gather(*list(b.booking_audio_tasks),return_exceptions=True)
@@ -148,5 +149,21 @@ def test_unheard_model_end_tool_cannot_cut_off_server_result(service,tmp_path):
         try:
             result=await b.tools.operation({'name':'end_call','arguments':'{}','call_id':'unheard-end'})
             assert result['status']=='booking_pending' and not b.end_requested.is_set()
+        finally:await finish(b,receiver)
+    client.portal.call(exercise)
+
+
+def test_uncertain_provider_write_releases_voice_for_honest_failure_without_retry(service,tmp_path):
+    client,*_=service
+    async def exercise():
+        m,p,g,cid,b,con,ws,receiver,result,calls=await prepared(service,tmp_path)
+        try:
+            p.fail='before'
+            con.events=[caption('callee','That works for me.',21000,21500)];await replay(b,con)
+            assert p.writes==1 and not b.owned_booking
+            assert 'could not be verified' in con.updates[-1][1]['content']
+            assert not any('Confirmed' in t['text'] for t in m.db.get(cid)['transcript'])
+            assert (await b.tools.operation(dict(name='get_booking_status',arguments='{}')))['state']=='uncertain'
+            assert p.writes==1
         finally:await finish(b,receiver)
     client.portal.call(exercise)

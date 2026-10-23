@@ -80,6 +80,7 @@ def caller_config(settings,scenario,voice):
         'instructions':'''You are the CALLER, never the office assistant. Listen to the greeting first.
 You want to BOOK the appointment described in CALLER DATA. Use the first script line as your opening.
 Supply the other details naturally when asked; do not read all data at once or invent a different time.
+When giving your name, say your first and last name and spell your surname once, so the approved event keeps its correct spelling.
 When offered the approved concrete date and time, say “That works for me, thank you.” once.
 If offered any different date/time, decline. If the approved slot is busy, finish politely without booking; do not accept another slot.
 Do not require any special booking phrase. Wait quietly while the office books it. If asked again whether that works,

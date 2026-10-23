@@ -160,6 +160,7 @@ class MediaBridge:
         self.owned_booking=None
         self.booking_audio_tasks=set()
         self.booking_marks={}
+        self.booking_expiry=None
         self.input_media_ms=0
         self.tools = VoiceTools(self)
         previous = manager.db.get(call_id)['transcript']
@@ -433,6 +434,7 @@ class MediaBridge:
         finally:
             receiver_failed_before_cleanup = receiver.done() and not receiver.cancelled() and receiver.exception()
             self.closing = True
+            if self.booking_expiry:self.booking_expiry.cancel()
             for task in list(self.booking_audio_tasks):task.cancel()
             await asyncio.gather(*list(self.booking_audio_tasks),return_exceptions=True)
             sender.cancel()

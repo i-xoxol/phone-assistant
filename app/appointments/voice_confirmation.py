@@ -58,6 +58,25 @@ class VoiceConfirmation:
             db.execute('INSERT OR IGNORE INTO appointment_voice_prompts VALUES(?,?,?,?,?,?,?,?,?,NULL,NULL,NULL,NULL)',
                 (str(uid),draft['call_id'],draft['draft_id'],draft['revision'],draft['payload_hash'],kind,text,'queued',b.session_id))
         b.owned_booking=str(uid)
+        if kind=='proposal':
+            deadline=self.g.service.current(draft).deadline
+            if b.booking_expiry:b.booking_expiry.cancel()
+            def expire():
+                if b.owned_booking!=str(uid) or b.closing or b.handoff:return
+                self.update(str(uid),state='withdrawn',error_code='request_expired')
+                b.owned_booking=None
+                operation=self.g.store.prior_call_write(b.call_id)
+                sent=bool(operation and operation['write_attempted'])
+                message=('The booking request expired while an operation may have reached the calendar. Do not claim success or absence and do not create again. Use the existing operation status or offer owner review.' if sent else
+                    'The booking request expired before any calendar write. Nothing was booked by this request. Explain that once; do not keep saying you are waiting for confirmation. A new request needs a new availability check.')
+                task=asyncio.create_task(b.connection.session.instructions.append(delegation_id=None,
+                    content=message))
+                self.g.m.tool_tasks.add(task)
+                def done(t):
+                    self.g.m.tool_tasks.discard(t)
+                    if not t.cancelled():t.exception()
+                task.add_done_callback(done)
+            b.booking_expiry=asyncio.get_running_loop().call_later(max(.01,(deadline-self.g.clock()).total_seconds()),expire)
         await self.g.m.send_call_update(draft['call_id'],CallUpdateRequest(mode='instructions',update_id=uid,
             content='Server-owned appointment audio: '+text+(' '+QUESTION if kind=='proposal' else '')))
         return True

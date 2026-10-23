@@ -155,6 +155,9 @@ class VoiceBookingWorkflow:
                         if uncertain else 'The appointment is not confirmed. Explain that the slot or authorization changed; collect a new request only if the caller wants one.')
                     uid=uuid5(UUID(cid),'voice-booking-state-'+str(result.get('operation_id',''))+'-'+result['state'])
                     await self.g.m.send_call_update(cid,CallUpdateRequest(mode='instructions',content=text,update_id=uid))
+                    # The ordinary Live voice must be able to explain a real
+                    # failure; ownership cannot keep its response muted forever.
+                    if getattr(bridge,'owned_booking',None):bridge.owned_booking=None
                 if result['state']!='confirmed' and generation!=self.generations.get(cid,0):continue
                 return
         except (ValueError,KeyError,RuntimeError) as exc:
