@@ -66,14 +66,14 @@ VOICE_TOOLS=[
         'Reuse the returned request_id for corrections or retries. '
         'The server checks real complete calendar coverage and queues one exact proposal; do not repeat it. '
         'Nothing is booked until the caller agrees to that concrete proposal and book_appointment succeeds.',FirstAvailableRequest),
-    tool('get_booking_status','Read/reconcile this call operation; polling never creates a calendar event. '
-        'Injection acknowledgment is not spoken confirmation.',OperationStatus),
+    tool('get_booking_status','Read/reconcile the server-owned booking for THIS call. Takes no arguments or model-selected IDs. '
+        'No operation yet means awaiting consent, never a failed booking. Polling never creates an event.'),
     tool('check_appointment_slot','Check one exact ordinary office appointment interval. Collect full name, purpose/course, duration and arrangement first. '
         'This is a live exact check, not a reservation. Reuse request_id for corrections. The server queues an exact readback; '
         'do not repeat or paraphrase it. Wait for the caller. The backend independently checks current consent before any write.',SlotRequest),
-    tool('book_appointment','Book only the exact checked draft after its complete spoken readback and clear contextual caller agreement. '
-        'Yes, okay, sounds good, that works for me, and go ahead can agree; no prescribed phrase is required. '
-        'No invitation, cancellation, rescheduling, charges or exception authority. Reuse the idempotency key; uncertain means reconcile, never repeat.',BookRequest),
+    tool('book_appointment','Safely resume THIS call’s server-owned pending booking. Takes no arguments; the server owns draft/check IDs and idempotency. '
+        'The server also resumes automatically after the exact readback and settled caller agreement. '
+        'No prescribed phrase, invitation, cancellation, rescheduling, charge or exception authority. Uncertain means reconcile, never repeat.'),
     tool('get_my_appointment','Minimal confirmation of one ordinary appointment belonging to this caller. Ask first and last name. '
         'No candidate lists, private purpose, other attendees or unrelated calendar search.',AppointmentLookup),
     tool('get_caller_status','Current broad owner-provided status for a uniquely recognized, already-curated family/friend caller. '
@@ -103,9 +103,11 @@ The server uses a brief date/time when the remaining details are already establi
 Do not add the year or time zone to a server-issued brief confirmation. Clarify genuinely ambiguous dates/zones rather than repeating settled details.
 Clear contextual agreement such as yes, okay, sounds good, that works for me, or go ahead is sufficient after the complete readback.
 Never demand an explicit booking sentence, repeated yes, or exact wording. Silence, uncertainty, refusal and corrections are not agreement.
-After that agreement, call book_appointment immediately using the returned draft_id/check_id and a stable idempotency key; do not ask again whether to book.
+After that agreement, the server resumes booking automatically once caller audio and captions settle. Do not ask again whether to book.
+book_appointment and get_booking_status take no arguments in this voice session. The server owns the current proposal, IDs, idempotency and result.
+Use book_appointment only to resume current work if needed. A status of awaiting consent/captions is not a calendar failure. Never invent an operation ID.
 Routine local booking uses these tools directly. Do not wait for a supervisor or cached-context lookup before an exact-slot check or consented booking.
-When consent_observed=true, the server already observed agreement to the identical complete proposal: book with the returned IDs without another readback or confirmation.
+When consent_observed=true, the server already observed agreement to the identical complete proposal: allow it to finish without another readback or confirmation.
 needs_consent means no write was attempted. Follow readback_queued: when true, wait for a new answer after the fresh exact readback.
 When false, wait for the complete caller answer or clarify corrections. Respect refusal/withdrawal; do not repeat the old proposal.
 Do not escalate solely for a recoverable readback repair.

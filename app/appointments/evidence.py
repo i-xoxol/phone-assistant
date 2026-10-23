@@ -23,12 +23,53 @@ def affirmative_answer(text):
     agree=(r"yes|yeah|yep|yup|sure|okay|ok|all right|alright|correct|right|absolutely|definitely|certainly|"
         r"perfect|great|fine|sounds (?:good|great|fine|right|perfect)(?: to me)?|looks good|go ahead|let's do (?:it|that)|"
         r"that (?:works|will work|would work|should work)(?: for me)?|that sounds (?:good|great|fine|right|perfect)|"
+        # Live captions can retain an extra copula/contraction before a modal
+        # ("that's would work"). Match the complete positive clause, never drop
+        # arbitrary words or quantities from a caller's answer.
+        r"(?:that|this|it)(?:'s| is)? (?:will|would|should) work(?: for me)?|"
+        r"(?:that|this|it) sounds (?:good|great|fine|right|perfect)(?: to me)?|"
+        r"(?:i think )?(?:(?:that|this|it)(?:'ll| will| would| should)?|that time|the time|that slot|the slot) works?(?: for me)?|"
+        r"(?:that is|that's|it is|it's|that would be|that will be) (?:okay|ok)(?: (?:for|with) me)?|"
+        r"works for me|i can (?:do|make) (?:it|that)|i'm good with (?:it|that)|"
         r"i agree (?:with|to) (?:this|that|the) appointment|"
         r"(?:that is|that's|it is|it's|that would be|that will be) (?:correct|right|fine|good|great|perfect)(?: (?:for|with) me)?|"
         r"(?:(?:i want|i would like|i'd like) you to |you (?:can|may) |please )?(?:book|schedule) (?:it|that|the appointment|that appointment|this appointment)|"
         r"так|так правильно|правильно")
     unit=r'(?:'+agree+r'|please|thank you|thanks)'
-    return bool(re.fullmatch(unit+r'(?: (?:and )?'+unit+r')*',text) and re.search(r'\b(?:'+agree+r')\b',text))
+    return bool(re.fullmatch(r'(?:(?:uh|um|well) )*'+unit+r'(?: (?:and )?'+unit+r')*',text)
+        and re.search(r'\b(?:'+agree+r')\b',text))
+
+
+def ambiguous_agreement(text):
+    """A non-committal answer with no new appointment fields permits clarification only."""
+    allowed=set("yes yeah yep yup sure okay ok correct right good great fine perfect that this it that's it's is "
+        "would will should could might work works for me sounds sound to thank you thanks please and "
+        "maybe perhaps think i guess probably unsure".split())
+    tokens=words(text)
+    return bool(tokens and len(tokens)<=40 and '?' not in text and set(tokens)<=allowed and not affirmative_answer(text))
+
+
+def non_substantive_status(text):
+    """A final assistant status cannot revoke current caller consent by wording alone.
+
+    New caller speech is still evaluated in full. Questions, quantities, meeting
+    fields, third-party references and corrections cannot use this path.
+    """
+    if '?' in text or len(words(text))>40:return False
+    text=' '.join(words(text))
+    text=re.sub(r'\b(?:give me (?:just )?(?:a|one) (?:moment|second|minute)|(?:just )?(?:a|one) (?:moment|second))\b',' ',text)
+    quantities=set(('zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen '
+        'sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand first second third fourth fifth sixth '
+        'seventh eighth ninth tenth eleventh twelfth thirteenth fourteenth fifteenth sixteenth seventeenth eighteenth '
+        'nineteenth twentieth thirtieth fortieth fiftieth sixtieth noon midnight morning afternoon evening '
+        'am pm eastern central mountain pacific utc gmt est edt cst cdt mst mdt pst pdt').split())
+    if quantities&set(re.findall(r'[a-z]+',text)):return False
+    changed=r"\d|\b(?:no|not|never|don't|do not|can't|cannot|won't|cancel|instead|different|another|actually|wrong|change|rather|unless|except|if|friend|someone|their|his|her|name|purpose|room|office|building|campus|address|location|online|zoom|phone|minute|minutes|hour|hours|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b"
+    status_words=set("i i'll i'm will am let me just a while finish finishing check checking verify verifying "
+        "finalize finalizing complete completing book booking schedule scheduling process processing take taking "
+        "care of get getting put putting add adding appointment booking request details step calendar it that this "
+        "the your for you with on in to through now please okay ok sure great perfect thank thanks all right alright".split())
+    return not re.search(changed,text.casefold()) and set(words(text))<=status_words
 
 
 def appointment_continuation(text,*,partial_pause=False):
@@ -67,12 +108,13 @@ def spoken_consent(turns,value,*,matches=None):
         if block['speaker']=='assistant':
             if (matches(block['text']) if matches else complete_readback(block['text'],value)):
                 heard=True;answer='';readback_end=block['end_ms']
-            elif not (heard and appointment_continuation(block['text'],
-                    partial_pause=index==len(blocks)-1 and affirmative_answer(answer))):
+            elif not (heard and (appointment_continuation(block['text'],
+                    partial_pause=index==len(blocks)-1 and affirmative_answer(answer))
+                    or (index==len(blocks)-1 and affirmative_answer(answer) and non_substantive_status(block['text'])))):
                 heard=False;answer=''
         elif block['speaker']=='callee' and heard and block['start_ms']>=readback_end:
             answer=block['text']
-            if not affirmative_answer(answer):heard=False
+            if not (affirmative_answer(answer) or ambiguous_agreement(answer)):heard=False
         else:heard=False;answer=''
     return heard,heard and affirmative_answer(answer)
 

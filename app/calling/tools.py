@@ -100,9 +100,17 @@ class VoiceTools:
             if name in ('find_first_available_slot','check_appointment_slot'):
                 handler=gateway.first_available if name=='find_first_available_slot' else gateway.check
                 result=await handler(self.bridge.call_id,args)
+                gateway.voice_workflow.bind(self.bridge.call_id,result)
+                if result.get('decision')=='available':
+                    gateway.voice_workflow.notify(self.bridge,caller=False)
+                    result['server_managed']=True
+                    result['instruction']='The server owns this proposal and resumes booking after complete readback and settled caller agreement. Do not repeat the proposal or ask again whether to book. Never invent booking IDs or claim success before the verified result.'
                 result.pop('readback',None)  # The queued voice instruction owns the single readback.
                 return result
             if name=='book_appointment':
+                if gateway.voice_workflow.bound(self.bridge.call_id) or not args:
+                    result=await gateway.voice_workflow.book(self.bridge.call_id,args)
+                    result.pop('source_identity',None);return result
                 from app.appointments.service import ConsentRequired
                 try:result=await gateway.book(self.bridge.call_id,args)
                 except ConsentRequired:
@@ -111,6 +119,9 @@ class VoiceTools:
                     return await gateway.retry_consent(self.bridge.call_id,args)
                 result.pop('source_identity',None);return result
             if name=='get_booking_status':
+                if gateway.voice_workflow.bound(self.bridge.call_id) or not args:
+                    result=await gateway.voice_workflow.status(self.bridge.call_id)
+                    result.pop('source_identity',None);return result
                 from app.appointments.schemas import OperationStatus
                 args=OperationStatus.model_validate(args)
                 result=await gateway.status(self.bridge.call_id,str(args.operation_id));result.pop('source_identity',None);return result

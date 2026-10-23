@@ -154,6 +154,7 @@ class MediaBridge:
         self.caller_spoke=False
         self.greeting_nudged=False
         self.input_speech_frames=0
+        self.last_input_speech_at=0.0
         self.startup_started=time.monotonic()
         self.tools = VoiceTools(self)
         previous = manager.db.get(call_id)['transcript']
@@ -257,6 +258,7 @@ class MediaBridge:
                     if self.manager.settings.appointments_enabled:
                         raw=base64.b64decode(message['media']['payload'],validate=True)
                         if has_speech(raw):
+                            self.last_input_speech_at=time.monotonic()
                             at=int(message['media'].get('timestamp',0))+self.transcript_offset_ms
                             previous=self.manager.caller_activity.get(self.call_id,{})
                             epoch=previous.get('epoch',0)+(at-previous.get('last_speech_ms',-1000)>400)
@@ -324,6 +326,9 @@ class MediaBridge:
                         'start_ms': data['start_ms'] + self.transcript_offset_ms,
                         'end_ms': data['end_ms'] + self.transcript_offset_ms}
                 self.manager.db.transcript(self.call_id, data)
+                gateway=getattr(self.manager,'appointments',None)
+                if self.inbound and gateway and self.manager.settings.appointments_enabled:
+                    gateway.voice_workflow.notify(self,caller=event.type=='session.input_transcript.delta')
                 if (event.type == 'session.output_transcript.delta' and data.get('delta')):
                     self.closing_transcript_seen = True
                     self.closing_text = (self.closing_text + data['delta'])[-600:]

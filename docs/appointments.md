@@ -111,6 +111,30 @@ identity, reconciliation and private indexing.
 
 ## Calendar and consent rules
 
+### Server-owned native voice workflow
+
+Native voice checks bind the call to a durable proposal revision and exact check.
+The voice versions of `book_appointment` and `get_booking_status` take no arguments:
+the server resolves the current proposal and actual operation instead of asking
+the model to remember UUIDs or choose an idempotency key. The scoped MCP APIs keep
+their explicit IDs and bindings. Status queries never initiate calendar creation.
+
+The server observes the acknowledged exact readback and the caller's complete
+answer. After captions and raw caller speech settle, it resumes the existing
+booking service itself. A second model tool call is not required. The service
+still rechecks current authority, new audio, exact consent and availability before
+dispatch, then independently reads back Google and commits the private registry
+before publishing confirmation. A lost response is reconciled against the same
+deterministic event identity and journal; it never authorizes another creation.
+
+An unclear generic answer permits one short clarification about the same spoken
+proposal, rather than a second full recital. Refusals, new conditions, third-party
+references and changed details cannot borrow that proof. A trailing status phrase
+cannot erase an already observed agreement merely because its wording differs;
+questions, quantities and appointment-field changes remain blocking evidence.
+Each call keeps at most one native workflow binding. A different existing operation
+requires owner reconciliation, and no completed call is resumed by startup.
+
 Academic meetings must fit entirely within Monday/Thursday **10–12**, or Friday
 **14–16 America/New_York**, and a current owner-designated Office Hours occurrence.
 An event title cannot designate availability. Canceled/moved occurrences, actual

@@ -66,6 +66,8 @@ class AppointmentGateway:
                 CREATE TABLE IF NOT EXISTS appointment_progress(
                 update_id TEXT PRIMARY KEY,request_id TEXT NOT NULL,revision INTEGER NOT NULL,phase TEXT NOT NULL,
                 created_at TEXT NOT NULL,check_id TEXT,delivery_error TEXT,UNIQUE(request_id,revision));''')
+        from app.appointments.workflow import VoiceBookingWorkflow
+        self.voice_workflow=VoiceBookingWorkflow(self)
 
     def transcript(self,call_id):return self.m.db.get(call_id)['transcript']
     def revision(self,call_id):
@@ -125,6 +127,17 @@ class AppointmentGateway:
         with self.m.db.connect() as db:
             turns=[dict(t) for t in db.execute('SELECT * FROM transcript_events WHERE call_id=? AND id>? ORDER BY start_ms,id',
                 (draft['call_id'],readback['after_transcript_id'] if readback else 2**63-1))]
+            cursor=readback['after_transcript_id'] if readback else 0
+            boundary=accepted.get('end_ms') if accepted else None
+            if boundary is None:
+                boundary=db.execute('SELECT coalesce(max(end_ms),0) FROM transcript_events WHERE call_id=? AND id<=?',
+                    (draft['call_id'],cursor)).fetchone()[0]
+            # Validate the omitted fields at issuance, including delayed captions
+            # from before acknowledgment. Later agreement/uncertainty must not
+            # erase established intake; a backdated correction must still count.
+            established=[{'speaker':t['speaker'],'text':t['text'],'timestamp':t['start_ms']/1000,'end_timestamp':t['end_ms']/1000}
+                for t in db.execute('SELECT * FROM transcript_events WHERE call_id=? AND (id<=? OR start_ms<=?) ORDER BY start_ms,id',
+                    (draft['call_id'],cursor,boundary))]
         # Late captions can predate the queued instruction despite a newer database ID.
         if accepted and accepted.get('end_ms') is not None:
             turns=[t for t in turns if t['start_ms']>=accepted['end_ms']]
@@ -133,7 +146,7 @@ class AppointmentGateway:
             content=accepted['content']
             short=content==confirmation.SHORT+confirmation.time_text(value)+'. Is that correct?'
             compact=content==confirmation.COMPACT+confirmation.details_text(value)+'. Is that correct?'
-            if compact or (short and confirmation.established_details(self.transcript(draft['call_id']),value)):
+            if compact or (short and confirmation.established_details(established,value)):
                 matcher=lambda text:complete_readback(text,value) or confirmation.matches(text,value,short=short)
         # Acknowledgment alone is insufficient: require observed assistant readback followed by caller assent.
         heard,yes=spoken_consent(turns,value,matches=matcher)
@@ -424,6 +437,7 @@ class AppointmentGateway:
         return result
 
     async def close(self):
+        await self.voice_workflow.close()
         if self.sync_task:
             self.sync_task.cancel();await asyncio.gather(self.sync_task,return_exceptions=True)
         if self.http:await self.http.aclose()
