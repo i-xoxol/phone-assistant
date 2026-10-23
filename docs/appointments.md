@@ -129,6 +129,15 @@ authorize a booking. Pending captions are reported as pending, never as a missin
 appointment. Bounded lookup diagnostics contain status/reason, not names or event
 contents.
 
+An exact native lookup miss requests one spelling clarification rather than
+declaring the appointment missing. The assistant asks for the first and last
+name separately; lookup evidence accepts complete letter sequences, including
+explicit “C as in Charlie” forms, only within those name fields. Both current
+components must match exactly before disclosure. No phonetic aliases, candidate
+names or fuzzy matching are used. A remaining exact miss after that clarification
+gets one bounded explanation and an offer of owner review. Booking consent and
+name evidence keep their existing rules.
+
 ### Server-owned native voice workflow
 
 Native voice checks bind the call to a durable proposal revision and exact check.

@@ -449,6 +449,24 @@ class AppointmentGateway:
                     result=await self.own(call_id,args.model_dump())
                     if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}
                     if pending():continue  # New audio during the read requires a fresh verified read.
+                    if result['status']=='not_found':
+                        # An ASR spelling is not an authoritative name. Repair it
+                        # without searching candidates or guessing a near match.
+                        assistant=' '.join(t['text'] for t in self.transcript(call_id) if t['speaker']=='assistant')
+                        repaired=bool(re.search(r'\bspell(?:ing)?\b',assistant,re.I))
+                        if repaired:
+                            return {'status':'not_found','reason':'exact_name_not_found_after_spelling',
+                                'instruction':'No exact matching indexed appointment was verified after the name clarification. '
+                                    'Explain that bounded result once and offer owner review. Do not repeat the spelling loop or claim the whole calendar has no appointment.'}
+                        return {'status':'needs_name_spelling','reason':'no_exact_name_match','missing_fields':['first_name','last_name'],
+                            'instruction':'The transcribed name has no exact indexed match; its spelling may be wrong. Do not say the appointment is missing. '
+                                'Ask one short question: Could you spell your first name? Then ask for the last name separately. '
+                                'Retry get_my_appointment with both fresh name components, using the caller\'s letters exactly. '
+                                'Do not suggest a candidate name, guess a similar spelling, search all appointments, or restart date/time/purpose intake.'}
+                    if result['status']=='needs_owner' and not self.lookup_evidence(call_id,args)[0]:
+                        return {**result,'reason':'complete_current_name_required',
+                            'instruction':'Complete the current first and last name before retrying. After a spelling correction, collect both components separately; '
+                                'ask only the missing component. Do not infer the rest from an old name or ask for appointment dates or purpose.'}
                     return result
         except TimeoutError:
             if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}

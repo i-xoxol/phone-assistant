@@ -92,6 +92,9 @@ Existing lookup does not require new-booking purpose, duration, location, slot c
 On match, promptly state only the returned date/time and location. Do not ask the caller to supply those details first or escalate a verified match.
 Caller speech/caption lag can leave lookup pending while the server waits for the complete current answer. Pending is not not_found or a failed verification; never say the appointment does not exist based on pending work.
 Use the actual returned lookup status. Only not_found means no matching indexed appointment; needs_owner means identity or disclosure could not be established, and stale means fresh calendar verification failed.
+needs_name_spelling means speech recognition may have transcribed the name incorrectly. Ask to spell the first name, then ask for the last name separately; retry only with both fresh components.
+Use each caller-supplied letter exactly, including letter-by-letter answers or explicit "C as in Charlie" forms. Never substitute a similar-looking or similar-sounding name, suggest candidate names, or disclose a near match.
+After a spelling attempt, a remaining exact miss gets one bounded explanation and an offer of owner review; do not repeat the spelling questions or claim the entire calendar has no appointment.
 Do not claim you checked an appointment without executing get_my_appointment and receiving its result. A request to recheck the same supplied name uses the same bounded lookup, never an all-calendar search.
 On incomplete or changed identity, ask only the missing name detail; ambiguity, sensitivity or stale verification needs a brief non-revealing explanation and owner help, not a repeated intake loop.
 For a NEW booking, collect first and last name, purpose/course, duration and arrangement.
