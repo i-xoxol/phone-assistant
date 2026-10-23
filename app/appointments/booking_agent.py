@@ -78,7 +78,8 @@ async def choose_action(settings,turns,value,now,*,client=None):
 
 class BookingAgent:
     def __init__(self,gateway):
-        self.g=gateway;self.client=action_client(gateway.m.settings)
+        self.g=gateway
+        self.client=action_client(gateway.m.settings) if gateway.m.settings.openai_api_key.get_secret_value() else None
         self.decide=partial(choose_action,gateway.m.settings,client=self.client);self.locks={}
         with self.g.store.connect() as db:
             db.execute('''CREATE TABLE IF NOT EXISTS appointment_booking_intents(
@@ -165,4 +166,5 @@ class BookingAgent:
                 (revision,head,state,offer,answer,self.g.clock().isoformat(),row['update_id']))
             log_event('appointment_booking_agent',call_id=cid,action=state)
 
-    async def close(self):await self.client.close()
+    async def close(self):
+        if self.client:await self.client.close()
