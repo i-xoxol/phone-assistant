@@ -136,3 +136,11 @@ def test_native_repair_matches_or_reports_only_the_missing_field_without_another
         assert p.writes==1
         with g.store.connect() as db:assert db.execute('SELECT count(*) FROM booking_operations WHERE call_id=?',(cid,)).fetchone()[0]==0
     client.portal.call(check)
+
+
+@pytest.mark.parametrize('correction',['No, check Different Person.',"Wait, I'm",'Actually, my name is Different Person.'])
+def test_neutral_backchannel_cannot_fuse_an_unspaced_correction_into_the_previous_sentence(correction):
+    rows=[dict(speaker=s,text=t,timestamp=i,end_timestamp=i+.5) for i,(s,t) in enumerate([
+        ('callee','My name is Casey Example. I want to verify my appointment'),
+        ('assistant','Hmm okay.'),('callee',correction)])]
+    assert not caller_identified(rows,'Casey','Example',for_lookup=True)

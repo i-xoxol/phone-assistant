@@ -289,7 +289,10 @@ def lookup_utterances(turns):
                 and re.fullmatch(r'(?:m+h+m*|h+m+|m+ h+m+|uh huh|okay|ok|thanks|thank you|sure|go on(?: please)?|take your time)(?: (?:m+h+m*|h+m+|m+ h+m+|uh huh|okay|ok|thanks|thank you|sure|go on(?: please)?|take your time))*',
                     ' '.join(words(turn['text'].replace('-',' '))))):continue
         if joined and turn['speaker']=='callee' and joined[-1]['speaker']=='callee':
-            separator=' ' if re.search(r'[.!?]$',joined[-1]['text']) and not turn['text'][:1].isspace() else ''
+            # Removing a backchannel must not fuse a new correction into the
+            # prior word or sentence (for example, 'appointmentNo, check ...').
+            correction=re.match(r"\s*(?:no|actually|correction|wait|not)\b",turn['text'],re.I)
+            separator='. ' if correction else ' ' if not turn['text'][:1].isspace() else ''
             joined[-1]['text']+=separator+turn['text'];joined[-1]['end']=max(joined[-1]['end'],turn['end'])
         else:joined.append(dict(turn))
     return joined
