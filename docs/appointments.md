@@ -119,6 +119,16 @@ and new uncaptioned speech still block disclosure. Lookup reuses the supplied
 name and retrieves minimal verified details without requiring new-booking
 intake, creating a draft, or starting another booking operation.
 
+Native lookup waits up to eight seconds for current caller audio/captions and
+rechecks the complete name after calendar I/O. A harmless follow-up during a read
+does not by itself invalidate that identity. New uncaptioned audio requires
+waiting and a fresh read; a changed name, ended call or replaced voice session
+blocks disclosure. An exact request to recheck the same already proven full name
+can retain that identity for lookup only; it cannot establish a new identity or
+authorize a booking. Pending captions are reported as pending, never as a missing
+appointment. Bounded lookup diagnostics contain status/reason, not names or event
+contents.
+
 ### Server-owned native voice workflow
 
 Native voice checks bind the call to a durable proposal revision and exact check.
