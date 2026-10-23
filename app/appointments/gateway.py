@@ -1,5 +1,5 @@
 """Call-bound facade. Consent evidence is read from storage, never a model-provided flag."""
-import asyncio,hashlib,re,sqlite3
+import asyncio,hashlib,re,sqlite3,time
 from datetime import datetime,timedelta,timezone
 from uuid import uuid4
 import httpx
@@ -392,14 +392,25 @@ class AppointmentGateway:
         result['delivery']=self.delivery_status(call_id,oid)
         return result
 
-    async def own(self,call_id,args):
-        args=AppointmentLookup.model_validate(args)
-        revision=self.revision(call_id);turns=self.transcript(call_id)
+    def lookup_evidence(self,call_id,args):
+        turns=self.transcript(call_id)
         activity=getattr(self.m,'caller_activity',{}).get(call_id)
         caption_end=max((t['end_timestamp']*1000 for t in turns if t['speaker']=='callee'),default=-1)
-        contradictory=not caller_identified(turns,args.first_name,args.last_name) or bool(activity and caption_end<activity['last_speech_ms'])
-        result=await self.service.own_appointment(args.first_name,args.last_name,contradictory=contradictory)
-        if self.revision(call_id)!=revision:return {'status':'needs_owner'}
+        return (caller_identified(turns,args.first_name,args.last_name,for_lookup=True),
+            not activity or caption_end>=activity['last_speech_ms'])
+
+    async def own(self,call_id,args):
+        args=AppointmentLookup.model_validate(args)
+        identified,current=self.lookup_evidence(call_id,args)
+        result=await self.service.own_appointment(args.first_name,args.last_name,contradictory=not (identified and current))
+        # New speech can simply ask whether the read is done. Re-evaluate the
+        # current complete identity and raw-audio coverage after I/O; a changed
+        # revision alone says nothing about whether that identity changed.
+        identified,current=self.lookup_evidence(call_id,args)
+        reason='verified_read' if result['status']=='match' else 'provider_or_index_'+result['status']
+        if not (identified and current):
+            result={'status':'needs_owner'};reason='caller_captions_pending' if not current else 'current_name_not_established'
+        log_event('appointment_lookup',call_id=call_id,status=result['status'],reason=reason)
         if result['status']=='match':
             row=self.store.own_appointment(args.first_name,args.last_name,self.clock()).get('appointment')
             if row:
@@ -408,6 +419,42 @@ class AppointmentGateway:
                     "AND source='owner' AND kind='delay_minutes' AND effective_from<=? AND expires_at>?",
                     (row['appointment_id'],self.clock().isoformat(),self.clock().isoformat()))]
         return result
+
+    lookup_settle_seconds=.6
+    lookup_wait_seconds=8
+
+    async def own_voice(self,call_id,args,bridge):
+        """A read-only voice lookup waits for current caller evidence, not another tool call."""
+        args=AppointmentLookup.model_validate(args)
+        log_event('appointment_lookup_requested',call_id=call_id)
+        def active():
+            return (self.m.bridges.get(call_id) is bridge and self.m.appointments is self
+                and self.m.settings.appointments_enabled and call_id not in self.m.stopping
+                and self.m.db.get(call_id)['status']=='in_progress'
+                and not (bridge.closing or bridge.handoff or bridge.end_requested.is_set()))
+        def pending():
+            _,current=self.lookup_evidence(call_id,args)
+            return not current or time.monotonic()-getattr(bridge,'last_input_speech_at',0)<self.lookup_settle_seconds
+        def waiting():
+            log_event('appointment_lookup',call_id=call_id,status='pending',reason='caller_captions_pending')
+            return {'status':'pending','reason':'caller_captions_pending',
+                'instruction':'The read-only lookup is waiting for current caller audio/captions. This is not a missing appointment. '
+                    'Do not claim it was not found, ask for its forgotten date/time, or search other appointments. Wait for the complete name/answer and resume this same lookup.'}
+        try:
+            async with asyncio.timeout(self.lookup_wait_seconds):
+                while True:
+                    if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}
+                    if pending():
+                        await asyncio.sleep(min(.05,self.lookup_settle_seconds));continue
+                    result=await self.own(call_id,args.model_dump())
+                    if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}
+                    if pending():continue  # New audio during the read requires a fresh verified read.
+                    return result
+        except TimeoutError:
+            if not active():return {'status':'needs_owner','reason':'call_no_longer_current'}
+            if pending():return waiting()
+            return {'status':'stale','reason':'verification_timeout',
+                'instruction':'The existing appointment could not be freshly verified within the read budget. Do not claim it does not exist. Offer owner help once.'}
 
     def family(self,call_id):
         r=self.m.db.get(call_id);number=r['phone_number'];routing=self.m.routing.get(r)

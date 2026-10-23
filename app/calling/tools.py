@@ -125,7 +125,7 @@ class VoiceTools:
                 from app.appointments.schemas import OperationStatus
                 args=OperationStatus.model_validate(args)
                 result=await gateway.status(self.bridge.call_id,str(args.operation_id));result.pop('source_identity',None);return result
-            if name=='get_my_appointment':return await gateway.own(self.bridge.call_id,args)
+            if name=='get_my_appointment':return await gateway.own_voice(self.bridge.call_id,args,self.bridge)
             if name=='get_family_availability':return await gateway.family_availability(self.bridge.call_id,args)
             if args!={}:raise ValueError('Caller status takes no model-selected identity')
             return gateway.family(self.bridge.call_id)

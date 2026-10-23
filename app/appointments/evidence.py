@@ -205,7 +205,7 @@ def utterances(turns,*,join_sentences=False,join_caller_pauses=False):
     return result
 
 
-def caller_identified(turns,first,last):
+def caller_identified(turns,first,last,*,for_lookup=False):
     """Only the current full claim or two explicitly elicited components may identify the caller."""
     expected_first,expected_last=words(first),words(last)
     full=expected_first+expected_last;given=surname=False;question=None
@@ -213,6 +213,7 @@ def caller_identified(turns,first,last):
     explicit=r"(?:my name(?: is|'s)|call me|i go by)"
     intro=fillers+r"(?:"+explicit+r"|this is|i am|i'm|it's|it is)\b\s*(.*)"
     component=fillers+r"(?:my|the) (first name|given name|last name|surname|family name)(?: is|'s)\b\s*(.*)"
+    recheck=r'(?:(?:no|please) )*(?:check|recheck|look up)(?: for)? '+re.escape(' '.join(full))
     sentences=[]
     # A pause in "Yes, [name]" does not end an elicited answer. Keep
     # assistant turns separate so an unrelated question cannot elicit a name.
@@ -220,6 +221,10 @@ def caller_identified(turns,first,last):
         if turn['speaker']!='callee':sentences.append(turn);continue
         # A period inside a complete supplied name (for example St. John) is not a sentence boundary.
         text=turn['text'].casefold().replace('’',"'");spans=[]
+        if for_lookup and re.fullmatch(recheck,' '.join(words(text))):
+            # Keep "No, no. Check [same full name]" as one lookup request.
+            # It may retain an earlier self-claim, never establish a new one.
+            sentences.append({**turn,'text':text});continue
         for name in (first,last,first+' '+last):
             pattern=r'(?<!\w)'+r'[\W_]+'.join(re.escape(w) for w in words(name))+r'(?!\w)'
             if words(name):spans.extend((m.start(),m.end()) for m in re.finditer(pattern,text))
@@ -238,6 +243,7 @@ def caller_identified(turns,first,last):
             else:question=None
             continue
         if turn['speaker']!='callee':continue
+        if for_lookup and given and surname and question is None and re.fullmatch(recheck,' '.join(words(text))):continue
         claim=re.fullmatch(intro,text)
         part=re.fullmatch(component,text)
         name_cue=explicit+r"|\b(?:this is|i am|i'm|it's|it is|first name|last name|surname|family name|name)\b"
