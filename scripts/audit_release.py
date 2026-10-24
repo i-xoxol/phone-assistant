@@ -3,6 +3,8 @@
 A release gate, not a substitute for human review or GitHub secret scanning.
 It reads the repository index, never private runtime directories.
 """
+import hashlib
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -28,6 +30,45 @@ SECRET_FIELDS = {'OPENAI_API_KEY', 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN',
                  'CALLBACK_NUMBER', 'WEBHOOK_URL', 'WEBHOOK_SECRET'}
 SECRET_FIELDS.add('OWNER_TRANSFER_NUMBER')
 SECRET_FIELDS.add('OWNER_COACHING_APPLICATION_SID')
+
+# Explicitly approved owner-run test recordings; never a general media exemption.
+REVIEWED_TEST_AUDIO = {
+    'docs/examples/audio/gregory-booking-test.mp3':
+        '3f61131cd6a48162f173492ae6071ee919d2a83b6562d6a3f2c5f02df62a8afb',
+    'docs/examples/audio/gregory-verification-test.mp3':
+        'a3c257f7796cdc4288039513875f869fb74f9ddb41e06f4c4b5d0a3e88a5b20d',
+}
+
+
+def reviewed_doc_audio(path: Path, root: Path = ROOT) -> bool:
+    """Accept only the exact two privacy-reviewed, owner-approved MP3 originals."""
+    expected = REVIEWED_TEST_AUDIO.get(path.as_posix())
+    if expected is None:
+        return False
+    try:
+        return hashlib.sha256((root/path).read_bytes()).hexdigest() == expected
+    except OSError:
+        return False
+
+
+def reviewed_doc_image(path: Path, root: Path = ROOT) -> bool:
+    """Accept only exact JPEG bytes recorded after a separate human/visual review.
+
+    A hash records the reviewed version; it is not an automated privacy verdict.
+    Other images still require review; audio has a separate exact-hash guard.
+    """
+    if path.parent != Path('docs/assets') or path.suffix.lower() != '.jpg':
+        return False
+    try:
+        manifest = json.loads((root/'docs/assets/media-review.json').read_text(encoding='utf-8'))
+        record = manifest['images'][path.name]
+        data = (root/path).read_bytes()
+        return (record['privacy_reviewed'] is True
+                and bool(record['source'])
+                and data.startswith(b'\xff\xd8\xff') and data.endswith(b'\xff\xd9')
+                and hashlib.sha256(data).hexdigest() == record['sha256'])
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 def path_problem(path: Path) -> str | None:
@@ -89,12 +130,16 @@ def main() -> int:
     issues = []
     paths = source_paths()
     for path in paths:
+        if reviewed_doc_audio(path):
+            continue
         if problem := path_problem(path):
             issues.append(f'{path.as_posix()}: {problem}')
             continue
         absolute = ROOT/path
         if not absolute.is_file():
             issues.append(f'{path.as_posix()}: indexed file missing from working tree')
+            continue
+        if reviewed_doc_image(path):
             continue
         try:
             text = absolute.read_text(encoding='utf-8')

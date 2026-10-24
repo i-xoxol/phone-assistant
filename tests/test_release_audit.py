@@ -2,7 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from scripts.audit_release import content_problems, path_problem
+from scripts.audit_release import (
+    ROOT, content_problems, path_problem, reviewed_doc_audio, reviewed_doc_image,
+)
 
 
 @pytest.mark.parametrize('name', ['.env', 'data/calls.sqlite3', 'data/oauth.sqlite3',
@@ -28,3 +30,55 @@ def test_credential_scan_reports_location_without_value():
 def test_plugin_template_cannot_embed_operator_endpoint():
     text = '{"mcpServers":{"phone":{"url":"https://operator.example.test/mcp"}}}'
     assert content_problems(Path('plugin/.mcp.json'), text) == [('non-template plugin endpoint', 1)]
+
+
+def test_binary_documentation_images_require_review_of_the_exact_bytes(tmp_path):
+    import hashlib
+    import json
+
+    relative = Path('docs/assets/demo.jpg')
+    image = tmp_path/relative
+    image.parent.mkdir(parents=True)
+    data = b'\xff\xd8\xff' + b'fictional test image' + b'\xff\xd9'
+    image.write_bytes(data)
+    assert not reviewed_doc_image(relative, tmp_path)
+    manifest = tmp_path/'docs/assets/media-review.json'
+    manifest.write_text(json.dumps({'images': {'demo.jpg': {
+        'sha256': hashlib.sha256(data).hexdigest(),
+        'privacy_reviewed': True, 'source': 'synthetic fixture',
+    }}}))
+    assert reviewed_doc_image(relative, tmp_path)
+    image.write_bytes(data + b'changed')
+    assert not reviewed_doc_image(relative, tmp_path)
+    assert not reviewed_doc_image(Path('app/demo.jpg'), tmp_path)
+
+
+def test_documentation_review_cannot_approve_an_arbitrary_binary_file(tmp_path):
+    import hashlib
+    import json
+
+    relative = Path('docs/assets/not-an-image.jpg')
+    binary = tmp_path/relative
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(b'not a JPEG')
+    (binary.parent/'media-review.json').write_text(json.dumps({'images': {
+        binary.name: {'sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
+                      'privacy_reviewed': True, 'source': 'test'},
+    }}))
+    assert not reviewed_doc_image(relative, tmp_path)
+
+
+@pytest.mark.parametrize('name', ['gregory-booking-test.mp3', 'gregory-verification-test.mp3'])
+def test_only_exact_reviewed_owner_test_audio_is_publishable(tmp_path, name):
+    relative = Path('docs/examples/audio')/name
+    data = (ROOT/relative).read_bytes()
+    copied = tmp_path/relative
+    copied.parent.mkdir(parents=True)
+    copied.write_bytes(data)
+    assert reviewed_doc_audio(relative, tmp_path)
+    assert path_problem(relative) == 'runtime/credential/media file'
+    # Same bytes elsewhere are not an approved public artifact.
+    assert not reviewed_doc_audio(Path('docs/recording.mp3'), tmp_path)
+    assert not reviewed_doc_audio(Path('docs/examples/audio/unreviewed.mp3'), tmp_path)
+    copied.write_bytes(data + b'changed')
+    assert not reviewed_doc_audio(relative, tmp_path)

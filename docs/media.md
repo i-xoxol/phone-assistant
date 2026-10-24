@@ -1,0 +1,89 @@
+# Public media and screenshot provenance
+
+[← Project overview](../README.md)
+
+## Actual UI screenshots
+
+The JPEG monitor images were captured in Chrome from this repository's
+`app/web/index.html`, `app/web/style.css`, and `app/web/app.js`. The isolated preview
+adds a visible documentation-demo banner and supplies fictional JSON and SSE
+heartbeats. It does not load a service configuration, credentials, private
+database, caller history, or calendar. All write routes return HTTP 405.
+
+The pickup-hours conversation and inbox message are invented documentation
+fixtures. The only displayed number is in the reserved US `202-555-0100` through
+`202-555-0199` example range. No call was placed and no appointment was made.
+These screenshots show interface layout, not a successful telephone test.
+
+Reproduce the preview with the Python standard library alone:
+
+```bash
+python -m scripts.preview_docs_ui
+```
+
+Open `http://127.0.0.1:8765/live` for the call view or append `?view=inbox` for the
+message view. The server binds only to localhost. Stop it with Ctrl+C.
+`monitor-desktop.jpg` and `monitor-inbox.jpg` are full-page captures at the normal
+browser width; `monitor-mobile.jpg` is a viewport capture at 390 × 844. The mobile
+capture is scrolled to the conversation and persistent hangup control. No
+redaction or compositing was needed. UI source files are unchanged by this update.
+
+## Owner-provided NotebookLM videos
+
+- **Your Phone Finally Gets an AI Brain** — short-form overview, 1:18, portrait.
+- **Phone Assistant: The Anatomy of a Perfect Call** — cinematic overview,
+  5:12, landscape.
+
+Both are AI-generated illustrative overviews with conceptual graphics and
+owner-run test examples. They are not recordings of the product UI, verified
+real student calls, or independent reliability evidence. Narrated scenarios can
+simplify implementation details; use the current guides for supported behavior,
+permissions, provider dependencies, and limits.
+
+The reviewed original MP4s are hosted as GitHub attachments linked from the
+README. No private Drive URL, signed download URL, review transcript, or sharing
+permission is published. The preview JPEGs are unmodified video frames from
+approximately two seconds into each video.
+
+| Asset | SHA-256 of reviewed original |
+|---|---|
+| Short-form MP4 | `0dc2809e47ab8561ced8b57b4dfc92f3b9f573849caed77ba5d87a6b350d8d35` |
+| Cinematic MP4 | `f5eccf1ae1ef9e09a28df1b02f93fa06617f50d6844de13b127be0d03aede7b5` |
+
+The privacy review covered full narration via ASR, scene-change frames, and regular
+4–5 second visual samples. It found no credentials, private contact details, or
+sensitive student/family/medical information. It was not a frame-by-frame review.
+Every JPEG published here was separately inspected. Re-review media before
+replacing it; a checksum records a reviewed version and is not a privacy guarantee.
+
+`docs/assets/media-review.json` records the exact reviewed JPEG hashes and
+provenance. The release audit accepts matching JPEGs in `docs/assets` and the two
+exact reviewed MP3 paths/hashes listed in its source. Other unreviewed or changed
+binary files still fail the gate; arbitrary recordings remain forbidden.
+
+## Approved owner-run call examples
+
+The owner explicitly approved publishing the [Gregory booking test](examples/gregory-booking-test.md)
+and [follow-up verification test](examples/gregory-verification-test.md). In both,
+the owner role-played the caller; these are not verified real student calls.
+The complete saved automatic transcripts preserve all supplied utterances,
+timestamps, recognition errors, and overlapping fragments. They were not
+reconstructed from audio. Private call URLs and internal identifiers are omitted.
+
+The verification test initially gives the wrong weekday and corrects it only
+after the caller challenges it. Both the error and correction remain visible.
+The booking transcript's spoken confirmation is not independent proof of a
+successful calendar write. These examples illustrate observed speech in two
+tests, not general reliability.
+
+Both original MP3s were decoded and automatically transcribed, then compared with
+the complete saved transcripts during a separate privacy review. No additional
+private details were found. The original MP3 bytes are unchanged and contain no
+embedded format tags. The original MP3s are hosted in this repository, linked
+from each full transcript and the README. Only the approved audio and primary
+transcript text are published; secondary review material remains private.
+
+| Original recording | Duration | SHA-256 |
+|---|---|---|
+| [Booking MP3](examples/audio/gregory-booking-test.mp3?raw=true) | 107.258750 seconds | `3f61131cd6a48162f173492ae6071ee919d2a83b6562d6a3f2c5f02df62a8afb` |
+| [Verification MP3](examples/audio/gregory-verification-test.mp3?raw=true) | 60.133875 seconds | `a3c257f7796cdc4288039513875f869fb74f9ddb41e06f4c4b5d0a3e88a5b20d` |
