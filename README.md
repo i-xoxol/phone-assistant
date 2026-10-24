@@ -28,8 +28,9 @@ when the owner joins a conversation.
 
 > **Project scope:** a single-owner prototype you run with your own provider
 > accounts. Optional features need configuration, grants, and deployment-specific
-> validation. This public repository provides source and documentation, without
-> access to the author's service or calls.
+> validation. This public repository provides source and documentation without
+> access to the author's running service or private operational records. Any
+> approved owner-run test examples are identified separately.
 
 ## Watch the overviews
 
@@ -63,7 +64,7 @@ preview; it is not part of the deployed monitor.
 </p>
 <p align="center">
   <img src="docs/assets/monitor-mobile.jpg" alt="Actual monitor at a mobile viewport with fictional captions and the fixed hangup button" width="360">
-  <br><sub>The same interface adapts to a phone screen.</sub>
+  <br><sub>Local demo UI with fictional data, scrolled to the conversation. The demo banner is above this mobile crop.</sub>
 </p>
 
 </details>
@@ -232,4 +233,6 @@ Python 3.11, 3.12, and 3.14. Manual provider checks are separate.
 Created by **Igor Khokhlov** · [MIT license](LICENSE) ·
 [Contributing](CONTRIBUTING.md) · [Report a vulnerability](SECURITY.md)
 
-Keep public issues and pull requests free of credentials and real call data.
+Keep credentials, private operational records, and unapproved call data out of
+public issues and pull requests. Publish owner-run test examples only with explicit
+permission, privacy review, and clear test labels.
