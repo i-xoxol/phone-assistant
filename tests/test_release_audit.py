@@ -2,7 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from scripts.audit_release import content_problems, path_problem, reviewed_doc_image
+from scripts.audit_release import (
+    ROOT, content_problems, path_problem, reviewed_doc_audio, reviewed_doc_image,
+)
 
 
 @pytest.mark.parametrize('name', ['.env', 'data/calls.sqlite3', 'data/oauth.sqlite3',
@@ -64,3 +66,19 @@ def test_documentation_review_cannot_approve_an_arbitrary_binary_file(tmp_path):
                       'privacy_reviewed': True, 'source': 'test'},
     }}))
     assert not reviewed_doc_image(relative, tmp_path)
+
+
+@pytest.mark.parametrize('name', ['gregory-booking-test.mp3', 'gregory-verification-test.mp3'])
+def test_only_exact_reviewed_owner_test_audio_is_publishable(tmp_path, name):
+    relative = Path('docs/examples/audio')/name
+    data = (ROOT/relative).read_bytes()
+    copied = tmp_path/relative
+    copied.parent.mkdir(parents=True)
+    copied.write_bytes(data)
+    assert reviewed_doc_audio(relative, tmp_path)
+    assert path_problem(relative) == 'runtime/credential/media file'
+    # Same bytes elsewhere are not an approved public artifact.
+    assert not reviewed_doc_audio(Path('docs/recording.mp3'), tmp_path)
+    assert not reviewed_doc_audio(Path('docs/examples/audio/unreviewed.mp3'), tmp_path)
+    copied.write_bytes(data + b'changed')
+    assert not reviewed_doc_audio(relative, tmp_path)
