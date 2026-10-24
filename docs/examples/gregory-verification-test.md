@@ -7,7 +7,9 @@ Recorded October 23, 2026, 4:49 PM America/New_York.
 
 Source: complete saved automatic call transcript. Consecutive fragments by the same speaker are joined without rewriting; timing and speech-recognition errors remain. Caller is the owner role-playing Gregory, not a verified student. Timestamps are relative to the transcript stream and may differ slightly from the audio.
 
-**Audio: privacy-reviewed; public hosting pending.** No public recording link is available yet.
+[**Listen / download the original MP3 · 1:00**](audio/gregory-verification-test.mp3?raw=true)
+
+The recording was separately privacy-reviewed; its original bytes are unchanged.
 This test includes an incorrect **Sunday** answer, followed by a **Monday**
 correction after the caller challenges it. It demonstrates an error and recovery;
 it is not a flawless verification or an independent reliability measurement.

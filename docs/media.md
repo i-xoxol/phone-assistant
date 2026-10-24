@@ -40,8 +40,8 @@ real student calls, or independent reliability evidence. Narrated scenarios can
 simplify implementation details; use the current guides for supported behavior,
 permissions, provider dependencies, and limits.
 
-The reviewed original MP4s are prepared for GitHub attachment hosting. Publication
-and README video links are pending while this pull request remains a draft. No private Drive URL, signed download URL, review transcript, or sharing
+The reviewed original MP4s are hosted as GitHub attachments linked from the
+README. No private Drive URL, signed download URL, review transcript, or sharing
 permission is published. The preview JPEGs are unmodified video frames from
 approximately two seconds into each video.
 
@@ -57,8 +57,9 @@ Every JPEG published here was separately inspected. Re-review media before
 replacing it; a checksum records a reviewed version and is not a privacy guarantee.
 
 `docs/assets/media-review.json` records the exact reviewed JPEG hashes and
-provenance. The release audit accepts only matching JPEGs in `docs/assets`;
-unlisted, changed, or other binary files still require review and fail the gate.
+provenance. The release audit accepts matching JPEGs in `docs/assets` and the two
+exact reviewed MP3 paths/hashes listed in its source. Other unreviewed or changed
+binary files still fail the gate; arbitrary recordings remain forbidden.
 
 ## Approved owner-run call examples
 
@@ -78,5 +79,11 @@ tests, not general reliability.
 Both original MP3s were decoded and automatically transcribed, then compared with
 the complete saved transcripts during a separate privacy review. No additional
 private details were found. The original MP3 bytes are unchanged and contain no
-embedded format tags. Public hosting remains pending; no public audio link is
-provided until upload of the actual reviewed recording is confirmed.
+embedded format tags. The original MP3s are hosted in this repository, linked
+from each full transcript and the README. Only the approved audio and primary
+transcript text are published; secondary review material remains private.
+
+| Original recording | Duration | SHA-256 |
+|---|---|---|
+| [Booking MP3](examples/audio/gregory-booking-test.mp3?raw=true) | 107.258750 seconds | `3f61131cd6a48162f173492ae6071ee919d2a83b6562d6a3f2c5f02df62a8afb` |
+| [Verification MP3](examples/audio/gregory-verification-test.mp3?raw=true) | 60.133875 seconds | `a3c257f7796cdc4288039513875f869fb74f9ddb41e06f4c4b5d0a3e88a5b20d` |

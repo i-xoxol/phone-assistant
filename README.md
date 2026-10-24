@@ -34,8 +34,10 @@ when the owner joins a conversation.
 
 ## Watch the overviews
 
-**Draft:** the reviewed short-form and cinematic videos are prepared; public
-video links are pending publication.
+| Short-form overview · 1:18 | Cinematic overview · 5:12 |
+|:---:|:---:|
+| [<img src="docs/assets/short-overview.jpg" alt="Conceptual NotebookLM video artwork: a phone inside layered paper rings" height="220">](https://github.com/user-attachments/assets/b265fb63-b578-4d29-a3cf-3bcc7131b640) | [<img src="docs/assets/cinematic-overview.jpg" alt="Conceptual NotebookLM video artwork: a paper figure carrying boxes beside a phone" width="360">](https://github.com/user-attachments/assets/eb4b858d-e842-43eb-a755-cca2225c4fae) |
+| **[Watch: Your Phone Finally Gets an AI Brain](https://github.com/user-attachments/assets/b265fb63-b578-4d29-a3cf-3bcc7131b640)** | **[Watch: The Anatomy of a Perfect Call](https://github.com/user-attachments/assets/eb4b858d-e842-43eb-a755-cca2225c4fae)** |
 
 These owner-provided **NotebookLM videos are AI-generated illustrative overviews**
 using owner-run test examples. Their graphics are conceptual; they are not product
@@ -102,8 +104,8 @@ are preserved. The transcripts were not reconstructed from the audio.
 
 | Test | What the saved transcript shows | Full transcript | Audio |
 |---|---|---|---|
-| **Booking · October 23, 4:44 PM New York** | Collects a name and purpose, offers Monday, October 26 at 10:15 AM, and speaks a confirmation. The spoken claim alone does not independently verify a calendar write. | [Read the booking test](docs/examples/gregory-booking-test.md) | Privacy-reviewed; public hosting pending |
-| **Follow-up verification · October 23, 4:49 PM New York** | Initially says **Sunday**, then corrects to **Monday** after the caller questions it. This is an error-and-recovery example, not flawless verification. | [Read the verification test](docs/examples/gregory-verification-test.md) | Privacy-reviewed; public hosting pending |
+| **Booking · October 23, 4:44 PM New York** | Collects a name and purpose, offers Monday, October 26 at 10:15 AM, and speaks a confirmation. The spoken claim alone does not independently verify a calendar write. | [Read the booking test](docs/examples/gregory-booking-test.md) | [Listen / download MP3 · 1:47](docs/examples/audio/gregory-booking-test.mp3?raw=true) |
+| **Follow-up verification · October 23, 4:49 PM New York** | Initially says **Sunday**, then corrects to **Monday** after the caller questions it. This is an error-and-recovery example, not flawless verification. | [Read the verification test](docs/examples/gregory-verification-test.md) | [Listen / download MP3 · 1:00](docs/examples/audio/gregory-verification-test.mp3?raw=true) |
 
 ## How it works
 
