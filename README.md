@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/hero.svg" alt="Phone Assistant — real calls, live conversation, human control" width="100%">
+  <img src="docs/assets/hero.svg" alt="Phone Assistant - real calls, live conversation, human control" width="100%">
 </p>
 
 <p align="center">
@@ -20,9 +20,9 @@ workflows add approved caller context, guarded appointments, and private coachin
 when the owner joins a conversation.
 
 <p align="center">
-  <a href="#watch-the-overviews">Watch the videos</a> ·
-  <a href="#see-the-interface">See the interface</a> ·
-  <a href="docs/getting-started.md">Set it up</a> ·
+  <a href="#watch-the-overviews">Watch the videos</a> �
+  <a href="#see-the-interface">See the interface</a> �
+  <a href="docs/getting-started.md">Set it up</a> �
   <a href="docs/architecture.md">Explore the architecture</a>
 </p>
 
@@ -71,27 +71,39 @@ preview; it is not part of the deployed monitor.
 
 Captions can lag or contain recognition errors. The monitor uses SSE with reconnect
 replay, and its hangup command goes directly to the service.
-[Pair a browser and use the monitor →](docs/live-monitor.md) ·
-[Reproduce the screenshots →](docs/media.md)
+[Pair a browser and use the monitor ](docs/live-monitor.md) �
+[Reproduce the screenshots ](docs/media.md)
 
 ## What you can do
 
 | Workflow | Implemented behavior | Read more |
 |---|---|---|
 | **Make the call** | Give an objective, context, constraints, and duration limit. GPT-Live handles audio and interruptions; restricted tools can navigate menus with DTMF. | [Calling API](docs/api.md) |
-| **Answer and take messages** | Message-taking or concierge mode, caller-confirmed messages, carrier-forwarding metadata, and independent office/owner-reach hours. | [Incoming calls](docs/incoming-calls.md) · [Hours](docs/operating-hours.md) |
-| **Stay in control** | Live captions, bounded context updates, direct hangup, private transcript review, and optional recording with a prepared notice and stop control. | [Monitor](docs/live-monitor.md) · [Recording](docs/recordings.md) |
-| **Keep useful context** | Contact language/style preferences, expiring phone-safe facts, anticipated-call notes, and optional bounded number-matched recall. Caller ID is an unverified hint. | [Context](docs/concierge-context.md) · [Memory](docs/call-memory.md) |
-| **Bring in help** | A subscribed MCP supervisor can answer time-bounded requests. A screened handoff can reach the configured owner; missing help falls back to message-taking. | [Supervision](docs/incoming-calls.md) · [Owner contact](docs/voice-and-owner-contact.md) |
+| **Answer and take messages** | Message-taking or concierge mode, caller-confirmed messages, carrier-forwarding metadata, and independent office/owner-reach hours. | [Incoming calls](docs/incoming-calls.md) � [Hours](docs/operating-hours.md) |
+| **Stay in control** | Live captions, bounded context updates, direct hangup, private transcript review, and optional recording with a prepared notice and stop control. | [Monitor](docs/live-monitor.md) � [Recording](docs/recordings.md) |
+| **Keep useful context** | Contact language/style preferences, expiring phone-safe facts, anticipated-call notes, and optional bounded number-matched recall. Caller ID is an unverified hint. | [Context](docs/concierge-context.md) � [Memory](docs/call-memory.md) |
+| **Bring in help** | A subscribed MCP supervisor can answer time-bounded requests. A screened handoff can reach the configured owner; missing help falls back to message-taking. | [Supervision](docs/incoming-calls.md) � [Owner contact](docs/voice-and-owner-contact.md) |
 | **Coach privately, when enabled** | TTS, hybrid caption-fed Live, or native Realtime audio hints on the owner's channel. Native transport supports a local two-leg bridge or managed conference. | [Coaching modes](docs/feature-reference.md#private-owner-coaching-options) |
 | **Offer guarded appointments, when enabled** | Bounded discovery or exact-slot checks, fresh calendar evidence, observed spoken consent, deterministic creation, independent readback, and a private registry. Google is the implemented live adapter. | [Appointments](docs/appointments.md) |
-| **Connect your agents** | OAuth MCP, authenticated REST, signed call/line events, and an operator-configured webhook. Subscriptions need a real receiver and renewal. | [MCP](docs/mcp.md) · [Events](docs/webhooks.md) |
+| **Connect your agents** | OAuth MCP, authenticated REST, signed call/line events, and an operator-configured webhook. Subscriptions need a real receiver and renewal. | [MCP](docs/mcp.md) � [Events](docs/webhooks.md) |
 
 Calling does not enable booking. Appointment tools need separate read/book/manage
 grants; existing `phone.calls` tokens do not gain them automatically. A proposed
 slot is not a reservation. Post-call summaries come from a supervising agent using
 the transcript; the service does not run an automatic summary model.
-[Detailed workflow boundaries →](docs/feature-reference.md)
+[Detailed workflow boundaries ](docs/feature-reference.md)
+
+## Owner-run test examples
+
+These complete automatic transcripts come from explicitly approved tests in which
+the owner role-played Gregory. They are not verified student calls or reliability
+measurements. Timestamps, recognition errors, pauses, and overlapping fragments
+are preserved. The transcripts were not reconstructed from the audio.
+
+| Test | What the saved transcript shows | Full transcript | Audio |
+|---|---|---|---|
+| **Booking � October 23, 4:44 PM New York** | Collects a name and purpose, offers Monday, October 26 at 10:15 AM, and speaks a confirmation. The spoken claim alone does not independently verify a calendar write. | [Read the booking test](docs/examples/gregory-booking-test.md) | Pending retrieval and review |
+| **Follow-up verification � October 23, 4:49 PM New York** | Initially says **Sunday**, then corrects to **Monday** after the caller questions it. This is an error-and-recovery example, not flawless verification. | [Read the verification test](docs/examples/gregory-verification-test.md) | Pending retrieval and review |
 
 ## How it works
 
@@ -109,7 +121,7 @@ flowchart LR
 One call manager serves the REST, MCP, Twilio, and browser interfaces. Optional
 supervision, restricted backend tools, private coaching, and the appointment
 registry extend that core. In-process media sessions and locks require **one
-Uvicorn worker**. [Full architecture and data flow →](docs/architecture.md)
+Uvicorn worker**. [Full architecture and data flow ](docs/architecture.md)
 
 ## Quick start
 
@@ -181,7 +193,7 @@ codex mcp login phone_assistant
 For ChatGPT, add your `/mcp` URL as a custom MCP plugin with **OAuth**, approve the
 connection using the pairing code, and enable the plugin in the conversation.
 Client/account availability varies. Browser pairing is a separate flow.
-[Connection guide and permissions →](docs/mcp.md)
+[Connection guide and permissions ](docs/mcp.md)
 
 ## Documentation
 
@@ -230,8 +242,8 @@ python -m scripts.audit_release
 Provider-mocked tests need no real credentials and do not place calls. CI covers
 Python 3.11, 3.12, and 3.14. Manual provider checks are separate.
 
-Created by **Igor Khokhlov** · [MIT license](LICENSE) ·
-[Contributing](CONTRIBUTING.md) · [Report a vulnerability](SECURITY.md)
+Created by **Igor Khokhlov** � [MIT license](LICENSE) �
+[Contributing](CONTRIBUTING.md) � [Report a vulnerability](SECURITY.md)
 
 Keep credentials, private operational records, and unapproved call data out of
 public issues and pull requests. Publish owner-run test examples only with explicit
