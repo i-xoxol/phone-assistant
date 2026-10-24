@@ -40,8 +40,8 @@ real student calls, or independent reliability evidence. Narrated scenarios can
 simplify implementation details; use the current guides for supported behavior,
 permissions, provider dependencies, and limits.
 
-The reviewed original MP4s are hosted as GitHub attachments linked from the
-README. No private Drive URL, signed download URL, review transcript, or sharing
+The reviewed original MP4s are prepared for GitHub attachment hosting. Publication
+and README video links are pending while this pull request remains a draft. No private Drive URL, signed download URL, review transcript, or sharing
 permission is published. The preview JPEGs are unmodified video frames from
 approximately two seconds into each video.
 

@@ -33,7 +33,8 @@ when the owner joins a conversation.
 
 ## Watch the overviews
 
-<!-- Reviewed video cards are inserted here before publication. -->
+**Draft:** the reviewed short-form and cinematic videos are prepared; public
+video links are pending publication.
 
 These owner-provided **NotebookLM videos are AI-generated illustrative overviews**
 using owner-run test examples. Their graphics are conceptual; they are not product
