@@ -102,8 +102,8 @@ are preserved. The transcripts were not reconstructed from the audio.
 
 | Test | What the saved transcript shows | Full transcript | Audio |
 |---|---|---|---|
-| **Booking · October 23, 4:44 PM New York** | Collects a name and purpose, offers Monday, October 26 at 10:15 AM, and speaks a confirmation. The spoken claim alone does not independently verify a calendar write. | [Read the booking test](docs/examples/gregory-booking-test.md) | Pending retrieval and review |
-| **Follow-up verification · October 23, 4:49 PM New York** | Initially says **Sunday**, then corrects to **Monday** after the caller questions it. This is an error-and-recovery example, not flawless verification. | [Read the verification test](docs/examples/gregory-verification-test.md) | Pending retrieval and review |
+| **Booking · October 23, 4:44 PM New York** | Collects a name and purpose, offers Monday, October 26 at 10:15 AM, and speaks a confirmation. The spoken claim alone does not independently verify a calendar write. | [Read the booking test](docs/examples/gregory-booking-test.md) | Privacy-reviewed; public hosting pending |
+| **Follow-up verification · October 23, 4:49 PM New York** | Initially says **Sunday**, then corrects to **Monday** after the caller questions it. This is an error-and-recovery example, not flawless verification. | [Read the verification test](docs/examples/gregory-verification-test.md) | Privacy-reviewed; public hosting pending |
 
 ## How it works
 

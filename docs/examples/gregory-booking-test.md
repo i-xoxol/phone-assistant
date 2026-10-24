@@ -7,7 +7,7 @@ Recorded October 23, 2026, 4:44 PM America/New_York.
 
 Source: complete saved automatic call transcript. Consecutive fragments by the same speaker are joined without rewriting; timing and speech-recognition errors remain. Caller is the owner role-playing Gregory, not a verified student. Timestamps are relative to the transcript stream and may differ slightly from the audio.
 
-**Audio: pending retrieval and review.** No public recording link is available yet.
+**Audio: privacy-reviewed; public hosting pending.** No public recording link is available yet.
 The spoken confirmation below does not independently establish that a calendar
 write succeeded. This is one approved owner-run test example, not a reliability
 measurement.

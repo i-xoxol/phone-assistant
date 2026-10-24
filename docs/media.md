@@ -75,5 +75,8 @@ The booking transcript's spoken confirmation is not independent proof of a
 successful calendar write. These examples illustrate observed speech in two
 tests, not general reliability.
 
-Audio retrieval and review remain pending for both examples. No public audio link
-is provided until the actual recording is available and cleared for publication.
+Both original MP3s were decoded and automatically transcribed, then compared with
+the complete saved transcripts during a separate privacy review. No additional
+private details were found. The original MP3 bytes are unchanged and contain no
+embedded format tags. Public hosting remains pending; no public audio link is
+provided until upload of the actual reviewed recording is confirmed.
