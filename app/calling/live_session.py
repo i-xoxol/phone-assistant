@@ -160,10 +160,36 @@ class MediaBridge:
         self.tools = VoiceTools(self)
         previous = manager.db.get(call_id)['transcript']
         self.transcript_offset_ms = int(max((e['end_timestamp'] for e in previous), default=0) * 1000)
+        self.continuity_pending = bool(self.inbound and previous)
+        self.continuity_sent = False
+        self.continuity_event_id = 'call_continuity_' + stream_sid
+
+    def note_conversation_progress(self):
+        if self.inbound and self.assistant_spoke and self.caller_spoke and not self.continuity_sent:
+            self.continuity_pending = True
+            self.updates_ready.set()
 
     async def send_pending_updates(self):
         async with self.updates_lock:
             record = self.manager.db.get(self.call_id)
+            if (self.closing or self.handoff or self.end_requested.is_set()
+                    or self.call_id in self.manager.stopping or record['status'] in TERMINAL
+                    or self.manager.bridges.get(self.call_id) is not self):
+                return
+            if self.continuity_pending and not self.continuity_sent:
+                from app.calling.inbound import INCOMING_CALL_CONTINUITY
+                # One phase update, sent by the existing update worker so audio
+                # reception never waits for this optional instruction.
+                self.continuity_sent = True
+                try:
+                    await asyncio.wait_for(self.connection.session.instructions.append(
+                        content=INCOMING_CALL_CONTINUITY, delegation_id=None,
+                        event_id=self.continuity_event_id), 3)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    log_event('call_continuity_unconfirmed', call_id=self.call_id,
+                              error_type=type(exc).__name__)
             for row in record['call_updates']:
                 if (self.closing or self.handoff or self.end_requested.is_set()
                         or self.call_id in self.manager.stopping or record['status'] in TERMINAL
@@ -174,10 +200,14 @@ class MediaBridge:
                     continue
                 event_id = 'call_update_' + row['update_id']
                 channel = {'context': 'thinking', 'say': 'commentary', 'instructions': 'instructions'}[row['mode']]
+                content='Owner update within existing policy; no expanded authorization:\n' + row['content']
+                if self.inbound and (self.assistant_spoke or self.caller_spoke or record['transcript']):
+                    from app.calling.inbound import INCOMING_CALL_CONTINUITY
+                    content=INCOMING_CALL_CONTINUITY+'\n'+content
                 try:
                     await asyncio.wait_for(getattr(self.connection.session, channel).append(
                         event_id=event_id, delegation_id=None,
-                        content='Owner update within existing policy; no expanded authorization:\n' + row['content']), 5)
+                        content=content), 5)
                 except asyncio.CancelledError:
                     self.manager.db.finish_update(self.call_id, row['update_id'], self.session_id,
                         'unconfirmed', error_code='send_interrupted')
@@ -196,6 +226,11 @@ class MediaBridge:
 
     def update_event(self, data):
         event_id = (data.get('error', {}).get('client_event_id') if data['type'] == 'error' else None) or data.get('client_event_id')
+        if event_id == self.continuity_event_id:
+            if data['type'] == 'error':
+                # A rejected optional phase update must not end a healthy call.
+                log_event('call_continuity_rejected', call_id=self.call_id)
+            return data['type'] in ('error', 'session.instructions.appended')
         if not isinstance(event_id, str) or not event_id.startswith('call_update_'):
             return False
         update_id = event_id.removeprefix('call_update_')
@@ -327,6 +362,7 @@ class MediaBridge:
                         'start_ms': data['start_ms'] + self.transcript_offset_ms,
                         'end_ms': data['end_ms'] + self.transcript_offset_ms}
                 self.manager.db.transcript(self.call_id, data)
+                self.note_conversation_progress()
                 gateway=getattr(self.manager,'appointments',None)
                 if self.inbound and gateway and self.manager.settings.appointments_enabled:
                     gateway.voice_workflow.notify(self,caller=event.type=='session.input_transcript.delta')
@@ -371,7 +407,9 @@ class MediaBridge:
         if not content: return
         self.greeting_nudged=True
         try:
-            await asyncio.wait_for(self.connection.session.commentary.append(content=content,
+            await asyncio.wait_for(self.connection.session.commentary.append(content=(
+                'One-time startup opening only. If the conversation has already started, do not repeat it. '
+                'Otherwise greet once, then listen. Opening: '+content),
                 delegation_id=None,event_id='startup_greeting_fallback'),3)
             log_event('gpt_live_greeting_nudged',call_id=self.call_id)
         except Exception as exc:

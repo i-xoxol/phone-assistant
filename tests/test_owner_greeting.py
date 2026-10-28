@@ -71,7 +71,8 @@ def test_actual_silent_start_commentary_for_owner_has_no_old_introduction(servic
     async def run():
         await bridge.nudge_greeting();await bridge.nudge_greeting()
     asyncio.run(run())
-    assert len(sent)==1 and sent[0]['content']=="Hi, Alex! What's up?"
+    assert len(sent)==1 and sent[0]['content'].endswith("Hi, Alex! What's up?")
+    assert sent[0]['content'].startswith('One-time startup opening only.')
 
 
 @pytest.mark.parametrize('variant',['untrusted','duplicate','mismatched_metadata','forwarding_ambiguous',

@@ -9,6 +9,26 @@ from app.calling.identity import owner_identity_policy, owner_words
 from app.calling.languages import LANGUAGE_TOOL,localized_greeting
 
 
+INCOMING_CALL_CONTINUITY = (
+    'This phone conversation is already underway; the opening is finished. '
+    'Continue the current caller request, not a new call. Do not repeat your greeting, name, '
+    'assistant role or office announcement unless the caller explicitly asks who is speaking. '
+    'A context refresh is not a restart. If the caller says hello or asks whether you are there, '
+    'acknowledge them and respond to what they just told you, without asking them to start again.'
+)
+
+INCOMING_CONTINUITY_POLICY = '''\nCONVERSATION PROGRESS: The startup greeting applies ONCE, only at the beginning of this call.
+After the first exchange, continue the same conversation. Do not repeat the opening, office announcement,
+your name or assistant introduction unless the caller explicitly asks who is speaking.
+A caller giving their name is not a new call. A background context, availability, language or supervisor
+update is not a restart. Preserve the caller's stated purpose and everything they have already told you.
+If they say "Hello?", your name, or "Are you there?" after explaining a request, briefly acknowledge them
+and answer that request. Never replay the opening or ask "How can I help?" when they already explained it.
+Let callers finish a long message. Then briefly summarize the message they actually gave, ask whether
+you have it right, and use save_message only after their confirmation. Do not make them repeat their
+whole message, claim it was saved before tool success, or promise owner receipt or action.\n'''
+
+
 class MessageArguments(BaseModel):
     model_config = ConfigDict(extra='forbid')
     caller_name: str = Field(max_length=200)
@@ -507,6 +527,9 @@ If caller_identity_ambiguous is true, do not offer the presented number for call
             'Use only the explicitly listed tools, including the bounded appointment tools. No generic calendar operations.')
         backend=backend.replace('Only get_call_context, request_supervisor, save_message and end_call are available.',
             'Use only the explicitly listed tools, including the bounded appointment tools. No generic calendar operations.')
+    opening+=' This is a one-time startup instruction, not a request to greet again later in the conversation.'
+    instructions+=INCOMING_CONTINUITY_POLICY
+    backend+=INCOMING_CONTINUITY_POLICY
     return {'model':settings.openai_live_model, 'instructions':instructions,
         'input':[{'type':'message','role':'developer','content':[{'type':'input_text','text':opening}]}],
         'audio':{'format':{'type':'audio/pcmu', 'rate':8000}, 'output':{'voice':record.get('voice_name') or settings.openai_voice}},
