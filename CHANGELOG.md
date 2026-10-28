@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep incoming greetings to the opening of each call; preserve message-taking progress through background context updates and caller "Hello?" checks, including resumed voice sessions.
 - In-place OAuth approval for the optional appointment tools: accurate per-tool scopes, ChatGPT authorization prompts and a safe permission check, preserving existing calls and event subscriptions.
 - Optional two-leg local audio bridge for full Realtime coaching: 20 ms PCMU relay, owner-only mixing, source-labelled input, independent captions, bounded buffers and inline two-person Twilio fallback without a coach call.
 - Keep human audio flowing when native model processing fails; preserve recovery when a disconnected socket task is cancelled, and withhold stale/paused coaching at playback.

@@ -12,6 +12,18 @@ The voice model has no calendar credentials and cannot book independently.
 An incoming phone call is not an authenticated owner request. Caller ID,
 forwarding metadata, familiar names, and voice are all unverified.
 
+The initial greeting is used once per call. Once speech has begun, the
+existing live-update worker includes a conversation-progress reminder in
+owner/context updates without adding extra events. A refresh, a caller giving
+their name, or "Hello? Are you there?" does not restart the greeting. The assistant
+should acknowledge the current request and confirm a message before saving it.
+Existing update acknowledgment, error handling and booking timing are preserved.
+
+Offline regressions cover long messages, context refreshes, resumed sessions and
+handoff/stop boundaries. A separate synthetic real-provider check, using temporary
+databases and no telephone/calendar actions, is available with
+`python -m scripts.check_incoming_continuity` on the configured service host.
+
 ## 1. Enable incoming voice on the service host
 
 Start with the existing outbound setup and public HTTPS/WSS origin. Add to `.env`:

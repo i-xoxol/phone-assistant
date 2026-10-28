@@ -174,10 +174,14 @@ class MediaBridge:
                     continue
                 event_id = 'call_update_' + row['update_id']
                 channel = {'context': 'thinking', 'say': 'commentary', 'instructions': 'instructions'}[row['mode']]
+                content='Owner update within existing policy; no expanded authorization:\n' + row['content']
+                if self.inbound and (self.assistant_spoke or self.caller_spoke or record['transcript']):
+                    from app.calling.inbound import INCOMING_CALL_CONTINUITY
+                    content=INCOMING_CALL_CONTINUITY+'\n'+content
                 try:
                     await asyncio.wait_for(getattr(self.connection.session, channel).append(
                         event_id=event_id, delegation_id=None,
-                        content='Owner update within existing policy; no expanded authorization:\n' + row['content']), 5)
+                        content=content), 5)
                 except asyncio.CancelledError:
                     self.manager.db.finish_update(self.call_id, row['update_id'], self.session_id,
                         'unconfirmed', error_code='send_interrupted')
@@ -371,7 +375,9 @@ class MediaBridge:
         if not content: return
         self.greeting_nudged=True
         try:
-            await asyncio.wait_for(self.connection.session.commentary.append(content=content,
+            await asyncio.wait_for(self.connection.session.commentary.append(content=(
+                'One-time startup opening only. If the conversation has already started, do not repeat it. '
+                'Otherwise greet once, then listen. Opening: '+content),
                 delegation_id=None,event_id='startup_greeting_fallback'),3)
             log_event('gpt_live_greeting_nudged',call_id=self.call_id)
         except Exception as exc:
