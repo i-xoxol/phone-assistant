@@ -38,7 +38,7 @@ async def check(env_file):
         config = session_config(settings, manager.voice_record(cid))
         config['input'] += [{'type':'message','role':'assistant' if speaker=='assistant' else 'user',
             'content':[{'type':'output_text' if speaker=='assistant' else 'input_text','text':text}]} for speaker,text in history]
-        transcript = ''; audio = False; phase_ack = False; update_ack = False
+        transcript = ''; audio = False; update_ack = False
         try:
             async with live_client(settings) as client:
                 async with client.live.connect() as connection:
@@ -62,7 +62,6 @@ async def check(env_file):
                                 elif event.type == 'session.output_audio.delta':
                                     audio = audio or has_speech(base64.b64decode(data['delta'],validate=True))
                                 elif event.type == 'session.instructions.appended':
-                                    phase_ack |= data.get('client_event_id') == bridge.continuity_event_id
                                     update_ack |= data.get('client_event_id') == 'call_update_'+update['update_id']
                                 elif event.type == 'error':raise RuntimeError('Live rejected the continuity check')
                     except TimeoutError:
@@ -73,11 +72,11 @@ async def check(env_file):
             continued = bool(re.search(r'fan|noise|noisy|keeping.*awake|switch.*off',transcript,re.I))
             repeated = bool(re.search(r"you.ve reached|office of|I(?:'m| am) Rocky|(?:his|your|Alex.s) assistant|how can I help",transcript,re.I))
             result = {'synthetic_only':True,'telephone_dialed':False,'calendar_writes':0,
-                'audio_received':audio,'phase_acknowledged':phase_ack,'context_update_acknowledged':update_ack,
+                'audio_received':audio,'context_update_acknowledged':update_ack,
                 'current_message_acknowledged':continued,'opening_repeated':repeated,
                 'synthetic_reply':transcript.strip()}
             print(json.dumps(result,ensure_ascii=False),flush=True)
-            if not (audio and phase_ack and update_ack and continued and not repeated):
+            if not (audio and update_ack and continued and not repeated):
                 raise RuntimeError('Continuity behavior was not verified')
         finally:
             await manager.stop_supervision()

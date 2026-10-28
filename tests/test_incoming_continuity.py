@@ -57,13 +57,12 @@ def test_long_message_context_refresh_and_hello_do_not_requeue_opening(service, 
                 await connection.events.put(Event(type='session.'+('output' if speaker=='assistant' else 'input')+'_transcript.delta',
                     event_id=str(start), delta=text, start_ms=start, end_ms=start+1000))
             async with asyncio.timeout(1):
-                while not bridge.continuity_pending:await asyncio.sleep(0)
+                while not (bridge.assistant_spoke and bridge.caller_spoke):await asyncio.sleep(0)
             # Same automatic profile/availability notification as in a live conversation.
             await manager.context_changed()
-            assert len(connection.updates) == 2
-            phase, update = [entry[1] for entry in connection.updates]
-            assert phase['event_id'] == bridge.continuity_event_id
-            assert phase['content'] == INCOMING_CALL_CONTINUITY and phase['delegation_id'] is None
+            assert len(connection.updates) == 1
+            update = connection.updates[0][1]
+            assert update['delegation_id'] is None
             assert update['content'].startswith(INCOMING_CALL_CONTINUITY)
             assert 'delegate to get_call_context' in update['content']
             bridge.update_event({'type':'session.instructions.appended','client_event_id':update['event_id']})
@@ -73,7 +72,7 @@ def test_long_message_context_refresh_and_hello_do_not_requeue_opening(service, 
                 while len(manager.db.get(cid)['transcript']) < 5:await asyncio.sleep(0)
             await bridge.send_pending_updates()
             await bridge.nudge_greeting()
-            assert len(connection.updates) == 2  # No repeat phase, startup nudge or extra tool action.
+            assert len(connection.updates) == 1  # No repeat opening or extra tool action.
             result = manager.db.get(cid)
             assert 'noisy fan' in ''.join(t['text'] for t in result['transcript'])
             assert result['call_updates'][0]['status'] == 'acknowledged'
@@ -103,41 +102,11 @@ def test_resumed_call_gets_continuity_once_without_startup_nudge(service, monkey
     cid, connection, bridge = incoming(manager, previous=True)
     monkeypatch.setattr('app.calling.live_session.GREETING_NUDGE_SECONDS', 0)
     async def exercise():
+        update = await manager.send_call_update(cid, CallUpdateRequest(content='Keep listening to this caller.'))
         await asyncio.gather(bridge.send_pending_updates(), bridge.send_pending_updates())
         await bridge.nudge_greeting()
         assert len(connection.updates) == 1
-        assert connection.updates[0][1]['event_id'] == bridge.continuity_event_id
+        assert connection.updates[0][1]['event_id'] == 'call_update_'+update['update_id']
+        assert connection.updates[0][1]['content'].startswith(INCOMING_CALL_CONTINUITY)
         assert manager.db.get(cid)['status'] == 'in_progress'
-    asyncio.run(exercise())
-
-
-@pytest.mark.parametrize('stopping', ['closing','handoff','ending','manager_stopping'])
-def test_phase_update_respects_call_stop_and_handoff(service, stopping):
-    _, manager, _ = service
-    cid, connection, bridge = incoming(manager, previous=True)
-    if stopping == 'ending':bridge.end_requested.set()
-    elif stopping == 'manager_stopping':manager.stopping.add(cid)
-    else:setattr(bridge, stopping, True)
-    asyncio.run(bridge.send_pending_updates())
-    assert not connection.updates
-
-
-def test_optional_phase_send_failure_or_provider_rejection_preserves_call(service):
-    _, manager, gateway = service
-    cid, connection, bridge = incoming(manager, previous=True)
-    original = connection.session.instructions.append
-    attempts = []
-    async def append(**kwargs):
-        if kwargs['event_id'] == bridge.continuity_event_id:
-            attempts.append(kwargs)
-            raise RuntimeError('private-provider-detail')
-        await original(**kwargs)
-    connection.session.instructions.append = append
-    async def exercise():
-        await bridge.send_pending_updates()
-        row = await manager.send_call_update(cid, CallUpdateRequest(content='A current factual update.'))
-        assert row['status'] == 'sent' and len(attempts) == 1
-        assert bridge.update_event({'type':'error','error':{'client_event_id':bridge.continuity_event_id}})
-        assert bridge.update_event({'type':'session.instructions.appended','client_event_id':bridge.continuity_event_id})
-        assert not gateway.calls and manager.db.get(cid)['status'] == 'in_progress'
     asyncio.run(exercise())
