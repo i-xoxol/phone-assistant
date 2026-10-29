@@ -41,7 +41,6 @@ def test_voice_and_backend_preserve_call_progress(service, mode, continued):
 def test_long_message_context_refresh_and_hello_do_not_requeue_opening(service, monkeypatch):
     _, manager, gateway = service
     cid, connection, bridge = incoming(manager)
-    monkeypatch.setattr('app.calling.live_session.GREETING_NUDGE_SECONDS', 0)
 
     async def exercise():
         receiver = asyncio.create_task(bridge.receive_live())
@@ -100,7 +99,6 @@ def test_all_midcall_update_channels_keep_original_payload_and_progress(service,
 def test_resumed_call_gets_continuity_once_without_startup_nudge(service, monkeypatch):
     _, manager, _ = service
     cid, connection, bridge = incoming(manager, previous=True)
-    monkeypatch.setattr('app.calling.live_session.GREETING_NUDGE_SECONDS', 0)
     async def exercise():
         update = await manager.send_call_update(cid, CallUpdateRequest(content='Keep listening to this caller.'))
         await asyncio.gather(bridge.send_pending_updates(), bridge.send_pending_updates())

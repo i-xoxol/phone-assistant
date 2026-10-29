@@ -117,7 +117,6 @@ PLAYBACK_LIMIT_BYTES = 24000  # Three seconds of 8 kHz G.711 audio.
 PLAYBACK_CHUNK_BYTES = 800
 PLAYBACK_STALL_SECONDS = 3
 FINALIZATION_TIMEOUT_SECONDS = 5
-GREETING_NUDGE_SECONDS = .35
 
 
 def has_speech(payload: bytes) -> bool:
@@ -367,7 +366,6 @@ class MediaBridge:
             raise BridgeFailure('live_transport_closed_without_finalization')
 
     async def nudge_greeting(self):
-        await asyncio.sleep(GREETING_NUDGE_SECONDS)
         if (not self.inbound or self.greeting_nudged or self.assistant_spoke or self.caller_spoke or self.closing
                 or self.end_requested.is_set() or self.call_id in self.manager.stopping): return
         from app.calling.inbound import startup_greeting_content

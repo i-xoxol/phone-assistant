@@ -47,7 +47,6 @@ def test_silent_start_gets_only_one_phone_safe_greeting_nudge(service,monkeypatc
     connection.session.commentary=SimpleNamespace(append=append)
     bridge=MediaBridge(None,connection,m,cid,'MZ_TEST')
     bridge.caller_spoke=already_speaking=='caller';bridge.assistant_spoke=already_speaking=='assistant'
-    monkeypatch.setattr('app.calling.live_session.GREETING_NUDGE_SECONDS',0)
     async def exercise():
         await bridge.nudge_greeting();await bridge.nudge_greeting()
     asyncio.run(exercise())
