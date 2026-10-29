@@ -44,6 +44,8 @@ class CallManager:
         self.lookup = LookupService(self)
         from app.calling.greeting import GreetingPreparation
         self.greetings = GreetingPreparation(self)
+        from app.calling.warm_socket import WarmSockets
+        self.warm_sockets = WarmSockets(self)
         self.voices = VoicePreferences(database,settings)
         self.transfer = OwnerTransfer(self)
         from app.calling.owner_screening import OwnerScreening
@@ -189,6 +191,7 @@ class CallManager:
                 'note':'Reply injection is not proof the caller heard it. Verify transcript; never repeat a booking on a delivery retry.'}
 
     async def stop_supervision(self):
+        await self.warm_sockets.stop()
         if self.appointments:await self.appointments.close()
         await self.screening.stop()
         await self.observer.stop()
@@ -282,6 +285,7 @@ class CallManager:
             if status in TERMINAL:
                 self.observer.call_ended(call_id)
                 self.greetings.ended(call_id)
+                self.warm_sockets.ended(call_id)
 
     def status(self, call_id: str) -> dict:
         record = self.db.get(call_id)

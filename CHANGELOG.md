@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Prepare incoming OpenAI sockets during the configured ring delay, promptly start the greeting after answer, and safely close or retry unused or stale sockets.
 - Keep incoming greetings to the opening of each call; preserve message-taking progress through background context updates and caller "Hello?" checks, including resumed voice sessions.
 - In-place OAuth approval for the optional appointment tools: accurate per-tool scopes, ChatGPT authorization prompts and a safe permission check, preserving existing calls and event subscriptions.
 - Optional two-leg local audio bridge for full Realtime coaching: 20 ms PCMU relay, owner-only mixing, source-labelled input, independent captions, bounded buffers and inline two-person Twilio fallback without a coach call.
