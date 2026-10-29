@@ -19,6 +19,15 @@ their name, or "Hello? Are you there?" does not restart the greeting. The assist
 should acknowledge the current request and confirm a message before saving it.
 Existing update acknowledgment, error handling and booking timing are preserved.
 
+When an incoming answer delay is configured, the server can prepare an OpenAI
+WebSocket during ringing. It starts no voice session and sends no caller audio
+until Twilio's signed media stream has connected and the call-duration cap is
+confirmed. Unanswered calls, failed preparation and shutdown close the socket;
+the normal connection path is used if preparation is unavailable. A stale
+prepared transport is retried once with a fresh connection. The recording
+notice remains in its normal place before the media stream. Network and model
+startup still add variable latency.
+
 Offline regressions cover long messages, context refreshes, resumed sessions and
 handoff/stop boundaries. A separate synthetic real-provider check, using temporary
 databases and no telephone/calendar actions, is available with
@@ -45,7 +54,7 @@ access even if outbound `LIVE_TOOLS_ENABLED=false`.
 Restart with no active calls. There is one incoming conversation at a time,
 a connected-call cap of 1–15 minutes (default five), and an hourly admission
 limit (default ten). Once the signed media start confirms the call was answered,
-the app sets Twilio's duration limit before connecting GPT-Live. It must not
+the app sets Twilio's duration limit before starting a GPT-Live session. It must not
 modify a still-ringing call from the initial webhook (Twilio rejects that with
 21220). Status callbacks remain configured on the owned phone number; updating
 them per call would require a redirect URL. Failure to establish the cap closes

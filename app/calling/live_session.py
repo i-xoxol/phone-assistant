@@ -8,8 +8,10 @@ from contextlib import AsyncExitStack, asynccontextmanager, suppress
 
 from fastapi import WebSocket, WebSocketDisconnect
 from openai import AsyncOpenAI
+from openai import APIConnectionError
 from twilio.request_validator import RequestValidator
 from twilio.base.exceptions import TwilioRestException
+from websockets.exceptions import ConnectionClosed
 
 from app.calling.prompts import greeting_instruction, session_config
 from app.logging_config import log_event
@@ -49,6 +51,19 @@ def live_client(settings):
 @asynccontextmanager
 async def prepared_connection(settings,manager,record):
     """Overlap socket setup with the inbound cap; start no session until both succeed."""
+    if record.get('direction') == 'inbound':
+        entry = await manager.warm_sockets.take(record['call_id']) if record.get('call_id') else None
+        if entry:
+            try:
+                try:
+                    await asyncio.wait_for(manager.gateway.prepare_inbound(
+                        record['twilio_call_sid'], record['max_duration_minutes']), 5)
+                except Exception as exc:
+                    raise BridgeFailure('incoming_duration_limit_failed') from exc
+                yield entry.connection
+            finally:
+                entry.release.set()
+            return
     async with live_client(settings) as client, AsyncExitStack() as stack:
         if record.get('direction')!='inbound':
             yield await stack.enter_async_context(client.live.connect())
@@ -95,6 +110,30 @@ async def start_session(connection, config: dict) -> dict:
     raise BridgeFailure('live_closed_before_start')
 
 
+@asynccontextmanager
+async def started_connection(settings, manager, record):
+    """Retry a dead preconnected transport once using the existing fresh path."""
+    call_id = record['call_id']
+    async with AsyncExitStack() as stack:
+        connection = await stack.enter_async_context(prepared_connection(settings, manager, record))
+        entry = manager.warm_sockets.entries.get(call_id)
+        warmed = bool(entry and entry.claimed.is_set() and entry.connection is connection)
+        record = manager.voice_record(call_id)
+        try:
+            started = await start_session(connection, session_config(settings, record))
+        except (ConnectionClosed, APIConnectionError, OSError, TimeoutError, BridgeFailure) as exc:
+            retryable = (not isinstance(exc, BridgeFailure) or exc.reason in
+                         ('live_closed_before_start', 'live_initialization_rejected'))
+            if not warmed or not retryable or manager.db.get(call_id)['status'] in TERMINAL:
+                raise
+            log_event('incoming_voice_socket_retry', call_id=call_id, error_type=type(exc).__name__)
+            await stack.aclose()
+            connection = await stack.enter_async_context(prepared_connection(settings, manager, record))
+            record = manager.voice_record(call_id)
+            started = await start_session(connection, session_config(settings, record))
+        yield connection, record, started
+
+
 def valid_stream_start(settings, record: dict, start: dict) -> bool:
     fmt = start.get('mediaFormat', {})
     return (start.get('accountSid') == settings.twilio_account_sid
@@ -117,7 +156,6 @@ PLAYBACK_LIMIT_BYTES = 24000  # Three seconds of 8 kHz G.711 audio.
 PLAYBACK_CHUNK_BYTES = 800
 PLAYBACK_STALL_SECONDS = 3
 FINALIZATION_TIMEOUT_SECONDS = 5
-GREETING_NUDGE_SECONDS = .35
 
 
 def has_speech(payload: bytes) -> bool:
@@ -367,7 +405,6 @@ class MediaBridge:
             raise BridgeFailure('live_transport_closed_without_finalization')
 
     async def nudge_greeting(self):
-        await asyncio.sleep(GREETING_NUDGE_SECONDS)
         if (not self.inbound or self.greeting_nudged or self.assistant_spoke or self.caller_spoke or self.closing
                 or self.end_requested.is_set() or self.call_id in self.manager.stopping): return
         from app.calling.inbound import startup_greeting_content
@@ -493,9 +530,7 @@ async def handle_media(websocket: WebSocket, call_id: str):
         from app.calling.transfer import remaining_seconds
         if remaining_seconds(manager.db.get(call_id))<=0:
             raise BridgeFailure('call_duration_exhausted')
-        async with prepared_connection(settings,manager,record) as connection:
-            record = manager.voice_record(call_id)
-            started = await start_session(connection, session_config(settings, record))
+        async with started_connection(settings,manager,record) as (connection, record, started):
             manager.db.restore_updates(call_id, record['call_updates'])
             manager.db.update(call_id, openai_session_id=started['session']['id'], voice_finalized=0)
             log_event('gpt_live_connected', call_id=call_id)

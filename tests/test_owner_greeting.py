@@ -67,7 +67,6 @@ def test_actual_silent_start_commentary_for_owner_has_no_old_introduction(servic
     async def append(**kwargs): sent.append(kwargs)
     connection.session.commentary=SimpleNamespace(append=append)
     bridge=MediaBridge(None,connection,m,cid,'MZ_OWNER_GREETING')
-    monkeypatch.setattr('app.calling.live_session.GREETING_NUDGE_SECONDS',0)
     async def run():
         await bridge.nudge_greeting();await bridge.nudge_greeting()
     asyncio.run(run())
