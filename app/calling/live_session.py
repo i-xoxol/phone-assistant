@@ -122,7 +122,8 @@ async def started_connection(settings, manager, record):
         try:
             started = await start_session(connection, session_config(settings, record))
         except (ConnectionClosed, APIConnectionError, OSError, TimeoutError, BridgeFailure) as exc:
-            retryable = not isinstance(exc, BridgeFailure) or exc.reason == 'live_closed_before_start'
+            retryable = (not isinstance(exc, BridgeFailure) or exc.reason in
+                         ('live_closed_before_start', 'live_initialization_rejected'))
             if not warmed or not retryable or manager.db.get(call_id)['status'] in TERMINAL:
                 raise
             log_event('incoming_voice_socket_retry', call_id=call_id, error_type=type(exc).__name__)
