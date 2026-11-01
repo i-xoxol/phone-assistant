@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Give the phone assistant a gently reserved delivery, natural thinking sounds and a light Ukrainian accent in English while retaining prompt greetings, initiative on authorized tasks and owner approval boundaries.
 - Prepare incoming OpenAI sockets during the configured ring delay, promptly start the greeting after answer, and safely close or retry unused or stale sockets.
 - Keep incoming greetings to the opening of each call; preserve message-taking progress through background context updates and caller "Hello?" checks, including resumed voice sessions.
 - In-place OAuth approval for the optional appointment tools: accurate per-tool scopes, ChatGPT authorization prompts and a safe permission check, preserving existing calls and event subscriptions.
