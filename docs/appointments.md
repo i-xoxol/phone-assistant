@@ -320,7 +320,7 @@ TTS revokes queued callbacks/assets; a clip already downloaded by Twilio can fin
 its remaining bounded playback. These are synthetic regression results, not a
 claim about new handset latency.
 
-Shared `conversational-v1` speech guidance uses short natural sentences and one
+Shared `conversational-v2` speech guidance uses short natural sentences and one
 question at a time, preserves honest identity/notices/exact farewell, and keeps
 the configured masculine voice unchanged.
 
