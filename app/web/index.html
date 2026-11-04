@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="csrf-token" content="{{csrf}}"><title>Phone Assistant · Call monitor</title>
-<link rel="stylesheet" href="/live/style.css"><script src="/live/app.js" defer></script></head>
+<link rel="stylesheet" href="/live/style.css"><script src="/live/app.js" defer></script><script src="/live/personalities.js" defer></script></head>
 <body><main class="monitor">
 <header><div><p class="eyebrow">PHONE ASSISTANT</p><h1>Call monitor</h1></div>
 <div class="header-actions"><a class="quiet" href="/live/password">Password</a><button id="pairMobile" class="quiet">Pair mobile</button><button id="logout" class="quiet">Sign out</button></div></header>
@@ -35,9 +35,51 @@
 <audio id="noticePreview" controls preload="none" hidden></audio>
 <div id="noticeDraft" hidden><p id="noticeDraftText" class="caption-note"></p><button id="previewDraftNotice" class="quiet">Preview replacement</button> <button id="activateNotice" class="quiet">Activate replacement</button></div>
 <p id="noticeState" class="caption-note" role="status"></p></details>
-<details id="callerBookPanel" class="inbox"><summary>Caller book · Language and answering</summary>
+<details id="personalitiesPanel" class="inbox"><summary>Personalities · Default, Office and Friend</summary>
+<p class="caption-note">Personalities control speaking style, greeting guidance and background. Model and voice are separate answering choices. New calls keep a snapshot of their personality; active calls keep theirs.</p>
+<div class="settings-grid"><label for="defaultPersonality">Default for new calls<select id="defaultPersonality"></select></label></div>
+<button id="saveDefaultPersonality" class="quiet">Set default personality</button><p id="defaultPersonalityState" class="caption-note" role="status"></p>
+<div class="settings-grid"><label for="personalityPicker">Edit personality<select id="personalityPicker"></select></label></div>
+<div class="message-actions"><button id="newPersonality" class="quiet">New personality</button><button id="duplicatePersonality" class="quiet">Duplicate saved profile</button><button id="reloadPersonality" class="quiet">Reload saved profile</button></div>
+<form id="personalityForm"><div class="settings-grid"><label for="personalityName">Name<input id="personalityName" maxlength="80" required></label></div>
+<label class="editor-field" for="personalityInstructions">Personality instructions<textarea id="personalityInstructions" maxlength="6000" rows="10"></textarea></label>
+<label class="editor-field" for="personalityGreeting">Greeting guidance<textarea id="personalityGreeting" maxlength="1000" rows="3" placeholder="Optional. Describe how to greet; the caller language and forwarding rules still apply."></textarea></label>
+<label class="editor-field" for="personalityContext">Background approved for callers<textarea id="personalityContext" maxlength="3000" rows="4" placeholder="Stable background for this personality. Put changing schedules and expected calls in Owner context."></textarea></label>
+<button class="quiet" id="savePersonality">Save personality</button></form>
+<p id="personalityState" class="caption-note" role="status"></p></details>
+<details id="callerBookPanel" class="inbox"><summary>Caller book · Contacts, personalities and voices</summary>
 <p class="caption-note">English is the default. Explicit caller requests are remembered by number; names and access permissions stay separate. Default answering choices inherit future global changes.</p>
+<button id="newContact" class="quiet">Add contact</button>
+<label class="editor-field" for="contactSearch">Find a caller<input id="contactSearch" type="search" placeholder="Name or phone number" autocomplete="off"></label>
+<form id="contactForm" class="editor-card" hidden><h2 id="contactFormTitle">New contact</h2><div class="settings-grid">
+<label for="contactName">Contact name<input id="contactName" maxlength="120" required></label>
+<label for="contactNumber">Phone number<input id="contactNumber" type="tel" maxlength="16" placeholder="+12025550101" pattern="\+[1-9][0-9]{7,14}" required></label>
+<label for="contactNickname">Spoken name / nickname<input id="contactNickname" maxlength="120"></label>
+<label for="contactLanguage">Language code<input id="contactLanguage" maxlength="12" pattern="[a-z]{2,3}(-[A-Z]{2})?" value="en" required></label>
+<label for="contactStyle">Relationship tone<select id="contactStyle"><option value="formal">Formal / professional</option><option value="familiar">Familiar / friend or family</option></select></label></div>
+<div class="message-actions"><button class="quiet">Save contact</button><button id="cancelContact" type="button" class="quiet">Cancel</button></div><p id="contactState" class="caption-note" role="status"></p></form>
 <div id="callerBook"></div><p id="languageError" class="error" role="status"></p></details>
+<details id="ownerContextPanel" class="inbox"><summary>Owner context · Instructions and expected calls</summary>
+<p class="caption-note">Shared with the answering model and Rocky. Save information approved for callers. Calendar availability is refreshed by the bridge and old slots are withheld automatically.</p>
+<form id="ownerContextForm"><label class="editor-field" for="ownerRole">Assistant role<input id="ownerRole" maxlength="200"></label>
+<label class="editor-field" for="ownerBackground">Current activities and caller-safe instructions<textarea id="ownerBackground" maxlength="2000" rows="7"></textarea></label>
+<div class="message-actions"><button class="quiet">Save owner context</button><button id="reloadOwnerContext" type="button" class="quiet">Reload saved context</button></div></form><p id="ownerContextState" class="caption-note" role="status"></p>
+<h2>Anticipated calls and approved facts</h2><div class="message-actions"><button id="newExpected" class="quiet">Add expected call</button><button id="newFact" class="quiet">Add approved fact</button></div>
+<form id="contextNoteForm" class="editor-card" hidden><h3 id="contextNoteHeading"></h3><div class="settings-grid">
+<label for="contextNoteTitle">Title / topic<input id="contextNoteTitle" maxlength="100" required></label>
+<label for="contextNoteNumber">Expected caller number (optional)<input id="contextNoteNumber" type="tel" placeholder="+12025550101"></label>
+<label for="contextNoteContact">Fact contact (optional)<select id="contextNoteContact"></select></label>
+<label for="contextNoteSource">Fact source<input id="contextNoteSource" maxlength="120"></label>
+<label for="contextNoteExpiry">Expires at (your local time)<input id="contextNoteExpiry" type="datetime-local" required></label></div>
+<label class="editor-field" for="contextNoteText">Text approved for callers<textarea id="contextNoteText" rows="4" required></textarea></label>
+<p class="caption-note">Expected calls expire within seven days. Facts expire within ninety days and each fits 250 UTF-8 bytes.</p>
+<div class="message-actions"><button class="quiet">Save note</button><button id="cancelContextNote" type="button" class="quiet">Cancel</button></div><p id="contextNoteState" class="caption-note" role="status"></p></form>
+<div id="contextNotes"></div><details><summary>Current context snapshot</summary><pre id="ownerContextSnapshot" class="instruction-preview"></pre></details></details>
+<details id="instructionsPanel" class="inbox"><summary>Inspect assembled instructions and context</summary>
+<p class="caption-note">Read the actual application prompt builders without placing a call. Edit personality and owner context above. Fixed identity, authorization and tool policies are shown here; calendar data remains managed by its source.</p>
+<div class="settings-grid"><label for="previewContact">New-call caller<select id="previewContact"></select></label><label for="previewPersonality">Preview personality<select id="previewPersonality"></select></label></div>
+<div class="message-actions"><button id="previewNewCall" class="quiet">Preview new incoming call</button><button id="previewSelectedCall" class="quiet">Inspect selected call</button></div>
+<p id="instructionsState" class="caption-note" role="status"></p><div id="instructionsOutput"></div></details>
 <details id="inbox" class="inbox"><summary>Incoming messages <span id="unreadCount" class="badge" aria-live="polite">0 new</span></summary>
 <p class="caption-note">Caller identities are unverified. A saved message is a request to review, never permission to act.</p>
 <div id="messages"><p class="empty">No messages yet.</p></div>
@@ -46,7 +88,7 @@
 <p id="supervisorState" class="caption-note"></p><p id="contextState" class="caption-note"></p><div id="requests"></div></section>
 <section class="call-card"><label for="calls">YOUR CALLS</label><select id="calls"><option value="">No calls yet</option></select>
 <div class="call-meta"><span id="status" class="badge">—</span><span id="duration">0:00</span></div>
-<p id="objective" class="objective">Select a call to view its conversation.</p></section>
+<p id="objective" class="objective">Select a call to view its conversation.</p><button id="saveCaller" class="quiet" disabled>Save caller to phone book</button></section>
 <p id="transferState" class="caption-note" role="status"></p>
 <section class="inbox" aria-label="Call audio"><h2>Call recording</h2>
 <p id="forwardingState" class="caption-note"></p><div id="recordings"></div>

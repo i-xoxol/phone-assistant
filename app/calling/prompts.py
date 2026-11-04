@@ -85,6 +85,11 @@ def greeting_instruction(settings: Settings) -> str:
 
 
 def session_config(settings: Settings, record: dict) -> dict:
+    from app.calling.personalities import apply_personality
+    return apply_personality(base_session_config(settings, record), record)
+
+
+def base_session_config(settings: Settings, record: dict) -> dict:
     if record.get('direction') == 'inbound':
         from app.calling.inbound import incoming_session_config
         return incoming_session_config(settings, record)

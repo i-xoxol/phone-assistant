@@ -14,7 +14,7 @@ Lookup and private owner coaching retain their existing independent configuratio
    **Refresh ElevenLabs library voices** fetches up to 500 saved library voices;
    it does not generate speech or place a call. The configured private voice is
    retained if a library refresh fails.
-2. Open **Caller book · Language and answering**. Existing names, language,
+2. Open **Caller book · Contacts, personalities and voices**. Existing names, language,
    nicknames and familiar/formal greetings stay in the same caller book. Each
    saved contact has **Answering provider**, **Model**, **Voice**, and
    **Save contact answering**, plus its effective selection. **Default / inherit**

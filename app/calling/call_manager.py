@@ -35,6 +35,8 @@ class CallManager:
         from app.calling.hours import OperatingHours
         self.hours=OperatingHours(database)
         self.knowledge = CallKnowledge(database)
+        from app.calling.personalities import Personalities
+        self.personalities = Personalities(self)
         from app.calling.forwarding import IncomingRouting
         from app.calling.recordings import CallRecordings
         self.routing=IncomingRouting(self)
@@ -61,12 +63,14 @@ class CallManager:
 
     def result(self, call_id):
         return {**self.db.get(call_id),'lookup_requests':self.lookup.list_for_call(call_id),
+                'personality':self.personalities.for_call(call_id),
                 'voice_backend':self.voice_backends.for_call(call_id),
                 'owner_transfer':self.transfer.for_call(call_id),'owner_coaching':self.observer.history(call_id),
                 'forwarding':self.routing.get(self.db.get(call_id)),'audio_recording':self.recordings.snapshot(call_id)}
 
     def voice_record(self,call_id):
         record=self.db.get(call_id)
+        record['personality']=self.personalities.pin(record)
         record['voice_name']=self.voices.pin(record)
         record['owner_transfer']=self.transfer.for_call(call_id)
         record['voice_backend']=self.voice_backends.for_call(call_id)

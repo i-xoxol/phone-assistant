@@ -213,6 +213,8 @@ class VoiceBackends:
         return dict(row) if row else None
 
     def pin(self, record, override=None, model=None, voice=None):
+        if self.manager:
+            self.manager.personalities.pin(record)
         if current:=self.for_call(record['call_id']): return current
         choice=self.for_record(record,override,model,voice)
         with self.db.connect() as c:

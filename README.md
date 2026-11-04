@@ -37,6 +37,9 @@ when the owner joins a conversation.
 Optional voice backend: keep GPT-Live or choose ElevenLabs Realtime with your
 own library voice. See [setup, selection and testing](docs/voice-backends.md).
 
+The private control page also supports [caller profiles, editable personalities,
+shared context and an assembled-instructions viewer](docs/personalities.md).
+
 | Short-form overview · 1:18 | Cinematic overview · 5:12 |
 |:---:|:---:|
 | [<img src="docs/assets/short-overview.jpg" alt="Conceptual NotebookLM video artwork: a phone inside layered paper rings" height="220">](https://github.com/user-attachments/assets/b265fb63-b578-4d29-a3cf-3bcc7131b640) | [<img src="docs/assets/cinematic-overview.jpg" alt="Conceptual NotebookLM video artwork: a paper figure carrying boxes beside a phone" width="360">](https://github.com/user-attachments/assets/eb4b858d-e842-43eb-a755-cca2225c4fae) |
