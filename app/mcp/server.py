@@ -150,6 +150,23 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
         Read get_voice_settings for API names and regional/presentation descriptions. No cloning/import."""
         return manager.voices.set(VoiceChoice(voice=voice))
 
+    @mcp.tool(annotations=read)
+    def get_voice_backend() -> dict:
+        """Read configured voice providers and the default for new calls. No keys are returned.
+        OpenAI GPT-Live and ElevenLabs Realtime retain the same server tool permissions.
+        The owner-only private coaching model is separate and unchanged."""
+        return manager.voice_backends.get()
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False))
+    def set_voice_backend(provider:Literal['openai','elevenlabs'],
+                          elevenlabs_model:Literal['eleven_realtime_v1_mini','eleven_realtime_v1_max']='eleven_realtime_v1_mini') -> dict:
+        """Set the default provider for NEW calls when the owner requests a change.
+        ElevenLabs requires a server-configured API key and voice; costs are billed by that provider.
+        This never switches an active call, changes tool authorization or starts a call.
+        set_voice changes OpenAI's voice only; ElevenLabs uses its separately configured voice."""
+        from app.calling.voice_backends import BackendChoice
+        return manager.voice_backends.set(BackendChoice(provider=provider,elevenlabs_model=elevenlabs_model))
+
     @mcp.tool(annotations=write)
     async def reach_owner(call_id:UUID,reason:Annotated[str,Field(min_length=1,max_length=200)]) -> dict:
         """Try the fixed configured owner mobile once for this complex active call, after explaining and
@@ -367,14 +384,14 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
     @mcp.tool(annotations=write)
     async def place_call(phone_number: str, objective: str, recipient: str = '', context: str = '',
                          constraints: list[str] | None = None, max_duration_minutes: int = 15,
-                         ivr_mode: bool = False) -> dict:
+                         ivr_mode: bool = False, voice_provider:Literal['openai','elevenlabs']|None=None) -> dict:
         """Place one real outbound call on the owner's behalf. Requires the owner's explicit request; costs money.
         Use E.164 number. Set ivr_mode for business menus. Returns voice_tools_enabled:
         if true, spoken keypad requests execute inside the live voice backend; do not instruct it to
         wait for ChatGPT or send duplicate digits. Returns immediately; do not duplicate/retry blindly."""
         return await manager.place_call(CallRequest(phone_number=phone_number, recipient=recipient,
             objective=objective, context=context, constraints=constraints or [],
-            max_duration_minutes=max_duration_minutes, ivr_mode=ivr_mode))
+            max_duration_minutes=max_duration_minutes, ivr_mode=ivr_mode,voice_provider=voice_provider))
 
     @mcp.tool(annotations=read)
     async def get_call_status(call_id: UUID) -> dict:

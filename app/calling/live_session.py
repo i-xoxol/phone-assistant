@@ -321,13 +321,16 @@ class MediaBridge:
                 log_event('twilio_media_stopped', call_id=self.call_id)
                 return
 
-    async def send_live_audio(self, payload: bytes):
+    async def send_live_audio(self, payload: bytes, *, generation=None):
         # Provider deltas can arrive in bursts. Bound Twilio's queue while its
         # independent receive task keeps accepting audio and playback ACKs.
         for offset in range(0, len(payload), PLAYBACK_CHUNK_BYTES):
+            if generation is not None and generation != self.audio_generation:
+                return
             chunk = payload[offset:offset + PLAYBACK_CHUNK_BYTES]
             while sum(self.pending_marks.values()) + len(chunk) > PLAYBACK_LIMIT_BYTES:
-                if self.closing or self.playback_sealed:
+                if (self.closing or self.playback_sealed or
+                        (generation is not None and generation != self.audio_generation)):
                     return
                 self.playback_progress.clear()
                 try:
@@ -336,7 +339,8 @@ class MediaBridge:
                     log_event('twilio_playback_stalled', call_id=self.call_id,
                               pending_bytes=sum(self.pending_marks.values()))
                     raise BridgeFailure('twilio_playback_stalled') from None
-            if self.closing or self.playback_sealed:
+            if (self.closing or self.playback_sealed or
+                    (generation is not None and generation != self.audio_generation)):
                 return
             name = str(self.mark_index)
             self.mark_index += 1
@@ -345,6 +349,12 @@ class MediaBridge:
                                      'media': {'payload': base64.b64encode(chunk).decode()}})
             await self.ws.send_json({'event': 'mark', 'streamSid': self.stream_sid,
                                      'mark': {'name': name}})
+
+    async def clear_live_audio(self):
+        await self.connection.interrupt_playback(sum(self.pending_marks.values()))
+        await self.ws.send_json({'event':'clear','streamSid':self.stream_sid})
+        self.pending_marks.clear()
+        self.playback_progress.set()
 
     async def receive_live(self):
         async for event in self.connection:
@@ -384,6 +394,10 @@ class MediaBridge:
                     await self.connection.session.commentary.append(
                         delegation_id=data['delegation']['id'],
                         content='No external tools are available. Answer from known information or explain the limitation. To end this call yourself, say Thank you. Goodbye. in English, or Дякую. До побачення. in Ukrainian, then remain silent. Call ending is automatic and needs no delegation.')
+            elif event.type == 'session.output_audio.clear':
+                # Realtime turn detection cancels generation; Twilio's queued audio
+                # must also stop. Truncate model history to acknowledged playback.
+                await self.clear_live_audio()
             elif event.type == 'response.event':
                 if self.manager.settings.live_tools_enabled or self.inbound or self.manager.settings.call_recording_enabled:
                     self.tools.handle(data)
@@ -530,11 +544,13 @@ async def handle_media(websocket: WebSocket, call_id: str):
         from app.calling.transfer import remaining_seconds
         if remaining_seconds(manager.db.get(call_id))<=0:
             raise BridgeFailure('call_duration_exhausted')
-        async with started_connection(settings,manager,record) as (connection, record, started):
+        from app.calling.voice_backends import bridge_connection
+        async with bridge_connection(settings,manager,record) as (connection, record, started):
             manager.db.restore_updates(call_id, record['call_updates'])
             manager.db.update(call_id, openai_session_id=started['session']['id'], voice_finalized=0)
             log_event('gpt_live_connected', call_id=call_id)
-            bridge = MediaBridge(websocket, connection, manager, call_id, stream_sid,luna_booking=True)
+            bridge_class = getattr(connection, 'bridge_class', MediaBridge)
+            bridge = bridge_class(websocket, connection, manager, call_id, stream_sid,luna_booking=True)
             bridge.startup_started=startup_started
             manager.attach_bridge(call_id, bridge)
             manager.connecting.discard(call_id)

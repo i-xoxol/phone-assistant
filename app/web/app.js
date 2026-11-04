@@ -274,9 +274,18 @@ function renderRequests(data) {
   }
 }
 function renderVoice(data) {
+  if (data.voice_backend) {
+    const backend=data.voice_backend;
+    if (!$('voiceBackend').options.length) {
+      for (const item of backend.providers) { const option=document.createElement('option');option.value=item.id;option.textContent=item.label+(item.configured?'':' · not configured');option.disabled=!item.configured;$('voiceBackend').append(option); }
+      $('voiceBackend').value=backend.provider;
+      $('elevenModel').value=backend.elevenlabs_model;
+    }
+    $('voiceBackendState').textContent='Default: '+backend.provider+' · ElevenLabs voice: '+backend.elevenlabs_voice_label+' · applies to new calls';
+  }
   if (data.models) $('modelState').textContent='Voice: '+data.models.voice+' · Tools: '+data.models.backend+
     (data.models.backend_fast?' Fast':' Standard')+' · Subscription lookups: '+(data.models.subscription_lookup_fast?'Fast':'Standard');
-  ownerContactEnabled=!!data.owner_contact_enabled;
+  if (Object.hasOwn(data,'owner_contact_enabled')) ownerContactEnabled=!!data.owner_contact_enabled;
   if (!data.voice) return;
   if (!$('voiceChoice').options.length) {
     for (const item of data.voice.voices) { const option=document.createElement('option');option.value=item.id;option.textContent=item.label;$('voiceChoice').append(option); }
@@ -284,6 +293,11 @@ function renderVoice(data) {
   }
   $('voiceState').textContent='Default: '+data.voice.voice+' · applies to new calls';
 }
+$('saveVoiceBackend').addEventListener('click',async()=>{
+  $('saveVoiceBackend').disabled=true;
+  try { const result=await api('/live/voice/backend',{method:'PUT',headers:{'X-CSRF-Token':csrf,'Content-Type':'application/json'},body:JSON.stringify({provider:$('voiceBackend').value,elevenlabs_model:$('elevenModel').value})});renderVoice({voice_backend:result}); }
+  catch(e) {$('voiceBackendState').textContent=e.message;} finally {$('saveVoiceBackend').disabled=false;}
+});
 $('saveVoice').onclick=async()=>{
   $('saveVoice').disabled=true;
   try {const result=await api('/live/voice',{method:'PUT',headers:{'X-CSRF-Token':csrf,'Content-Type':'application/json'},body:JSON.stringify({voice:$('voiceChoice').value})});renderVoice({voice:result,owner_contact_enabled:ownerContactEnabled});}

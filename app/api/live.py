@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse, JSONResponse
 from app.calling.voices import VoiceChoice
+from app.calling.voice_backends import BackendChoice
 from app.calling.transfer import ReachOwner
 from app.web_auth import SESSION_SECONDS
 from app.calling.languages import OwnerLanguage
@@ -195,6 +196,7 @@ def bootstrap(request: Request, call_id: UUID | None = None):
                     'backend_fast':request.app.state.settings.openai_backend_fast,
                     'subscription_lookup_fast':request.app.state.settings.subscription_lookup_fast},
                 'voice':request.app.state.manager.voices.get(),
+                'voice_backend':request.app.state.manager.voice_backends.get(),
                 'owner_contact_enabled':request.app.state.settings.owner_transfer_enabled and bool(request.app.state.settings.owner_transfer_number),
                 'inbox':db.list_messages(limit=20),
                 'requests':db.list_supervisor_requests(call_id=str(call_id) if call_id else None),
@@ -265,6 +267,12 @@ async def hangup(call_id: UUID, request: Request):
 @router.put('/live/voice',dependencies=[Depends(write_owner)])
 def choose_voice(body:VoiceChoice,request:Request):
     return request.app.state.manager.voices.set(body)
+
+
+@router.put('/live/voice/backend',dependencies=[Depends(write_owner)])
+def choose_voice_backend(body:BackendChoice,request:Request):
+    try: return request.app.state.manager.voice_backends.set(body)
+    except ValueError as exc: raise HTTPException(409,str(exc)) from None
 
 
 @router.post('/live/calls/{call_id}/reach-owner',dependencies=[Depends(write_owner)])

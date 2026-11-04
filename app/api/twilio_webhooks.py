@@ -64,8 +64,10 @@ async def incoming(request: Request):
         response.hangup()
         return Response(str(response), media_type='application/xml')
     if not (closed and hours.outside_hours=='closed'):
+        record['voice_name'] = manager.voices.pin(record)
+        backend = manager.voice_backends.pin(record)
         manager.greetings.start(cid)
-        if settings.inbound_answer_delay_seconds:
+        if settings.inbound_answer_delay_seconds and backend['provider']=='openai':
             manager.warm_sockets.start(cid)
     if closed and hours.outside_hours=='closed':
         response=VoiceResponse()

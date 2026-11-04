@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Optional ElevenLabs Realtime Mini/Max telephone voice adapter, separately configured library voice, pinned per-call selection, owner portal/MCP controls and shared tool authorization; OpenAI remains the default.
+
 - Give the phone assistant a gently reserved delivery, natural thinking sounds and a light Ukrainian accent in English while retaining prompt greetings, initiative on authorized tasks and owner approval boundaries.
 - Prepare incoming OpenAI sockets during the configured ring delay, promptly start the greeting after answer, and safely close or retry unused or stale sockets.
 - Keep incoming greetings to the opening of each call; preserve message-taking progress through background context updates and caller "Hello?" checks, including resumed voice sessions.

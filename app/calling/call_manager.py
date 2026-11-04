@@ -47,6 +47,8 @@ class CallManager:
         from app.calling.warm_socket import WarmSockets
         self.warm_sockets = WarmSockets(self)
         self.voices = VoicePreferences(database,settings)
+        from app.calling.voice_backends import VoiceBackends
+        self.voice_backends = VoiceBackends(database,settings)
         self.transfer = OwnerTransfer(self)
         from app.calling.owner_screening import OwnerScreening
         self.screening=OwnerScreening(self)
@@ -59,6 +61,7 @@ class CallManager:
 
     def result(self, call_id):
         return {**self.db.get(call_id),'lookup_requests':self.lookup.list_for_call(call_id),
+                'voice_backend':self.voice_backends.for_call(call_id),
                 'owner_transfer':self.transfer.for_call(call_id),'owner_coaching':self.observer.history(call_id),
                 'forwarding':self.routing.get(self.db.get(call_id)),'audio_recording':self.recordings.snapshot(call_id)}
 
@@ -266,7 +269,11 @@ class CallManager:
     async def place_call(self, request: CallRequest) -> dict:
         if missing := self.settings.missing():
             raise ValueError('Missing configuration: ' + ', '.join(missing))
+        self.voice_backends.validate(request.voice_provider or self.voice_backends.get()['provider'])
         call_id = self.db.create(request)
+        record = self.db.get(call_id)
+        record['voice_name'] = self.voices.pin(record)
+        self.voice_backends.pin(record, request.voice_provider)
         log_event('call_created', call_id=call_id)
         try:
             call = await self.gateway.place(call_id, request.phone_number, request.max_duration_minutes)

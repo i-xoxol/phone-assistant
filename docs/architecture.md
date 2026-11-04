@@ -53,6 +53,11 @@ may still have placed a paid call; blind retrying can create duplicates.
 
 ## Audio bridge
 
+The optional [ElevenLabs adapter](voice-backends.md) pins a different telephone
+voice backend per call while reusing this bridge's state, tool enforcement and
+event storage. The GPT-Live path below remains the default. Private owner
+coaching has an independent OpenAI backend.
+
 The configured transport is mono **G.711 μ-law at 8 kHz** (`audio/pcmu` for Live,
 `audio/x-mulaw` in Twilio's start metadata). Audio crosses the bridge without
 codec conversion. Base64 is a transport representation, not an audio file;

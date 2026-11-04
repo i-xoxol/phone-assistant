@@ -11,7 +11,12 @@
 <p><button id="closePairing" class="quiet">Close</button></p></section>
 <div id="connection" class="connection" role="status"><span class="dot"></span><span id="connectionText">Connecting to event stream…</span></div>
 <details class="inbox"><summary>Voice and owner contact</summary>
-<label for="voiceChoice">Voice for new calls</label><select id="voiceChoice"></select>
+<label for="voiceBackend">Provider for new calls</label><select id="voiceBackend"></select>
+<label for="elevenModel">ElevenLabs model</label><select id="elevenModel">
+<option value="eleven_realtime_v1_mini">Realtime Mini · speed and price</option>
+<option value="eleven_realtime_v1_max">Realtime Max · complex tasks</option></select>
+<button id="saveVoiceBackend" class="quiet">Save provider</button><p id="voiceBackendState" class="caption-note" role="status"></p>
+<label for="voiceChoice">OpenAI voice for new calls</label><select id="voiceChoice"></select>
 <p class="caption-note">Active calls keep their voice. Accent and pronunciation vary by language.</p>
 <p id="modelState" class="caption-note"></p>
 <button id="saveVoice" class="quiet">Save voice</button><p id="voiceState" class="caption-note" role="status"></p>

@@ -27,6 +27,13 @@ def test_credential_scan_reports_location_without_value():
     assert value not in str(findings)
 
 
+def test_elevenlabs_key_scan_never_prints_the_key():
+    value = 'sk_' + 'a' * 40
+    findings = content_problems(Path('app/example.py'), value)
+    assert findings == [('ElevenLabs API key', 1)]
+    assert value not in str(findings)
+
+
 def test_plugin_template_cannot_embed_operator_endpoint():
     text = '{"mcpServers":{"phone":{"url":"https://operator.example.test/mcp"}}}'
     assert content_problems(Path('plugin/.mcp.json'), text) == [('non-template plugin endpoint', 1)]

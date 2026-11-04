@@ -18,6 +18,7 @@ FORBIDDEN_PARTS = {'data', '.venv', '__pycache__', '.pytest_cache', 'node_module
 FORBIDDEN_SUFFIXES = {'.sqlite', '.sqlite3', '.db', '.log', '.zip', '.wav', '.mp3', '.m4a',
                       '.pem', '.key', '.p12', '.pfx', '.pyc'}
 PATTERNS = {
+    'ElevenLabs API key': re.compile(r'\bsk_[A-Za-z0-9]{20,}\b'),
     'OpenAI API key': re.compile(r'\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}'),
     'GitHub credential': re.compile(r'\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{30,})'),
     'Twilio identifier': re.compile(r'\b(?:AC|SK|CA|MZ)[0-9a-fA-F]{32}\b'),
@@ -30,6 +31,7 @@ SECRET_FIELDS = {'OPENAI_API_KEY', 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN',
                  'CALLBACK_NUMBER', 'WEBHOOK_URL', 'WEBHOOK_SECRET'}
 SECRET_FIELDS.add('OWNER_TRANSFER_NUMBER')
 SECRET_FIELDS.add('OWNER_COACHING_APPLICATION_SID')
+SECRET_FIELDS.update({'ELEVENLABS_API_KEY', 'ELEVENLABS_VOICE_ID'})
 
 # Explicitly approved owner-run test recordings; never a general media exemption.
 REVIEWED_TEST_AUDIO = {

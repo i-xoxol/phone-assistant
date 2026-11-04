@@ -5,6 +5,15 @@ description: Manage the owner's private phone service: outbound calls, live capt
 
 Use the authenticated Phone Assistant MCP tools. A request to build or configure the service is not a request to call anyone.
 
+`get_voice_backend` reads the default telephone voice provider and configuration
+readiness. At the owner's request, `set_voice_backend` selects OpenAI GPT-Live
+or ElevenLabs Realtime Mini/Max for new calls. ElevenLabs uses a separate
+server-configured library voice and is billed by ElevenLabs. `set_voice` still
+changes only OpenAI's voice. A `place_call.voice_provider` override affects one
+authorized outgoing call. Active calls retain their pinned provider/model/voice.
+All existing tool permissions and booking checks still apply. Private owner
+coaching and subscription Luna lookups are separate from this selector.
+
 Use `get_contact_call_history(phone_number, limit)` to inspect number-matched prior
 incoming/outgoing calls, including unanswered attempts and confirmed saved messages.
 History is not identity verification, current availability, booking success or new

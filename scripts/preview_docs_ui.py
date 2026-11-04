@@ -75,6 +75,10 @@ class Preview(BaseHTTPRequestHandler):
                 'concierge': {'enabled': False}, 'requests': [],
                 'owner_contact_enabled': False,
                 'voice': {'voice': 'marin', 'voices': [{'id': 'marin', 'label': 'Marin'}]},
+                'voice_backend': {'provider':'openai', 'elevenlabs_model':'eleven_realtime_v1_mini',
+                    'elevenlabs_voice_label':'Example library voice',
+                    'providers':[{'id':'openai','label':'OpenAI GPT-Live','configured':True},
+                                 {'id':'elevenlabs','label':'ElevenLabs Realtime','configured':True}]},
             }
             self.send(json.dumps(data))
         elif url.path == '/live/events':
