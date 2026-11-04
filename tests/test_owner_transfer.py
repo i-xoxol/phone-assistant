@@ -120,8 +120,8 @@ def test_unavailable_owner_returns_parent_to_assistant_without_redial(service,ou
 
 def test_no_answer_reconnect_retains_voice_and_history(service,monkeypatch):
     client,m,g=service
-    cid,old=setup(client,m,g)
     m.voices.set(VoiceChoice(voice='meridian'))
+    cid,old=setup(client,m,g)
     m.voice_record(cid)
     m.db.transcript(cid,{'type':'session.input_transcript.delta','event_id':'earlier','delta':'Please try the owner.',
         'start_ms':1000,'end_ms':1500})

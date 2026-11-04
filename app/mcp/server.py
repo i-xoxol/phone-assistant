@@ -118,6 +118,12 @@ def create_mcp(manager):
     events = PhoneEvents(manager, provider)
     manager.mcp_events = events
     instructions=INSTRUCTIONS
+    instructions+='''\nVOICE BACKENDS: get_voice_backend reads the selected telephone provider. At the owner's request,
+set_voice_backend selects OpenAI GPT-Live or configured ElevenLabs Realtime for new calls.
+place_call.voice_provider overrides one call without changing that default. Active/queued calls retain
+their pinned provider/model/voice. OpenAI delegates to its Responses backend; ElevenLabs calls the
+same server-checked functions directly. Neither mode requires this chat to poll before voice tools act.
+Private owner coaching and subscription Luna lookup models are separate and unchanged.\n'''
     if settings.appointments_enabled:
         instructions=instructions.replace('The live voice model has no calendar access.',
             'The live voice backend has only the listed bounded appointment tools, gated by server policy.')

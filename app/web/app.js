@@ -283,7 +283,7 @@ function renderVoice(data) {
     }
     $('voiceBackendState').textContent='Default: '+backend.provider+' · ElevenLabs voice: '+backend.elevenlabs_voice_label+' · applies to new calls';
   }
-  if (data.models) $('modelState').textContent='Voice: '+data.models.voice+' · Tools: '+data.models.backend+
+  if (data.models) $('modelState').textContent='OpenAI configuration: '+data.models.voice+' · Tools: '+data.models.backend+
     (data.models.backend_fast?' Fast':' Standard')+' · Subscription lookups: '+(data.models.subscription_lookup_fast?'Fast':'Standard');
   if (Object.hasOwn(data,'owner_contact_enabled')) ownerContactEnabled=!!data.owner_contact_enabled;
   if (!data.voice) return;
