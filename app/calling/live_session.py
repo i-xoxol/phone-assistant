@@ -426,6 +426,9 @@ class MediaBridge:
         from app.calling.inbound import startup_greeting_content
         content=startup_greeting_content(self.manager.settings,self.manager.voice_record(self.call_id))
         if not content: return
+        profile=self.manager.personalities.for_call(self.call_id) or {}
+        if profile.get('greeting'):
+            content+='\nAdapt this opening using the owner greeting guidance, without changing identity, caller language or permissions: '+profile['greeting']
         self.greeting_nudged=True
         try:
             await asyncio.wait_for(self.connection.session.commentary.append(content=(

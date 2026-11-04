@@ -16,6 +16,7 @@ from app.mcp.events import PhoneEvents, Subscribe, advertise_events
 from app.calling.context import ProfileUpdate, AvailabilityUpdate, AvailabilitySlot, ExpectedCallUpdate
 from app.calling.knowledge import ContactUpdate, FactUpdate
 from app.calling.languages import OwnerLanguage
+from app.calling.personalities import PersonalityUpdate
 from app.calling.voices import VoiceChoice
 from app.calling.hours import HoursSettings,HoursWindow
 from pydantic import AwareDatetime
@@ -284,6 +285,43 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
         """Stop audio recording without resuming it or deleting earlier audio. Honor any participant's opt-out.
         Live speech processing/captions remain on. If the provider stop fails, the service ends the call."""
         return await manager.recordings.stop(str(call_id))
+
+    @mcp.tool(annotations=read)
+    def get_call_personalities() -> dict:
+        """Read editable owner personality profiles and the default. Separate from model/voice and permissions."""
+        return manager.personalities.catalog()
+
+    @mcp.tool(annotations=knowledge_write)
+    def set_call_personality(name:str,instructions:str='',context:str='',greeting:str='',
+            personality_id:UUID|None=None,revision:int|None=None) -> dict:
+        """Create or update an owner-requested personality for NEW calls. Read profiles first; updates require
+        the current revision to avoid losing another editor's changes. Context must be approved for callers.
+        Tone/greeting preferences never grant new tools, booking, spending or disclosure permission."""
+        return manager.personalities.save(PersonalityUpdate(name=name,instructions=instructions,context=context,
+            greeting=greeting,revision=revision),personality_id)
+
+    @mcp.tool(annotations=knowledge_write)
+    def duplicate_call_personality(personality_id:UUID,name:str) -> dict:
+        """Copy a saved profile into an independent editable personality. Does not change default or assignments."""
+        return manager.personalities.duplicate(personality_id,name)
+
+    @mcp.tool(annotations=knowledge_write)
+    def set_default_call_personality(personality_id:UUID) -> dict:
+        """Set the default for new calls whose contact inherits Default. Does not alter active calls."""
+        return manager.personalities.set_default(personality_id)
+
+    @mcp.tool(annotations=knowledge_write)
+    def set_contact_personality(contact_id:UUID,personality_id:UUID|None=None) -> dict:
+        """Assign a saved personality to one curated contact; null restores Default inheritance for new calls."""
+        return manager.personalities.assign(contact_id,personality_id)
+
+    @mcp.tool(annotations=read)
+    def get_call_instructions(call_id:UUID|None=None,contact_id:UUID|None=None,personality_id:UUID|None=None) -> dict:
+        """Private read-only assembled application instructions/context preview; never dials or calls providers.
+        A call uses its pinned personality/voice plus current context, not a historical prompt recording.
+        Contact/no arguments previews a new incoming call. Optional personality is preview-only."""
+        from app.api.personalities import Preview,prompt_preview
+        return prompt_preview(manager,Preview(call_id=call_id,contact_id=contact_id,personality_id=personality_id))
 
     @mcp.tool(annotations=read)
     def search_call_knowledge(query:Annotated[str,Field(max_length=600)]='') -> dict:

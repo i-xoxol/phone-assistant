@@ -176,6 +176,11 @@ def javascript():
     return Response((ASSETS / 'app.js').read_text(encoding='utf-8'), media_type='application/javascript', headers=HEADERS)
 
 
+@router.get('/live/personalities.js')
+def personalities_script():
+    return Response((ASSETS / 'personalities.js').read_text(encoding='utf-8'), media_type='application/javascript', headers=HEADERS)
+
+
 @router.get('/live/login.js')
 def login_javascript():
     return Response((ASSETS / 'login.js').read_text(encoding='utf-8'), media_type='application/javascript', headers=HEADERS)
@@ -190,7 +195,9 @@ def bootstrap(request: Request, call_id: UUID | None = None):
     availability=saved['availability']
     try:
         return {'cursor': cursor, 'calls': db.recent_calls(), 'call': request.app.state.manager.result(str(call_id)) if call_id else None,
-                'caller_book':[{**row,'answering':request.app.state.manager.voice_backends.contact_result(row['contact_id']) if row['contact_id'] else None}
+                'personalities':request.app.state.manager.personalities.catalog(),
+                'caller_book':[{**row,'personality_id':request.app.state.manager.personalities.assignment(row['contact_id']) if row['contact_id'] else None,
+                    'answering':request.app.state.manager.voice_backends.contact_result(row['contact_id']) if row['contact_id'] else None}
                     for row in request.app.state.manager.knowledge.caller_book()],
                 'recording_settings':request.app.state.manager.recordings.preferences.get(),
                 'recording_notices':request.app.state.manager.recordings.preferences.notices(),

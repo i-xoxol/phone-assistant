@@ -94,9 +94,13 @@ class CallKnowledge:
                 LEFT JOIN concierge_contact_styles s USING(contact_id)
                 WHERE c.phone_number=? ORDER BY c.name LIMIT 3''', (number,))]
 
-    def contact(self, body: ContactUpdate):
+    def contact(self, body: ContactUpdate, unique_number=False):
         with self.db.connect() as conn:
             conn.execute('BEGIN IMMEDIATE')
+            if unique_number and body.phone_number and conn.execute(
+                'SELECT 1 FROM concierge_contacts WHERE phone_number=? AND contact_id<>?',
+                (body.phone_number, str(body.contact_id))).fetchone():
+                raise ValueError('This number is already in the caller book. Edit the existing contact.')
             count = conn.execute('SELECT count(*) FROM concierge_contacts').fetchone()[0]
             exists = conn.execute('SELECT 1 FROM concierge_contacts WHERE contact_id=?', (str(body.contact_id),)).fetchone()
             if count >= 200 and not exists:
@@ -164,10 +168,12 @@ class CallKnowledge:
         with self.db.connect() as conn:
             rows=[dict(row) for row in conn.execute('''SELECT c.name,c.contact_id,c.phone_number,
                 COALESCE(l.language,NULLIF(p.preferred_language,''),'en') AS language,
-                COALESCE(l.source,'owner') AS language_source
+                COALESCE(l.source,'owner') AS language_source,
+                COALESCE(s.preferred_name,'') AS preferred_name,COALESCE(s.conversation_style,'formal') AS conversation_style
                 FROM concierge_contacts c LEFT JOIN concierge_contact_preferences p USING(contact_id)
+                LEFT JOIN concierge_contact_styles s USING(contact_id)
                 LEFT JOIN caller_languages l USING(phone_number)
-                UNION ALL SELECT '',NULL,l.phone_number,l.language,l.source FROM caller_languages l
+                UNION ALL SELECT '',NULL,l.phone_number,l.language,l.source,'','formal' FROM caller_languages l
                 WHERE NOT EXISTS (SELECT 1 FROM concierge_contacts c WHERE c.phone_number=l.phone_number)
                 ORDER BY name,phone_number LIMIT 200''')]
         return rows

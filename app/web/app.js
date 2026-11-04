@@ -22,10 +22,15 @@ async function api(path, options={}) {
 }
 function clock(seconds) { return Math.floor(seconds/60)+':'+String(Math.floor(seconds%60)).padStart(2,'0'); }
 function renderCallerBook(rows=[]) {
+  callerRows=rows;
+  refreshContactPickers();
   const target=$('callerBook'); target.replaceChildren();
   if (!rows.length) {const note=document.createElement('p');note.textContent='No saved caller preferences yet.';target.append(note);return;}
-  rows.forEach((row,index)=>{
-    const entry=document.createElement('div');entry.className='caller-entry';
+  const query=$('contactSearch').value.toLocaleLowerCase().trim();
+  rows.filter(row=>!query || [row.name,row.preferred_name,row.phone_number].join(' ').toLocaleLowerCase().includes(query)).forEach((row,index)=>{
+    const entry=document.createElement('details');entry.className='caller-entry';
+    const key=row.contact_id || row.phone_number;entry.open=openCallerCards.has(key);
+    entry.ontoggle=()=>{if(entry.open) openCallerCards.add(key);else openCallerCards.delete(key);};
     const title=document.createElement('strong');title.textContent=row.name || 'Incoming caller';
     const number=document.createElement('p');number.className='caption-note';number.textContent=row.phone_number || 'No phone number';
     const label=document.createElement('label');label.htmlFor='caller-language-'+index;label.textContent='Language code';
@@ -42,11 +47,15 @@ function renderCallerBook(rows=[]) {
       finally {button.disabled=!row.phone_number;}
     };
     const edit=document.createElement('div');edit.className='language-edit';edit.append(label,input,button);
-    entry.append(title,number,edit);addContactAnswering(entry,row);target.append(entry);
+    const editContact=document.createElement('button');editContact.className='quiet';editContact.textContent=row.contact_id?'Edit contact':'Save as contact';
+    editContact.onclick=()=>openContact(row);
+    const summary=document.createElement('summary');summary.append(title,number);
+    entry.append(summary,edit,editContact);addContactPersonality(entry,row);addContactAnswering(entry,row);target.append(entry);
   });
 }
 function showCall() {
   showRecordings();
+  $('saveCaller').disabled=!call?.phone_number || !!call?.forwarding?.caller_identity_ambiguous;
   $('status').textContent=call ? call.status.replaceAll('_',' ') : '—';
   $('status').className='badge'+(call && !terminal.has(call.status)?' active':'');
   $('objective').textContent=call?.objective || 'Select a call to view its conversation.';
@@ -151,6 +160,7 @@ async function loadCall(id) {
   if (!id) return;
   const data=await api('/live/bootstrap?call_id='+encodeURIComponent(id));
   renderVoice(data);
+  renderPersonalities(data.personalities);
   // The selector may have changed during the request.
   if (selected!==id || version!==loadVersion) return;
   call=data.call; for (const fragment of call.transcript) addText(fragment); showCall();

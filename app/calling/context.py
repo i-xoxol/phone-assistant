@@ -105,8 +105,12 @@ class ConciergeContext:
                     expires_at TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);
             ''')
 
-    def set_profile(self,body:ProfileUpdate):
+    def set_profile(self,body:ProfileUpdate,expected_updated_at=...):
         with self.db.connect() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            current=conn.execute('SELECT updated_at FROM concierge_profile WHERE id=1').fetchone()
+            if expected_updated_at is not ... and (current['updated_at'] if current else None)!=expected_updated_at:
+                raise ValueError('Owner context changed elsewhere. Reload it before saving your edits.')
             conn.execute('INSERT INTO concierge_profile VALUES (1,?,?,?) ON CONFLICT(id) DO UPDATE SET '
                          'role=excluded.role,context=excluded.context,updated_at=excluded.updated_at',
                          (body.role.strip(),body.context.strip(),utcnow().isoformat()))
