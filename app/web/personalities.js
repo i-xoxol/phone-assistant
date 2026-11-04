@@ -5,6 +5,7 @@ let editingRevision=null;
 let ownerContextRevision=null;
 const openCallerCards=new Set(),personalityAssignmentDrafts=new Map();
 const personalityDrafts=new Map();
+const testContactDrafts=new Map();
 function profileOptions() {return (personalityCatalog?.personalities || []).map(p=>({id:p.personality_id,label:p.name}));}
 function currentProfile() {return personalityCatalog?.personalities.find(p=>p.personality_id===editingPersonality);}
 function rememberPersonalityDraft() {
@@ -102,6 +103,33 @@ function openContact(row={},sourceCall=null) {
   $('contactNickname').value=row.preferred_name || '';$('contactLanguage').value=row.language || 'en';
   $('contactStyle').value=row.conversation_style || 'formal';$('contactForm').scrollIntoView({block:'center'});
 }
+function addContactTesting(entry,row) {
+  if(!row.contact_id || !row.test_mode) return;
+  const saved=row.test_mode,draft=testContactDrafts.get(row.contact_id);
+  const box=document.createElement('fieldset');box.className='editor-card';
+  const legend=document.createElement('legend');legend.textContent='Test contact';
+  const label=document.createElement('label');label.className='check-setting';
+  const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=draft?.enabled ?? saved.enabled;
+  checkbox.setAttribute('aria-label','Test contact for '+row.name);label.append(checkbox,'Trust this contact for cooperative testing');
+  const note=document.createElement('p');note.className='caption-note';
+  note.textContent='New calls only. Allows general conversation and harmless supported tests using available approved information. Server permissions remain enforced.';
+  const instructionLabel=document.createElement('label');instructionLabel.className='editor-field';instructionLabel.textContent='Extra test instructions';
+  const instructions=document.createElement('textarea');instructions.rows=6;instructions.maxLength=3000;
+  instructions.setAttribute('aria-label','Test instructions for '+row.name);
+  instructions.value=draft?.instructions ?? (saved.instructions || saved.default_instructions);instructionLabel.append(instructions);
+  instructionLabel.hidden=!checkbox.checked;
+  const state=document.createElement('p');state.className='caption-note';state.setAttribute('role','status');
+  state.textContent=draft?'Unsaved test settings.':saved.enabled?(saved.active_for_number?'Saved: test mode on for new calls.':'Saved flag needs resaving: the number changed or is duplicated.'):'Saved: ordinary contact.';
+  function changed() {instructionLabel.hidden=!checkbox.checked;testContactDrafts.set(row.contact_id,{enabled:checkbox.checked,instructions:instructions.value});state.textContent='Unsaved test settings · click Save test settings.';}
+  checkbox.onchange=changed;instructions.oninput=changed;
+  const save=document.createElement('button');save.className='quiet';save.textContent='Save test settings';
+  save.onclick=async()=>{
+    save.disabled=true;
+    try {await api('/live/contacts/'+row.contact_id+'/test-mode',writeOptions({enabled:checkbox.checked,instructions:instructions.value}));testContactDrafts.delete(row.contact_id);await refreshPeople();}
+    catch(e) {state.textContent='Not saved: '+e.message;} finally {save.disabled=false;}
+  };
+  box.append(legend,label,note,instructionLabel,save,state);entry.append(box);
+}
 $('newContact').onclick=()=>openContact();
 $('contactSearch').oninput=()=>renderCallerBook(callerRows);
 $('cancelContact').onclick=()=>{$('contactForm').hidden=true;};
@@ -176,7 +204,7 @@ async function showInstructions(forSelected) {
     const result=await api('/live/instructions-preview',{...writeOptions(body),method:'POST'});
     $('instructionsState').textContent=result.basis+' '+result.policy;
     const output=$('instructionsOutput');output.replaceChildren();
-    for(const [label,value] of [['Personality and answering',{personality:result.personality,answering:result.answering}],
+    for(const [label,value] of [['Personality and answering',{personality:result.personality,answering:result.answering,test_mode:result.test_mode}],
       ['Voice instructions',result.voice_instructions],['Tool planner instructions',result.planner_instructions],
       ['One-time startup input',result.startup_input],['Tool definitions',result.tool_definitions],['Caller context',result.context],['Shared owner context',result.owner_context]]) {
       const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent=label;

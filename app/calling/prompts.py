@@ -86,7 +86,8 @@ def greeting_instruction(settings: Settings) -> str:
 
 def session_config(settings: Settings, record: dict) -> dict:
     from app.calling.personalities import apply_personality
-    return apply_personality(base_session_config(settings, record), record)
+    from app.calling.contact_testing import apply_test_mode
+    return apply_test_mode(apply_personality(base_session_config(settings, record), record), record)
 
 
 def base_session_config(settings: Settings, record: dict) -> dict:

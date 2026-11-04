@@ -17,6 +17,7 @@ from app.calling.context import ProfileUpdate, AvailabilityUpdate, AvailabilityS
 from app.calling.knowledge import ContactUpdate, FactUpdate
 from app.calling.languages import OwnerLanguage
 from app.calling.personalities import PersonalityUpdate
+from app.calling.contact_testing import ContactTestChoice
 from app.calling.voices import VoiceChoice
 from app.calling.hours import HoursSettings,HoursWindow
 from pydantic import AwareDatetime
@@ -285,6 +286,21 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
         """Stop audio recording without resuming it or deleting earlier audio. Honor any participant's opt-out.
         Live speech processing/captions remain on. If the provider stop fails, the service ends the call."""
         return await manager.recordings.stop(str(call_id))
+
+    @mcp.tool(annotations=knowledge_write)
+    def set_contact_test_mode(contact_id:UUID,enabled:bool,instructions:str='') -> dict:
+        """Owner-only test contact switch for NEW calls from one exact saved number. Optional test instructions.
+        Cooperative general conversation and harmless supported tests; never a credential, spending, booking,
+        privacy or tool-permission override. Cannot be enabled by the telephone caller. No call is placed."""
+        return manager.test_contacts.set(contact_id,ContactTestChoice(enabled=enabled,instructions=instructions))
+
+    @mcp.tool(annotations=read)
+    def get_contact_test_mode(contact_id:UUID) -> dict:
+        """Read one saved contact's test flag, custom/default instructions and new-call applicability."""
+        with manager.db.connect() as c:
+            if not c.execute('SELECT 1 FROM concierge_contacts WHERE contact_id=?',(str(contact_id),)).fetchone():
+                raise ValueError('Contact not found')
+        return manager.test_contacts.get(contact_id)
 
     @mcp.tool(annotations=read)
     def get_call_personalities() -> dict:

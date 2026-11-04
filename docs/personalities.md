@@ -17,6 +17,7 @@ Each saved contact has:
 - Name, spoken nickname, language and formal/familiar relationship tone.
 - Personality: **Default / inherit**, or one specific saved profile.
 - Answering provider, model and voice, with the existing default inheritance.
+- An opt-in [test contact switch and additional testing instructions](test-contacts.md).
 
 A single exact presented-number match selects the contact. Forwarded calls use
 the original presented caller, not the owner's forwarding number. Missing or
