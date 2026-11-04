@@ -6,7 +6,9 @@ The server uses the official MCP Python SDK and **Streamable HTTP** at `/mcp`.
 It shares the FastAPI process and call manager. There is no separate stdio
 process in this release.
 
-The server currently exposes 29 owner tools. `get_contact_call_history` reads
+With appointment extensions disabled, the server exposes 49 owner tools, including
+[personality editing and private instruction previews](personalities.md).
+`get_contact_call_history` reads
 [number-matched earlier calls](call-memory.md). `get_operating_hours` and
 `set_operating_hours` manage [office and mobile-reach schedules](operating-hours.md).
 Voice selection and screened owner

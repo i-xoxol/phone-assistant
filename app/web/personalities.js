@@ -35,6 +35,10 @@ async function refreshPeople() {
   const snapshot=await api('/live/bootstrap');renderPersonalities(snapshot.personalities);renderCallerBook(snapshot.caller_book);
 }
 $('personalityPicker').onchange=()=>editPersonality($('personalityPicker').value);
+$('personalitiesPanel').addEventListener('toggle',async()=>{
+  if(!$('personalitiesPanel').open) return;
+  try {renderPersonalities(await api('/live/personalities'));} catch(e) {$('personalityState').textContent=e.message;}
+});
 $('newPersonality').onclick=()=>editPersonality(null);
 $('reloadPersonality').onclick=async()=>{
   personalityDrafts.delete(editingPersonality || '');personalityDirty=false;

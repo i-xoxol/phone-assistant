@@ -443,7 +443,7 @@ $('pairMobile').onclick=async()=>{
 $('closePairing').onclick=()=>{$('pairing').hidden=true;$('pairCode').textContent='';};
 $('callerBookPanel').addEventListener('toggle',async()=>{
   if (!$('callerBookPanel').open) return;
-  try {renderCallerBook((await api('/live/bootstrap')).caller_book);} catch(error) {$('languageError').textContent=error.message;}
+  try {const data=await api('/live/bootstrap');renderPersonalities(data.personalities);renderCallerBook(data.caller_book);} catch(error) {$('languageError').textContent=error.message;}
 });
 setInterval(()=>{showCall(); if (lastSeen && Date.now()-lastSeen>12000) connection('No recent heartbeat · connection may be stale. Hang-up remains available.');},1000);
 start().catch(error=>connection(error.message));
