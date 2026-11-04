@@ -7,16 +7,17 @@ let inboxCursor = null;
 let ownerContactEnabled=false;
 let humanCaptions=new Map();
 let recordingRenderKey='';
+const contactDrafts=new Map();
 const csrf = document.querySelector('meta[name="csrf-token"]').content;
 function connection(text, healthy=false) { $('connectionText').textContent=text; $('connection').className='connection '+(healthy?'live':'warn'); }
 async function api(path, options={}) {
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),20000);
+  const timer=setTimeout(()=>controller.abort(),path.endsWith('/generate')?40000:20000);
   let response;
   try { response=await fetch(path, {credentials:'same-origin', cache:'no-store', ...options, signal:controller.signal}); }
   finally {clearTimeout(timer);}
   if (response.status === 401) { location.replace('/live/login'); throw new Error('Browser pairing expired'); }
-  if (!response.ok) { const data=await response.json().catch(()=>({})); throw new Error(data.detail || 'Request failed. Try again.'); }
+  if (!response.ok) { const data=await response.json().catch(()=>({})); throw new Error(Array.isArray(data.detail)?data.detail.map(e=>e.msg).join('; '):(data.detail || 'Request failed. Try again.')); }
   return response.status === 204 ? null : response.json();
 }
 function clock(seconds) { return Math.floor(seconds/60)+':'+String(Math.floor(seconds%60)).padStart(2,'0'); }
@@ -41,7 +42,7 @@ function renderCallerBook(rows=[]) {
       finally {button.disabled=!row.phone_number;}
     };
     const edit=document.createElement('div');edit.className='language-edit';edit.append(label,input,button);
-    entry.append(title,number,edit);target.append(entry);
+    entry.append(title,number,edit);addContactAnswering(entry,row);target.append(entry);
   });
 }
 function showCall() {
@@ -69,7 +70,7 @@ function showRecordings() {
     (call.forwarding?.forwarded_from_owner_mobile?'Missed call · Forwarded from your mobile · Caller ID: '+(call.phone_number || 'unavailable'):
       call.forwarding?.detected?'Forwarded call · Caller ID: '+(call.phone_number || 'unavailable'):
       'Incoming call · Carrier forwarding details not supplied. Caller ID: '+(call.phone_number || 'unavailable')):'';
-  $('stopRecording').hidden=!data?.policy || !!data.policy.stop_requested_at || !call || terminal.has(call.status);
+  $('stopRecording').hidden=!data?.policy?.recording_requested_at || !!data.policy.stop_requested_at || !call || terminal.has(call.status);
   const key=JSON.stringify([call?.call_id,data]);
   if(key===recordingRenderKey) return;
   recordingRenderKey=key;$('recordings').replaceChildren();
@@ -77,7 +78,7 @@ function showRecordings() {
   if(!rows.length) {
     const p=document.createElement('p');p.className='caption-note';
     p.textContent=data?.last_event?.state==='unavailable'?'Audio recording unavailable; the call can continue.':
-      data?.policy?'Recording requested. Waiting for the provider status.':'No audio recording for this call.';
+      data?.policy?.recording_requested_at?'Recording requested. Waiting for the provider status.':'No audio recording for this call.';
     $('recordings').append(p);
   }
   for(const r of rows) {
@@ -194,6 +195,7 @@ function applyEvent(data) {
 }
 async function start() {
   const data=await api('/live/bootstrap'); calls=data.calls;
+  renderVoice(data);
   renderCallerBook(data.caller_book);
   renderInbox(data.inbox);
   renderRequests(data);
@@ -273,36 +275,133 @@ function renderRequests(data) {
     item.append(text,stamp);$('requests').append(item);
   }
 }
-function renderVoice(data) {
-  if (data.voice_backend) {
-    const backend=data.voice_backend;
-    if (!$('voiceBackend').options.length) {
-      for (const item of backend.providers) { const option=document.createElement('option');option.value=item.id;option.textContent=item.label+(item.configured?'':' · not configured');option.disabled=!item.configured;$('voiceBackend').append(option); }
-      $('voiceBackend').value=backend.provider;
-      $('elevenModel').value=backend.elevenlabs_model;
-    }
-    $('voiceBackendState').textContent='Default: '+backend.provider+' · ElevenLabs voice: '+backend.elevenlabs_voice_label+' · applies to new calls';
-  }
-  if (data.models) $('modelState').textContent='OpenAI configuration: '+data.models.voice+' · Tools: '+data.models.backend+
-    (data.models.backend_fast?' Fast':' Standard')+' · Subscription lookups: '+(data.models.subscription_lookup_fast?'Fast':'Standard');
-  if (Object.hasOwn(data,'owner_contact_enabled')) ownerContactEnabled=!!data.owner_contact_enabled;
-  if (!data.voice) return;
-  if (!$('voiceChoice').options.length) {
-    for (const item of data.voice.voices) { const option=document.createElement('option');option.value=item.id;option.textContent=item.label;$('voiceChoice').append(option); }
-    $('voiceChoice').value=data.voice.voice;
-  }
-  $('voiceState').textContent='Default: '+data.voice.voice+' · applies to new calls';
+let backendCatalog=null, backendDirty=false, recordingSaved=null, recordingDirty=false, noticeRows=[], noticeDirty=false;
+const writeOptions=body=>({method:'PUT',headers:{'X-CSRF-Token':csrf,'Content-Type':'application/json'},body:JSON.stringify(body)});
+function options(select,items,value,inherit=false) {
+  select.replaceChildren();
+  if(inherit) {const o=document.createElement('option');o.value='';o.textContent='Default / inherit';select.append(o);}
+  for(const item of items) {const o=document.createElement('option');o.value=item.id;o.textContent=item.label+(item.configured===false?' · unavailable':'');o.disabled=item.configured===false;select.append(o);}
+  select.value=value ?? '';
 }
-$('saveVoiceBackend').addEventListener('click',async()=>{
-  $('saveVoiceBackend').disabled=true;
-  try { const result=await api('/live/voice/backend',{method:'PUT',headers:{'X-CSRF-Token':csrf,'Content-Type':'application/json'},body:JSON.stringify({provider:$('voiceBackend').value,elevenlabs_model:$('elevenModel').value})});renderVoice({voice_backend:result}); }
-  catch(e) {$('voiceBackendState').textContent=e.message;} finally {$('saveVoiceBackend').disabled=false;}
-});
-$('saveVoice').onclick=async()=>{
-  $('saveVoice').disabled=true;
-  try {const result=await api('/live/voice',{method:'PUT',headers:{'X-CSRF-Token':csrf,'Content-Type':'application/json'},body:JSON.stringify({voice:$('voiceChoice').value})});renderVoice({voice:result,owner_contact_enabled:ownerContactEnabled});}
-  catch(e) {$('voiceState').textContent=e.message;} finally {$('saveVoice').disabled=false;}
+function selectionText(s) {
+  const p=backendCatalog?.providers.find(p=>p.id===s.provider),m=p?.models.find(m=>m.id===s.model);
+  const voice=m?.voices.find(v=>v.id===s.voice)?.label || s.voice;
+  return (p?.label || s.provider)+' · '+(m?.label || s.model)+' · '+voice;
+}
+function populateAnswering(provider,model,voice) {
+  const p=backendCatalog.providers.find(p=>p.id===provider);
+  const d=backendCatalog.provider_defaults[provider];
+  options($('answerModel'),p?.models || [],model || d.model);
+  const m=p?.models.find(m=>m.id===$('answerModel').value);
+  options($('answerVoice'),m?.voices || [],voice || d.voice);
+}
+function renderVoice(data) {
+  if(data.voice_backend) {
+    backendCatalog=data.voice_backend;
+    $('providerAvailability').textContent=backendCatalog.providers.filter(p=>!p.configured).map(p=>p.id==='gemini'?'Gemini Live is unavailable until its API credentials and provider checks are complete.':p.label+' is unavailable until its server credentials and voice are configured.').join(' ');
+    if(!backendDirty) {
+      options($('voiceBackend'),backendCatalog.providers,backendCatalog.provider);
+      populateAnswering(backendCatalog.provider,backendCatalog.model,backendCatalog.voice);
+      $('voiceBackendState').textContent='Saved: '+selectionText(backendCatalog)+' · new calls';
+    }
+  }
+  if(data.recording_settings) {
+    recordingSaved=data.recording_settings;
+    if(!recordingDirty) {
+      $('recordNewCalls').checked=recordingSaved.recording_enabled;
+      $('announceNewCalls').checked=recordingSaved.announcement_enabled;
+      $('recordingSettingsState').textContent='Saved: recording '+(recordingSaved.recording_enabled?'on':'off')+' · announcement preference '+(recordingSaved.announcement_enabled?'on':'off')+' · new calls';
+    }
+  }
+  if(data.recording_notices && !noticeDirty) {noticeRows=data.recording_notices;renderNotice();}
+  if(data.models) $('modelState').textContent='Separate lookup model: '+data.models.backend;
+  if(Object.hasOwn(data,'owner_contact_enabled')) ownerContactEnabled=!!data.owner_contact_enabled;
+}
+function answeringChanged() {backendDirty=true;$('voiceBackendState').textContent='Unsaved edits · saved: '+selectionText(backendCatalog);}
+$('voiceBackend').onchange=()=>{populateAnswering($('voiceBackend').value);answeringChanged();};
+$('answerModel').onchange=()=>{populateAnswering($('voiceBackend').value,$('answerModel').value);answeringChanged();};
+$('answerVoice').onchange=answeringChanged;
+$('refreshVoiceLibrary').onclick=async()=>{
+  $('refreshVoiceLibrary').disabled=true;
+  try {const r=await api('/live/voice/refresh-library',{method:'POST',headers:{'X-CSRF-Token':csrf}});backendCatalog=r;populateAnswering($('voiceBackend').value,$('answerModel').value,$('answerVoice').value);$('voiceBackendState').textContent='Library voices refreshed. '+(backendDirty?'Unsaved answering edits remain.':'Saved: '+selectionText(r));}
+  catch(e) {$('voiceBackendState').textContent=e.message;} finally {$('refreshVoiceLibrary').disabled=false;}
 };
+$('saveVoiceBackend').onclick=async()=>{
+  $('saveVoiceBackend').disabled=true;
+  try {
+    const result=await api('/live/voice/backend',writeOptions({provider:$('voiceBackend').value,model:$('answerModel').value,voice:$('answerVoice').value}));
+    backendDirty=false;renderVoice({voice_backend:result});
+    renderCallerBook((await api('/live/bootstrap')).caller_book);
+  } catch(e) {$('voiceBackendState').textContent='Not saved: '+e.message;} finally {$('saveVoiceBackend').disabled=false;}
+};
+for(const id of ['recordNewCalls','announceNewCalls']) $(id).onchange=()=>{recordingDirty=true;$('recordingSettingsState').textContent='Unsaved edits · applies only after Save';};
+$('saveRecordingSettings').onclick=async()=>{
+  $('saveRecordingSettings').disabled=true;
+  try {const saved=await api('/live/recording-settings',writeOptions({recording_enabled:$('recordNewCalls').checked,announcement_enabled:$('announceNewCalls').checked}));recordingDirty=false;renderVoice({recording_settings:saved});}
+  catch(e) {$('recordingSettingsState').textContent='Not saved: '+e.message;} finally {$('saveRecordingSettings').disabled=false;}
+};
+function currentNotice() {return noticeRows.find(n=>n.language===$('noticeLanguage').value);}
+function renderNotice() {
+  const row=currentNotice(); if(!row) return;
+  $('noticeText').value=row.draft?.text || row.text;
+  $('noticeSavedText').textContent='Active text: '+row.text+(row.prepared?'':' · clip not prepared');
+  $('previewActiveNotice').disabled=!row.prepared;
+  $('noticeDraft').hidden=!row.draft;
+  $('noticeDraftText').textContent=row.draft?'Prepared replacement (not active): '+row.draft.text:'';
+}
+$('noticeLanguage').onchange=()=>{noticeDirty=false;renderNotice();$('noticePreview').hidden=true;$('noticePreview').pause();};
+$('noticeText').oninput=()=>{noticeDirty=true;$('noticeState').textContent='Unsaved text · Generate or Upload to prepare a replacement; then preview and activate';};
+function previewNotice(asset) {
+  const audio=$('noticePreview');audio.src='/live/recording-notices/'+$('noticeLanguage').value+'/audio'+(asset?'?asset_id='+encodeURIComponent(asset):'');audio.hidden=false;audio.play().catch(()=>{});
+}
+$('previewActiveNotice').onclick=()=>previewNotice(currentNotice()?.active_asset?.asset_id);
+$('previewDraftNotice').onclick=()=>previewNotice(currentNotice()?.draft?.asset_id);
+async function noticeAction(action,options) {
+  const lang=$('noticeLanguage').value;
+  for(const id of ['generateNotice','uploadNotice','activateNotice','noticeLanguage','noticeText']) $(id).disabled=true;
+  $('noticeState').textContent=action==='generate'?'Generating and verifying speech…':'Saving…';
+  try {noticeRows=await api('/live/recording-notices/'+lang+'/'+action,options);noticeDirty=false;renderNotice();$('noticeState').textContent=action==='activate'?'Replacement activated. New notices will use this clip.':'Replacement prepared. Preview it, then Activate replacement.';}
+  catch(e) {$('noticeState').textContent='Previous active clip preserved. '+e.message;}
+  finally {for(const id of ['generateNotice','uploadNotice','activateNotice','noticeLanguage','noticeText']) $(id).disabled=false;}
+}
+$('generateNotice').onclick=()=>noticeAction('generate',{...writeOptions({text:$('noticeText').value}),method:'POST'});
+$('activateNotice').onclick=()=>noticeAction('activate',{...writeOptions({asset_id:currentNotice()?.draft?.asset_id}),method:'POST'});
+$('uploadNotice').onclick=async()=>{
+  const clip=$('noticeUpload').files[0];
+  if(!clip || clip.size>2*1024*1024) {$('noticeState').textContent='Choose a WAV clip of at most 2 MiB.';return;}
+  await noticeAction('upload?text='+encodeURIComponent($('noticeText').value),{method:'POST',headers:{'X-CSRF-Token':csrf,'Content-Type':'audio/wav'},body:clip});
+};
+function addContactAnswering(entry,row) {
+  if(!row.contact_id || !backendCatalog || !row.answering) return;
+  const box=document.createElement('div');box.className='settings-grid';
+  const provider=document.createElement('select'),model=document.createElement('select'),voice=document.createElement('select');
+  for(const [label,select] of [['Answering provider',provider],['Model',model],['Voice',voice]]) {const l=document.createElement('label');l.textContent=label;l.append(select);box.append(l);}
+  const pref=contactDrafts.get(row.contact_id) || row.answering.preference;
+  options(provider,backendCatalog.providers,pref.provider,true);
+  function localOptions(m,v) {
+    const p=backendCatalog.providers.find(p=>p.id===(provider.value || backendCatalog.provider));
+    const d=backendCatalog.provider_defaults[p.id];
+    options(model,p.models,m,true);model.disabled=!provider.value;
+    options(voice,p.models.find(item=>item.id===(model.value || d.model))?.voices || [],v,true);voice.disabled=!provider.value;
+  }
+  localOptions(pref.model,pref.voice);
+  const state=document.createElement('p');state.className='caption-note';state.setAttribute('role','status');
+  state.textContent='Saved effective: '+selectionText(row.answering.effective);
+  const dirty=()=>{
+    contactDrafts.set(row.contact_id,{provider:provider.value || null,model:model.value || null,voice:voice.value || null});
+    const p=provider.value || backendCatalog.provider,d=backendCatalog.provider_defaults[p];
+    state.textContent='Unsaved · effective after Save: '+selectionText({provider:p,model:model.value || d.model,voice:voice.value || d.voice});
+  };
+  provider.onchange=()=>{localOptions(null,null);dirty();};model.onchange=()=>{localOptions(model.value,null);dirty();};voice.onchange=dirty;
+  if(contactDrafts.has(row.contact_id)) dirty();
+  const save=document.createElement('button');save.className='quiet';save.textContent='Save contact answering';
+  save.onclick=async()=>{
+    save.disabled=true;
+    try {const r=await api('/live/contacts/'+row.contact_id+'/voice',writeOptions({provider:provider.value || null,model:model.value || null,voice:voice.value || null}));contactDrafts.delete(row.contact_id);state.textContent='Saved effective: '+selectionText(r.effective);renderCallerBook((await api('/live/bootstrap')).caller_book);}
+    catch(e) {state.textContent='Not saved: '+e.message;} finally {save.disabled=false;}
+  };
+  entry.append(box,save,state);
+}
 $('reachOwner').onclick=async()=>{
   if (!call) return;
   $('reachOwner').disabled=true;

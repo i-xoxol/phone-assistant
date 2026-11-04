@@ -245,7 +245,9 @@ class MediaBridge:
         if not row or row['openai_session_id'] != self.session_id:
             return False
         expected = 'session.' + {'context':'thinking', 'say':'commentary', 'instructions':'instructions'}[row['mode']] + '.appended'
-        if data['type'] == expected:
+        if data['type']=='session.update_unconfirmed':
+            self.manager.db.finish_update(self.call_id,update_id,self.session_id,'unconfirmed',error_code='provider_ack_unavailable')
+        elif data['type'] == expected:
             self.manager.db.finish_update(self.call_id, update_id, self.session_id, 'acknowledged',
                 start_ms=data['start_ms']+self.transcript_offset_ms if data.get('start_ms') is not None else None,
                 end_ms=data['end_ms']+self.transcript_offset_ms if data.get('end_ms') is not None else None)
@@ -399,7 +401,7 @@ class MediaBridge:
                 # must also stop. Truncate model history to acknowledged playback.
                 await self.clear_live_audio()
             elif event.type == 'response.event':
-                if self.manager.settings.live_tools_enabled or self.inbound or self.manager.settings.call_recording_enabled:
+                if self.manager.settings.live_tools_enabled or self.inbound or self.manager.recordings.policy_for(self.call_id)['recording_enabled']:
                     self.tools.handle(data)
             elif event.type == 'error':
                 if optional_compaction_notice(data):

@@ -48,7 +48,7 @@ class CallManager:
         self.warm_sockets = WarmSockets(self)
         self.voices = VoicePreferences(database,settings)
         from app.calling.voice_backends import VoiceBackends
-        self.voice_backends = VoiceBackends(database,settings)
+        self.voice_backends = VoiceBackends(database,settings,self)
         self.transfer = OwnerTransfer(self)
         from app.calling.owner_screening import OwnerScreening
         self.screening=OwnerScreening(self)
@@ -69,6 +69,10 @@ class CallManager:
         record=self.db.get(call_id)
         record['voice_name']=self.voices.pin(record)
         record['owner_transfer']=self.transfer.for_call(call_id)
+        record['voice_backend']=self.voice_backends.for_call(call_id)
+        record['voice_opening_claimed']=self.voice_backends.opening_claimed(call_id)
+        if record['voice_backend'] and record['voice_backend']['provider']=='openai':
+            record['voice_name']=record['voice_backend']['voice']
         record['audio_recording']=self.recordings.snapshot(call_id)
         if record.get('direction')=='inbound':
             record['incoming_context']=self.incoming_context(record)
@@ -232,7 +236,7 @@ class CallManager:
             await bridge.send_pending_updates()
             row = self.db.call_update(call_id, update_id)
         log_event('call_context_update', call_id=call_id, update_id=update_id, mode=row['mode'], status=row['status'])
-        return {**row, 'delivery_note': 'Acknowledged means context reached GPT-Live, not spoken or acted on. '
+        return {**row, 'delivery_note': 'Acknowledged means the voice provider confirmed context delivery, not speech or action. Gemini client-content writes have no protocol acknowledgment and remain unconfirmed. '
             'Use the transcript to verify behavior. Retry only with this same update_id.'}
 
     async def press_digits(self, call_id: str, request: DigitsRequest) -> dict:
@@ -269,11 +273,13 @@ class CallManager:
     async def place_call(self, request: CallRequest) -> dict:
         if missing := self.settings.missing():
             raise ValueError('Missing configuration: ' + ', '.join(missing))
-        self.voice_backends.validate(request.voice_provider or self.voice_backends.get()['provider'])
+        self.voice_backends.for_record({'phone_number':request.phone_number,'direction':'outbound'},
+            request.voice_provider,request.voice_model,request.voice)
         call_id = self.db.create(request)
         record = self.db.get(call_id)
         record['voice_name'] = self.voices.pin(record)
-        self.voice_backends.pin(record, request.voice_provider)
+        self.voice_backends.pin(record, request.voice_provider,request.voice_model,request.voice)
+        self.recordings.pin(call_id)
         log_event('call_created', call_id=call_id)
         try:
             call = await self.gateway.place(call_id, request.phone_number, request.max_duration_minutes)

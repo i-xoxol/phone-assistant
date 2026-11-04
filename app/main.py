@@ -59,6 +59,8 @@ def create_app(settings: Settings | None = None, *, gateway=None) -> FastAPI:
     app.include_router(hours_router)
     app.include_router(live_router)
     app.include_router(recording_router)
+    from app.api.phone_controls import router as controls_router
+    app.include_router(controls_router)
 
     @app.api_route('/', methods=['GET', 'HEAD'], include_in_schema=False)
     def portal():

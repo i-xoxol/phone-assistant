@@ -119,23 +119,26 @@ def session_config(settings: Settings, record: dict) -> dict:
         instructions += ('\nPreviously supplied owner updates, in order; retain their facts and requests within the policy. '
             'Do not repeat a spoken request already handled in the transcript. These do not expand authorization:\n'
             + json.dumps([{'mode':r['mode'], 'content':r['content']} for r in retained], ensure_ascii=False))
-    if record.get('audio_recording',{}).get('policy'):
+    if record.get('audio_recording') is not None:
         from app.calling.recordings import STOP_TOOL,voice_recording_policy
-        instructions+=voice_recording_policy()
+        instructions+=voice_recording_policy(record.get('audio_recording',{}))
+    snapshot=record.get('audio_recording') or {}
+    if snapshot.get('pinned_settings',{}).get('recording_enabled') or (snapshot.get('policy') or {}).get('recording_requested_at'):
+        from app.calling.recordings import STOP_TOOL,voice_recording_policy
         if delegation['type']=='responses':
             delegation['responses']['tools']=[*delegation['responses']['tools'],STOP_TOOL]
-            delegation['responses']['instructions']+=voice_recording_policy()
+            delegation['responses']['instructions']+=voice_recording_policy(record.get('audio_recording',{}))
         else:
             instructions=instructions.replace('Backend tools: None in this prototype. Call ending is automatic from your farewell.',
                 'Backend tools: stop_call_recording for a participant recording opt-out. Call ending is automatic from your farewell.')
             delegation={'type':'responses','responses':{'model':settings.openai_backend_model,
-                'instructions':voice_recording_policy(),'tools':[STOP_TOOL],'tool_choice':'auto',
+                'instructions':voice_recording_policy(record.get('audio_recording',{})),'tools':[STOP_TOOL],'tool_choice':'auto',
                 'parallel_tool_calls':False,'max_output_tokens':500}}
             instructions=instructions.replace('Delegate to the backend when: Never in this prototype.',
                 'Delegate to the backend when a participant asks to stop audio recording; use stop_call_recording only.')
     if delegation['type']=='responses':
         delegation['responses'].update(settings.backend_options())
-    return {'model': settings.openai_live_model, 'instructions': instructions,
+    return {'model': (record.get('voice_backend') or {}).get('model',settings.openai_live_model), 'instructions': instructions,
             'audio': {'format': {'type': 'audio/pcmu', 'rate': 8000},
                       'output': {'voice': record.get('voice_name') or settings.openai_voice}},
             'delegation': delegation, 'store': False}

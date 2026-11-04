@@ -463,10 +463,12 @@ If caller_identity_ambiguous is true, do not offer the presented number for call
             'may be direct or unreported forwarding; do not assert a direct route as fact. '
             'If the caller explains they could not reach the owner, acknowledge that and offer help or a message.\n')
         instructions+=routing_policy;backend+=routing_policy
-    if record.get('audio_recording',{}).get('policy'):
+    if record.get('audio_recording') is not None:
         from app.calling.recordings import STOP_TOOL,voice_recording_policy
-        tools.append(STOP_TOOL)
-        instructions+=voice_recording_policy();backend+=voice_recording_policy()
+        snapshot=record['audio_recording']
+        if snapshot.get('pinned_settings',{}).get('recording_enabled') or (snapshot.get('policy') or {}).get('recording_requested_at'):
+            tools.append(STOP_TOOL)
+        instructions+=voice_recording_policy(record.get('audio_recording',{}));backend+=voice_recording_policy(record.get('audio_recording',{}))
     prepared=record.get('incoming_context',{}).get('greeting_preparation',[])
     if prepared:
         instructions+='\nPrepared background for this caller: '+json.dumps(prepared,ensure_ascii=False)+\
@@ -530,7 +532,7 @@ If caller_identity_ambiguous is true, do not offer the presented number for call
     opening+=' This is a one-time startup instruction, not a request to greet again later in the conversation.'
     instructions+=INCOMING_CONTINUITY_POLICY
     backend+=INCOMING_CONTINUITY_POLICY
-    return {'model':settings.openai_live_model, 'instructions':instructions,
+    return {'model':(record.get('voice_backend') or {}).get('model',settings.openai_live_model), 'instructions':instructions,
         'input':[{'type':'message','role':'developer','content':[{'type':'input_text','text':opening}]}],
         'audio':{'format':{'type':'audio/pcmu', 'rate':8000}, 'output':{'voice':record.get('voice_name') or settings.openai_voice}},
         'delegation':{'type':'responses', 'responses':{'model':settings.openai_backend_model,

@@ -30,7 +30,9 @@ class CallRequest(BaseModel):
     constraints: list[str] = Field(default_factory=list, max_length=30)
     max_duration_minutes: int = Field(default=15, ge=1, le=15)
     ivr_mode: bool = False
-    voice_provider: Literal['openai', 'elevenlabs'] | None = None
+    voice_model: str | None = Field(default=None,max_length=100)
+    voice: str | None = Field(default=None,max_length=100)
+    voice_provider: Literal['openai', 'elevenlabs', 'gemini'] | None = None
 
 
 class DigitsRequest(BaseModel):

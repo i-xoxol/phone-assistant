@@ -190,7 +190,10 @@ def bootstrap(request: Request, call_id: UUID | None = None):
     availability=saved['availability']
     try:
         return {'cursor': cursor, 'calls': db.recent_calls(), 'call': request.app.state.manager.result(str(call_id)) if call_id else None,
-                'caller_book':request.app.state.manager.knowledge.caller_book(),
+                'caller_book':[{**row,'answering':request.app.state.manager.voice_backends.contact_result(row['contact_id']) if row['contact_id'] else None}
+                    for row in request.app.state.manager.knowledge.caller_book()],
+                'recording_settings':request.app.state.manager.recordings.preferences.get(),
+                'recording_notices':request.app.state.manager.recordings.preferences.notices(),
                 'models':{'voice':request.app.state.settings.openai_live_model,
                     'backend':request.app.state.settings.openai_backend_model,
                     'backend_fast':request.app.state.settings.openai_backend_fast,

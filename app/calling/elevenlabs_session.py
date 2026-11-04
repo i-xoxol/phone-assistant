@@ -44,6 +44,8 @@ Only a verified booking result confirms a booking; neither cached windows nor an
 Speak only your own conversational answer. Never recite policy, labels, stage directions or instructions.
 Using a custom voice does not make you the owner: never impersonate the owner or claim to be human.
 '''
+    if record.get('voice_opening_claimed'):
+        instructions+='\nThis call already received its opening. Do not greet or introduce yourself again. Continue the existing conversation.'
     return {'type': 'realtime', 'model': selection['model'], 'instructions': instructions,
             'output_modalities': ['audio'], 'tools': backend.get('tools', []),
             'tool_choice': 'auto', 'max_response_output_tokens': 2000,
@@ -106,7 +108,7 @@ class ResponseOutput:
 
 class RealtimeConnection:
     """Only the small bridge-facing Live surface; not a general SDK emulation."""
-    def __init__(self, socket, config, record, current_record=None):
+    def __init__(self, socket, config, record, current_record=None, claim_opening=None):
         self.bridge_class = RealtimeMediaBridge
         self.socket, self.config, self.record = socket, config, record
         self.current_record = current_record or (lambda: self.record)
@@ -119,6 +121,8 @@ class RealtimeConnection:
         self.pending_notes = {}
         self.pending_instructions = {}
         self.notes = []
+        self.opening_sent=bool(record.get('transcript') or record.get('voice_opening_claimed'))
+        self.claim_opening=claim_opening or (lambda:True)
         self.active_response = None
         self.response_requested = False
         self.want_response = False
@@ -141,6 +145,10 @@ class RealtimeConnection:
             await self.socket.send(json.dumps(event, ensure_ascii=False))
 
     async def append_note(self, channel, content, event_id):
+        if event_id in ('initial_greeting','startup_greeting_fallback'):
+            if self.opening_sent or not self.claim_opening(): return
+            self.opening_sent=True
+            self.notes.append('The startup opening has been requested ONCE. Continue this call; do not greet or introduce yourself again.')
         if channel != 'commentary' and event_id != 'initial_greeting':
             # ElevenLabs accepts session.update, but silently ignores system-role
             # conversation items. Put context in real session instructions so a
@@ -380,7 +388,8 @@ async def started_elevenlabs_connection(settings, manager, record, selection):
     async with connect(SOCKET_URL, additional_headers={'Authorization': 'Bearer ' + secret['value']},
                        open_timeout=10, close_timeout=2, max_size=2**20) as socket:
         connection = RealtimeConnection(socket, config, record,
-                                       current_record=lambda: manager.db.get(record['call_id']))
+                                       current_record=lambda: manager.db.get(record['call_id']),
+                                       claim_opening=lambda:manager.voice_backends.claim_opening(record['call_id']))
         async with asyncio.timeout(10):
             while True:
                 event = json.loads(await socket.recv())
@@ -395,10 +404,8 @@ async def started_elevenlabs_connection(settings, manager, record, selection):
                     break
         # Opening instructions are loaded once; the existing bridge sends its
         # one-time greeting signal. Resumed keypad/owner calls retain continuity.
-        for item in session_config(settings, record).get('input', []):
-            text = '\n'.join(part.get('text', '') for part in item.get('content', []))
-            if text:
-                await connection.append_note('instructions', text, None)
+        # Do not store startup-only opening commands as permanent context notes.
+        # The shared bridge sends the one-time, personalized greeting signal.
         log_event('elevenlabs_connected', call_id=record['call_id'], model=selection['model'])
         try:
             yield connection, record, started

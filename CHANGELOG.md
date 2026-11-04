@@ -124,3 +124,13 @@ Initial public source release of the working self-hosted prototype.
 - Sanitized examples, complete replication documentation, MIT license, and CI.
 
 This release does not include private deployment configuration or real call data.
+
+## Telephone owner controls and optional Gemini Live
+
+- Add authenticated mobile provider/model/voice controls and provider-local contact inheritance, pinned for each new call.
+- Persist audio recording and announcement independently; retain participant opt-outs and truthful notice/request metadata.
+- Add English/Ukrainian cached-notice draft generation, bounded WAV upload, private preview, and atomic activation.
+- Add a disabled-until-verified Google GenAI Live adapter with stateful audio conversion and the existing tool/booking protections.
+- Preserve REST/MCP names and add owner settings tools without changing lookup, coaching or subscription authorization.
+
+See [the controls guide](docs/answering-controls.md) for setup, validation and rollback boundaries.
