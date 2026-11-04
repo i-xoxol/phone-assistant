@@ -142,7 +142,7 @@ function openContextNote(kind,row={}) {
   $('contextNoteTitle').value=row.title || row.topic || '';$('contextNoteText').value=row.context || row.text || '';
   $('contextNoteNumber').value=row.phone_number || '';$('contextNoteContact').value=row.contact_id || '';
   $('contextNoteSource').value=row.source || 'Owner portal';
-  $('contextNoteExpiry').value=localDateTime(row.expires_at || Date.now()+86400000);
+  $('contextNoteExpiry').value=localDateTime(row.expires_at || Date.now()+24*60*60*1000);
   $('contextNoteText').maxLength=kind==='expected'?1200:600;
   $('contextNoteNumber').parentElement.hidden=kind!=='expected';
   $('contextNoteContact').parentElement.hidden=kind!=='fact';$('contextNoteSource').parentElement.hidden=kind!=='fact';
