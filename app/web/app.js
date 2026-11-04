@@ -446,4 +446,5 @@ $('callerBookPanel').addEventListener('toggle',async()=>{
   try {const data=await api('/live/bootstrap');renderPersonalities(data.personalities);renderCallerBook(data.caller_book);} catch(error) {$('languageError').textContent=error.message;}
 });
 setInterval(()=>{showCall(); if (lastSeen && Date.now()-lastSeen>12000) connection('No recent heartbeat · connection may be stale. Hang-up remains available.');},1000);
-start().catch(error=>connection(error.message));
+// Both deferred scripts must finish defining the control-page editors first.
+document.addEventListener('DOMContentLoaded',()=>start().catch(error=>connection(error.message)),{once:true});
