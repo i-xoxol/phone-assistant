@@ -81,6 +81,30 @@ def test_gemini_config_validates_with_official_sdk_and_shared_permissions(servic
     assert c['input_audio_transcription']==c['output_audio_transcription']=={}
     assert c['speech_config']['voice_config']['prebuilt_voice_config']['voice_name']=='Kore'
     assert 'untrusted' in c['system_instruction'] and 'never impersonate' in c['system_instruction'].lower()
+    assert not c.get('history_config')
+
+
+def test_resumed_history_is_completed_before_live_input(service,monkeypatch):
+    _,m,_=service
+    m.settings.gemini_api_key=SecretStr('synthetic-key');m.settings.gemini_live_verified=True
+    cid=m.db.create_inbound('CA'+'7'*32,'+12025550101',5,10,'concierge')
+    m.db.transcript(cid,{'type':'session.output_transcript.delta','event_id':'earlier',
+        'delta':'Earlier assistant answer.','start_ms':1000,'end_ms':1100})
+    record=m.voice_record(cid);native=Native();configs=[]
+    @asynccontextmanager
+    async def connect(**kwargs):
+        configs.append(kwargs['config']);yield native
+    async def close():pass
+    client=SimpleNamespace(aio=SimpleNamespace(live=SimpleNamespace(connect=connect),aclose=close))
+    monkeypatch.setattr('app.calling.gemini_session.genai.Client',lambda **_:client)
+    async def run():
+        async with started_gemini_connection(m.settings,m,record,{'model':'gemini-3.8-live','voice':'Kore'}) as (c,_,__):
+            assert configs[0]['history_config']=={'initial_history_in_client_content':True}
+            assert native.contents==[{'turns':[{'role':'model','parts':[{'text':'Earlier assistant answer.'}]}],
+                                     'turn_complete':True}]
+            await c.append_note('commentary','Do not repeat the greeting.','startup_greeting_fallback')
+            assert len(native.contents)==1
+    asyncio.run(run())
 
 
 def test_missing_credentials_or_verification_blocks_gemini(service):

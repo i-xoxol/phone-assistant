@@ -144,6 +144,11 @@ Startup signals are claimed durably once per call for ElevenLabs/Gemini. A
 replayed signal or resumed session cannot create another opening. Startup-only
 instructions are not repeatedly inserted into ElevenLabs permanent context.
 
+Gemini history-seeding mode is enabled only when restoring an earlier transcript.
+The history upload ends with `turn_complete=true`, which exits that history-only
+phase without generating speech. Fresh calls omit history mode so their one-time
+opening can immediately generate audio instead of being silently consumed as history.
+
 Gemini mid-session `send_client_content` has explicit user/model roles.
 Application context/instruction updates are labelled server supervision, with no
 expanded authority; spoken updates direct a question **to the caller**. A context
