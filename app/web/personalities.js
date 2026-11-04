@@ -36,6 +36,11 @@ async function refreshPeople() {
 }
 $('personalityPicker').onchange=()=>editPersonality($('personalityPicker').value);
 $('newPersonality').onclick=()=>editPersonality(null);
+$('reloadPersonality').onclick=async()=>{
+  personalityDrafts.delete(editingPersonality || '');personalityDirty=false;
+  try {await refreshPeople();$('personalityState').textContent='Loaded saved profile. Previous unsaved draft discarded.';}
+  catch(e) {$('personalityState').textContent=e.message;}
+};
 for(const id of ['personalityName','personalityInstructions','personalityContext','personalityGreeting']) $(id).oninput=()=>{
   personalityDirty=true;$('personalityState').textContent='Unsaved edits · active calls are unaffected.';
 };

@@ -291,7 +291,7 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
         """Read editable owner personality profiles and the default. Separate from model/voice and permissions."""
         return manager.personalities.catalog()
 
-    @mcp.tool(annotations=knowledge_write)
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False))
     def set_call_personality(name:str,instructions:str='',context:str='',greeting:str='',
             personality_id:UUID|None=None,revision:int|None=None) -> dict:
         """Create or update an owner-requested personality for NEW calls. Read profiles first; updates require
@@ -300,7 +300,7 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
         return manager.personalities.save(PersonalityUpdate(name=name,instructions=instructions,context=context,
             greeting=greeting,revision=revision),personality_id)
 
-    @mcp.tool(annotations=knowledge_write)
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False))
     def duplicate_call_personality(personality_id:UUID,name:str) -> dict:
         """Copy a saved profile into an independent editable personality. Does not change default or assignments."""
         return manager.personalities.duplicate(personality_id,name)

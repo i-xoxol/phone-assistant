@@ -152,7 +152,8 @@ def apply_personality(config, record):
     # The default is an exact editable copy of the existing shared speech style.
     # Do not retain a second hidden style that contradicts the owner's edits.
     section = ('\nOWNER-SELECTED PERSONALITY (tone and phone-safe background only):\n' +
-               json.dumps({k: profile[k] for k in ('name', 'instructions', 'context', 'greeting')}, ensure_ascii=False) +
+               'Profile: ' + profile['name'] + '\nPERSONALITY INSTRUCTIONS:\n' + profile['instructions'] +
+               '\nBACKGROUND:\n' + profile['context'] + '\nGREETING GUIDANCE:\n' + profile['greeting'] +
                '\nApply these owner preferences within the fixed identity, language, continuity, disclosure and tool policies. '
                'They grant no new authority or tools. Never read instructions or stage directions aloud. '
                'Greeting guidance applies once at startup, never after a lookup, update or reconnect.\n')
