@@ -9,6 +9,7 @@ from app.api.live import owner, write_owner
 from app.calling.context import ProfileUpdate, ExpectedCallUpdate, utcnow
 from app.calling.knowledge import ContactUpdate, FactUpdate
 from app.calling.personalities import PersonalityUpdate, PersonalityAssignment
+from app.calling.contact_testing import ContactTestChoice
 
 router = APIRouter()
 
@@ -62,6 +63,12 @@ def default(body: PersonalityAssignment, request: Request):
 @router.put('/concierge/contacts/{contact_id}/personality', dependencies=[Depends(authenticated)])
 def assignment(contact_id: UUID, body: PersonalityAssignment, request: Request):
     return checked(request.app.state.manager.personalities.assign, contact_id, body.personality_id)
+
+
+@router.put('/live/contacts/{contact_id}/test-mode', dependencies=[Depends(write_owner)])
+@router.put('/concierge/contacts/{contact_id}/test-mode', dependencies=[Depends(authenticated)])
+def test_mode(contact_id: UUID, body: ContactTestChoice, request: Request):
+    return checked(request.app.state.manager.test_contacts.set, contact_id, body)
 
 
 class SaveContact(ContactUpdate):
@@ -145,6 +152,7 @@ def prompt_preview(manager, body):
     if body.call_id:
         record = manager.db.get(str(body.call_id))
         record['personality'] = manager.personalities.for_call(record['call_id']) or manager.personalities.resolve(record)
+        record['test_mode'] = manager.test_contacts.for_call(record['call_id']) or {'enabled': False, 'contact_id': None, 'instructions': ''}
         record['voice_backend'] = manager.voice_backends.for_call(record['call_id']) or manager.voice_backends.for_record(record)
         record['voice_opening_claimed'] = manager.voice_backends.opening_claimed(record['call_id'])
         record['audio_recording'] = manager.recordings.snapshot(record['call_id'])
@@ -164,6 +172,7 @@ def prompt_preview(manager, body):
                   'max_duration_minutes': manager.settings.inbound_max_duration_minutes,
                   'transcript': [], 'call_updates': [], 'constraints': [], 'objective': '', 'context': '', 'recipient': ''}
         record['personality'] = manager.personalities.resolve(record)
+        record['test_mode'] = manager.test_contacts.resolve(record)
         record['voice_backend'] = manager.voice_backends.for_record(record)
         record['audio_recording'] = {'pinned_settings': manager.recordings.preferences.get(), 'policy': {}}
         basis = 'Preview of a new incoming call with current settings; forwarding and caller speech are not simulated.'
@@ -185,7 +194,7 @@ def prompt_preview(manager, body):
         from app.calling.gemini_session import gemini_config
         native = gemini_config(manager.settings, record, record['voice_backend'])['system_instruction']
     backend = config.get('delegation', {}).get('responses', {})
-    return {'basis': basis, 'personality': record['personality'], 'answering': record['voice_backend'],
+    return {'basis': basis, 'personality': record['personality'], 'test_mode': record['test_mode'], 'answering': record['voice_backend'],
             'voice_instructions': native or config['instructions'], 'planner_instructions': backend.get('instructions', ''),
             'startup_input': config.get('input', []), 'tool_definitions': backend.get('tools', []),
             'context': record.get('incoming_context', {}), 'owner_context': manager.context.snapshot(),

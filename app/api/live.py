@@ -197,6 +197,7 @@ def bootstrap(request: Request, call_id: UUID | None = None):
         return {'cursor': cursor, 'calls': db.recent_calls(), 'call': request.app.state.manager.result(str(call_id)) if call_id else None,
                 'personalities':request.app.state.manager.personalities.catalog(),
                 'caller_book':[{**row,'personality_id':request.app.state.manager.personalities.assignment(row['contact_id']) if row['contact_id'] else None,
+                    'test_mode':request.app.state.manager.test_contacts.get(row['contact_id']) if row['contact_id'] else None,
                     'answering':request.app.state.manager.voice_backends.contact_result(row['contact_id']) if row['contact_id'] else None}
                     for row in request.app.state.manager.knowledge.caller_book()],
                 'recording_settings':request.app.state.manager.recordings.preferences.get(),

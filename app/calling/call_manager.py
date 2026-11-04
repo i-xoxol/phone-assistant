@@ -37,6 +37,8 @@ class CallManager:
         self.knowledge = CallKnowledge(database)
         from app.calling.personalities import Personalities
         self.personalities = Personalities(self)
+        from app.calling.contact_testing import ContactTesting
+        self.test_contacts = ContactTesting(self)
         from app.calling.forwarding import IncomingRouting
         from app.calling.recordings import CallRecordings
         self.routing=IncomingRouting(self)
@@ -64,6 +66,7 @@ class CallManager:
     def result(self, call_id):
         return {**self.db.get(call_id),'lookup_requests':self.lookup.list_for_call(call_id),
                 'personality':self.personalities.for_call(call_id),
+                'test_mode':self.test_contacts.for_call(call_id),
                 'voice_backend':self.voice_backends.for_call(call_id),
                 'owner_transfer':self.transfer.for_call(call_id),'owner_coaching':self.observer.history(call_id),
                 'forwarding':self.routing.get(self.db.get(call_id)),'audio_recording':self.recordings.snapshot(call_id)}
@@ -71,6 +74,7 @@ class CallManager:
     def voice_record(self,call_id):
         record=self.db.get(call_id)
         record['personality']=self.personalities.pin(record)
+        record['test_mode']=self.test_contacts.pin(record)
         record['voice_name']=self.voices.pin(record)
         record['owner_transfer']=self.transfer.for_call(call_id)
         record['voice_backend']=self.voice_backends.for_call(call_id)
@@ -86,6 +90,9 @@ class CallManager:
 
     def incoming_context(self,record,question=''):
         context=self.context.for_call(record,question=question)
+        test_mode=record.get('test_mode') or self.test_contacts.for_call(record.get('call_id')) or self.test_contacts.resolve(record)
+        if test_mode.get('enabled'):
+            context['test_mode']=test_mode
         if record.get('direction') == 'inbound':
             context['caller'] = incoming_caller_metadata(record)
             context['forwarding']=self.routing.get(record,for_voice=True)

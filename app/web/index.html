@@ -48,7 +48,7 @@
 <button class="quiet" id="savePersonality">Save personality</button></form>
 <p id="personalityState" class="caption-note" role="status"></p></details>
 <details id="callerBookPanel" class="inbox"><summary>Caller book · Contacts, personalities and voices</summary>
-<p class="caption-note">English is the default. Explicit caller requests are remembered by number; names and access permissions stay separate. Default answering choices inherit future global changes.</p>
+<p class="caption-note">English is the default. Explicit caller requests are remembered by number. Default answering choices inherit future global changes. Expand a saved contact to set its test flag, personality, model and voice.</p>
 <button id="newContact" class="quiet">Add contact</button>
 <label class="editor-field" for="contactSearch">Find a caller<input id="contactSearch" type="search" placeholder="Name or phone number" autocomplete="off"></label>
 <form id="contactForm" class="editor-card" hidden><h2 id="contactFormTitle">New contact</h2><div class="settings-grid">
@@ -88,7 +88,7 @@
 <p id="supervisorState" class="caption-note"></p><p id="contextState" class="caption-note"></p><div id="requests"></div></section>
 <section class="call-card"><label for="calls">YOUR CALLS</label><select id="calls"><option value="">No calls yet</option></select>
 <div class="call-meta"><span id="status" class="badge">—</span><span id="duration">0:00</span></div>
-<p id="objective" class="objective">Select a call to view its conversation.</p><button id="saveCaller" class="quiet" disabled>Save caller to phone book</button></section>
+<p id="objective" class="objective">Select a call to view its conversation.</p><p id="testModeState" class="caption-note"></p><button id="saveCaller" class="quiet" disabled>Save caller to phone book</button></section>
 <p id="transferState" class="caption-note" role="status"></p>
 <section class="inbox" aria-label="Call audio"><h2>Call recording</h2>
 <p id="forwardingState" class="caption-note"></p><div id="recordings"></div>

@@ -50,7 +50,7 @@ function renderCallerBook(rows=[]) {
     const editContact=document.createElement('button');editContact.className='quiet';editContact.textContent=row.contact_id?'Edit contact':'Save as contact';
     editContact.onclick=()=>openContact(row);
     const summary=document.createElement('summary');summary.append(title,number);
-    entry.append(summary,edit,editContact);addContactPersonality(entry,row);addContactAnswering(entry,row);target.append(entry);
+    entry.append(summary,edit,editContact);addContactTesting(entry,row);addContactPersonality(entry,row);addContactAnswering(entry,row);target.append(entry);
   });
 }
 function showCall() {
@@ -59,6 +59,7 @@ function showCall() {
   $('status').textContent=call ? call.status.replaceAll('_',' ') : '—';
   $('status').className='badge'+(call && !terminal.has(call.status)?' active':'');
   $('objective').textContent=call?.objective || 'Select a call to view its conversation.';
+  $('testModeState').textContent=call?.test_mode?.enabled?'Test contact · additional testing instructions are active for this call.':'';
   $('hangup').disabled=!call || terminal.has(call.status) || pending;
   $('hangup').textContent=pending?'Ending call…':'Hang up call';
   $('reachOwner').disabled=!ownerContactEnabled || !call || call.status!=='in_progress' || !!call.owner_transfer || pending;
