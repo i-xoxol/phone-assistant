@@ -19,11 +19,16 @@ class Settings(BaseSettings):
     local_api_token: SecretStr = SecretStr('')
     openai_live_model: str = 'gpt-live-1'
     openai_voice: str = 'marin'
-    voice_provider: Literal['openai', 'elevenlabs'] = 'openai'
+    voice_provider: Literal['openai', 'elevenlabs', 'gemini'] = 'openai'
     elevenlabs_api_key: SecretStr = SecretStr('')
     elevenlabs_realtime_model: Literal['eleven_realtime_v1_mini', 'eleven_realtime_v1_max'] = 'eleven_realtime_v1_mini'
     elevenlabs_voice_id: str = Field(default='', max_length=100, pattern=r'^[A-Za-z0-9_-]*$')
     elevenlabs_voice_label: str = Field(default='Custom voice', max_length=100)
+    elevenlabs_permitted_voices: list[dict[str,str]] = Field(default_factory=list)
+    gemini_api_key: SecretStr = SecretStr('')
+    gemini_live_verified: bool = False
+    gemini_voice: str = 'Kore'
+    recording_announcement_enabled: bool = True
     caller_name: str = 'Alex'
     owner_pronouns: Literal['he/him', 'she/her', 'they/them'] = 'they/them'
     assistant_name: str = Field(default='Assistant',min_length=1,max_length=80)

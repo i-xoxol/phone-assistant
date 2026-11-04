@@ -84,6 +84,10 @@ def test_outbound_is_also_noticed_and_historical_calls_remain_unrecorded(service
     client,m,_=service;cid=create(client).json()['call_id']
     assert m.recordings.snapshot(cid)['policy'] is None
     enable(m,tmp_path)
+    # New-call policy is pinned at creation; an earlier disabled call stays off.
+    assert '<Recording' not in signed(client,'/twilio/voice/'+cid,{'AccountSid':'AC123','CallSid':'CA123'}).text
+    m.db.update(cid,twilio_call_sid='CA_SYNTHETIC_OLD')
+    cid=create(client).json()['call_id']
     response=signed(client,'/twilio/voice/'+cid,{'AccountSid':'AC123','CallSid':'CA123'})
     root=ET.fromstring(response.text)
     assert [n.tag for n in root][:3]==['Play','Start','Connect']

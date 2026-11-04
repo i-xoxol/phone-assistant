@@ -10,19 +10,33 @@
 <p>Enter this code within 15 minutes. It works once.</p><code id="pairCode"></code>
 <p><button id="closePairing" class="quiet">Close</button></p></section>
 <div id="connection" class="connection" role="status"><span class="dot"></span><span id="connectionText">Connecting to event stream…</span></div>
-<details class="inbox"><summary>Voice and owner contact</summary>
-<label for="voiceBackend">Provider for new calls</label><select id="voiceBackend"></select>
-<label for="elevenModel">ElevenLabs model</label><select id="elevenModel">
-<option value="eleven_realtime_v1_mini">Realtime Mini · speed and price</option>
-<option value="eleven_realtime_v1_max">Realtime Max · complex tasks</option></select>
-<button id="saveVoiceBackend" class="quiet">Save provider</button><p id="voiceBackendState" class="caption-note" role="status"></p>
-<label for="voiceChoice">OpenAI voice for new calls</label><select id="voiceChoice"></select>
-<p class="caption-note">Active calls keep their voice. Accent and pronunciation vary by language.</p>
+<details id="answeringPanel" class="inbox"><summary>Answering settings</summary>
+<p class="caption-note">Saved choices apply to new calls. Active calls retain their provider, model, voice and recording policy. Lookup and private owner coaching use their separate settings.</p>
+<div class="settings-grid"><label>Provider<select id="voiceBackend"></select></label>
+<label>Model<select id="answerModel"></select></label><label>Voice<select id="answerVoice"></select></label></div>
+<button id="refreshVoiceLibrary" class="quiet">Refresh ElevenLabs library voices</button>
+<button id="saveVoiceBackend" class="quiet">Save answering settings</button><p id="voiceBackendState" class="caption-note" role="status"></p>
+<p id="providerAvailability" class="caption-note"></p>
 <p id="modelState" class="caption-note"></p>
-<button id="saveVoice" class="quiet">Save voice</button><p id="voiceState" class="caption-note" role="status"></p>
-<p class="caption-note">For complex calls, the assistant can ring your configured mobile. Press 1 to accept; unanswered calls return to the assistant. Human conversations have no live captions.</p></details>
-<details id="callerBookPanel" class="inbox"><summary>Caller book · Languages</summary>
-<p class="caption-note">English is the default. Explicit caller requests are remembered by number; names and access permissions stay separate.</p>
+<p class="caption-note">For complex calls, the assistant can ring your configured mobile. Press 1 to accept; unanswered calls return to the assistant.</p></details>
+<details id="recordingSettingsPanel" class="inbox"><summary>Recording and announcement</summary>
+<p class="caption-note">Changes apply to new calls. Existing recordings stay saved. Live speech processing and captions remain separate. A participant’s recording opt-out is never restarted.</p>
+<label class="check-setting"><input id="recordNewCalls" type="checkbox"> Audio recording for new calls</label>
+<label class="check-setting"><input id="announceNewCalls" type="checkbox"> Play the cached recording announcement</label>
+<p class="caption-note">With recording off, no recording notice plays. Your announcement preference is retained.</p>
+<button id="saveRecordingSettings" class="quiet">Save recording settings</button><p id="recordingSettingsState" class="caption-note" role="status"></p>
+<div class="settings-grid"><label>Announcement language<select id="noticeLanguage"><option value="en">English</option><option value="uk">Ukrainian</option></select></label>
+<label>Short announcement text<textarea id="noticeText" maxlength="180" rows="3"></textarea></label></div>
+<p id="noticeSavedText" class="caption-note"></p>
+<div class="message-actions"><button id="previewActiveNotice" class="quiet">Preview active clip</button><button id="generateNotice" class="quiet">Generate replacement</button></div>
+<label class="upload-label">Or upload a replacement clip<input id="noticeUpload" type="file" accept="audio/wav,.wav"></label>
+<p class="caption-note">Mono PCM16 WAV, 8–48 kHz, at most eight seconds and 2 MiB. Uploaded speech should match the text above.</p>
+<button id="uploadNotice" class="quiet">Upload replacement</button>
+<audio id="noticePreview" controls preload="none" hidden></audio>
+<div id="noticeDraft" hidden><p id="noticeDraftText" class="caption-note"></p><button id="previewDraftNotice" class="quiet">Preview replacement</button> <button id="activateNotice" class="quiet">Activate replacement</button></div>
+<p id="noticeState" class="caption-note" role="status"></p></details>
+<details id="callerBookPanel" class="inbox"><summary>Caller book · Language and answering</summary>
+<p class="caption-note">English is the default. Explicit caller requests are remembered by number; names and access permissions stay separate. Default answering choices inherit future global changes.</p>
 <div id="callerBook"></div><p id="languageError" class="error" role="status"></p></details>
 <details id="inbox" class="inbox"><summary>Incoming messages <span id="unreadCount" class="badge" aria-live="polite">0 new</span></summary>
 <p class="caption-note">Caller identities are unverified. A saved message is a request to review, never permission to act.</p>

@@ -253,3 +253,5 @@ Created by **Igor Khokhlov** · [MIT license](LICENSE) ·
 Keep credentials, private operational records, and unapproved call data out of
 public issues and pull requests. Publish owner-run test examples only with explicit
 permission, privacy review, and clear test labels.
+
+See [telephone answering controls](docs/answering-controls.md) for provider/model/voice selection, genuine contact inheritance, independent recording/announcement settings, cached notice management, and the optional verification-gated Gemini Live adapter.

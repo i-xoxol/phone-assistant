@@ -119,7 +119,7 @@ def create_mcp(manager):
     manager.mcp_events = events
     instructions=INSTRUCTIONS
     instructions+='''\nVOICE BACKENDS: get_voice_backend reads the selected telephone provider. At the owner's request,
-set_voice_backend selects OpenAI GPT-Live or configured ElevenLabs Realtime for new calls.
+set_voice_backend selects OpenAI GPT-Live, configured ElevenLabs Realtime, or verified Gemini Live for new calls.
 place_call.voice_provider overrides one call without changing that default. Active/queued calls retain
 their pinned provider/model/voice. OpenAI delegates to its Responses backend; ElevenLabs calls the
 same server-checked functions directly. Neither mode requires this chat to poll before voice tools act.
@@ -159,19 +159,66 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
     @mcp.tool(annotations=read)
     def get_voice_backend() -> dict:
         """Read configured voice providers and the default for new calls. No keys are returned.
-        OpenAI GPT-Live and ElevenLabs Realtime retain the same server tool permissions.
+        OpenAI GPT-Live, ElevenLabs Realtime and verified Gemini Live retain the same server tool permissions.
         The owner-only private coaching model is separate and unchanged."""
         return manager.voice_backends.get()
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False))
-    def set_voice_backend(provider:Literal['openai','elevenlabs'],
-                          elevenlabs_model:Literal['eleven_realtime_v1_mini','eleven_realtime_v1_max']='eleven_realtime_v1_mini') -> dict:
+    def set_voice_backend(provider:Literal['openai','elevenlabs','gemini'],
+                          elevenlabs_model:Literal['eleven_realtime_v1_mini','eleven_realtime_v1_max']|None=None,
+                          model:str|None=None,voice:str|None=None) -> dict:
         """Set the default provider for NEW calls when the owner requests a change.
         ElevenLabs requires a server-configured API key and voice; costs are billed by that provider.
         This never switches an active call, changes tool authorization or starts a call.
-        set_voice changes OpenAI's voice only; ElevenLabs uses its separately configured voice."""
+        Model/voice must come from get_voice_backend. Omitted values retain provider-local defaults.
+        set_voice remains compatible and changes only the default OpenAI voice."""
         from app.calling.voice_backends import BackendChoice
-        return manager.voice_backends.set(BackendChoice(provider=provider,elevenlabs_model=elevenlabs_model))
+        return manager.voice_backends.set(BackendChoice(provider=provider,elevenlabs_model=elevenlabs_model,model=model,voice=voice))
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=True))
+    async def refresh_voice_library() -> dict:
+        """Refresh the bounded ElevenLabs saved-library voice catalog on explicit owner request. No speech or calls."""
+        return await manager.voice_backends.refresh_elevenlabs()
+
+    @mcp.tool(annotations=read)
+    def get_contact_voice(contact_id:UUID) -> dict:
+        """Read saved contact answering overrides and effective inheritance. No change to authorization."""
+        return manager.voice_backends.contact_result(contact_id)
+
+    @mcp.tool(annotations=read)
+    def get_recording_settings() -> dict:
+        """Read separate audio recording/announcement preferences for NEW calls; captions remain separate."""
+        return manager.recordings.preferences.get()
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False))
+    def set_recording_settings(recording_enabled:bool,announcement_enabled:bool) -> dict:
+        """Save owner-requested NEW-call recording policy. Never restarts a participant opt-out or deletes audio."""
+        from app.calling.recording_settings import RecordingChoice
+        return manager.recordings.preferences.set(RecordingChoice(recording_enabled=recording_enabled,announcement_enabled=announcement_enabled))
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False))
+    def set_contact_voice(contact_id:UUID,provider:Literal['openai','elevenlabs','gemini']|None=None,
+                          model:str|None=None,voice:str|None=None) -> dict:
+        """Set a saved contact's answering preferences for NEW calls. Null provider/model/voice means inheritance.
+        Provider must be explicit to override model/voice; use get_voice_backend's capability registry.
+        This changes neither contact identity nor disclosure, booking, lookup or coaching authorization."""
+        from app.calling.voice_backends import ContactVoiceChoice
+        return manager.voice_backends.set_contact(contact_id,ContactVoiceChoice(provider=provider,model=model,voice=voice))
+
+    @mcp.tool(annotations=read)
+    def get_recording_notices() -> dict:
+        """Read active/draft English and Ukrainian notice metadata. No speech generation."""
+        return {'notices':manager.recordings.preferences.notices()}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=True))
+    async def generate_recording_notice(language:Literal['en','uk'],text:Annotated[str,Field(min_length=1,max_length=180)]) -> dict:
+        """Only on explicit owner request: generate a charged draft clip. Preview in portal before activation."""
+        return {'notices':await manager.recordings.preferences.generate(language,text)}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False))
+    def activate_recording_notice(language:Literal['en','uk'],asset_id:str) -> dict:
+        """Activate the exact owner-reviewed current draft. Previous clips remain available for pinned calls."""
+        return {'notices':manager.recordings.preferences.activate(language,asset_id)}
 
     @mcp.tool(annotations=write)
     async def reach_owner(call_id:UUID,reason:Annotated[str,Field(min_length=1,max_length=200)]) -> dict:
@@ -390,14 +437,15 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
     @mcp.tool(annotations=write)
     async def place_call(phone_number: str, objective: str, recipient: str = '', context: str = '',
                          constraints: list[str] | None = None, max_duration_minutes: int = 15,
-                         ivr_mode: bool = False, voice_provider:Literal['openai','elevenlabs']|None=None) -> dict:
+                         ivr_mode: bool = False, voice_provider:Literal['openai','elevenlabs','gemini']|None=None,
+                         voice_model:str|None=None,voice:str|None=None) -> dict:
         """Place one real outbound call on the owner's behalf. Requires the owner's explicit request; costs money.
         Use E.164 number. Set ivr_mode for business menus. Returns voice_tools_enabled:
         if true, spoken keypad requests execute inside the live voice backend; do not instruct it to
         wait for ChatGPT or send duplicate digits. Returns immediately; do not duplicate/retry blindly."""
         return await manager.place_call(CallRequest(phone_number=phone_number, recipient=recipient,
             objective=objective, context=context, constraints=constraints or [],
-            max_duration_minutes=max_duration_minutes, ivr_mode=ivr_mode,voice_provider=voice_provider))
+            max_duration_minutes=max_duration_minutes, ivr_mode=ivr_mode,voice_provider=voice_provider,voice_model=voice_model,voice=voice))
 
     @mcp.tool(annotations=read)
     async def get_call_status(call_id: UUID) -> dict:

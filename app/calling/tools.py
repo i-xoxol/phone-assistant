@@ -230,6 +230,10 @@ class VoiceTools:
     async def execute(self, delegation, state):
         try:
             for item in state['calls']:
+                # Let native cancellation already queued by an adapter take effect.
+                await asyncio.sleep(0)
+                cancelled=getattr(self.bridge.connection,'tool_cancelled',lambda _:False)
+                if cancelled(item['call_id']): continue
                 try:
                     command={**item,'_booking_context':state['booking_context']} if state.get('booking_context') and item['name']=='book_appointment' else item
                     result = await self.operation(command)
