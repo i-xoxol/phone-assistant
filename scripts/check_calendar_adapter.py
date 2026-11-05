@@ -87,7 +87,8 @@ async def check(provider,env_file,caller_audio=None,model=None):
                     assert fake.writes==0
                     return {'provider':provider,'real_provider_audio_and_caller_asr':True,'shifted_twilio_clock_ms':7000,
                         'calendar_name_and_caption_gates_passed':True,'verified_fictional_calendar_answer_spoken':True,
-                        'calendar_source':'fictional_read_only','real_calendar_accessed':False,'calendar_writes':0,'telephone_dialed':False}
+                        'calendar_source':'fictional_read_only','real_calendar_accessed':False,'calendar_writes':0,'telephone_dialed':False,
+                        'independent_caption_checks':getattr(getattr(connection,'caption_verification',None),'attempts',0)}
                 finally:
                     debug={'activity':manager.caller_activity.get(cid),'lookups':lookups,
                         'provider_events':provider_events,'tool_names':list(connection.tool_names) if provider=='elevenlabs' else [],

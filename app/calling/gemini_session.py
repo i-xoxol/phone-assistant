@@ -85,6 +85,8 @@ class GeminiConnection:
         self.response=GeminiResponse(self)
         self.audio=StreamingAudio()
         self.input_timeline=InputAudioTimeline()
+        from app.calling.caption_verification import CaptionVerification
+        self.caption_verification=CaptionVerification(self.input_timeline)
         self.provider_timing_required=True
         self.queue=asyncio.Queue(maxsize=256)
         self.started_at=time.monotonic()
@@ -126,6 +128,7 @@ class GeminiConnection:
 
     def observe_input_audio(self,start_ms,payload):
         self.input_timeline.observe(start_ms,len(payload),has_speech(payload))
+        self.caption_verification.observe(payload)
 
     def transcript(self,speaker,text,transcription=None):
         transcription=transcription or {}
@@ -224,6 +227,7 @@ class GeminiConnection:
     async def close(self):
         if self.closing: return
         self.closing=True
+        await self.caption_verification.close()
         await self.native.close()
         # Some SDK transports close without completing a receive iterator.
         await self.queue.put(Event({'type':'session.closed'}))

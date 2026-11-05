@@ -58,6 +58,38 @@ def test_caption_coverage_waits_for_speech_to_close():
     assert c.transcript_coverage()==11000
 
 
+def test_timestamp_free_caption_never_extends_to_future_speech_automatically():
+    c=InputAudioTimeline();c.observe(7000,8000,True);c.transcription_span()
+    c.observe(8000,8000,True);c.observe(9000,4000,False)
+    assert c.transcript_coverage()==8000
+
+
+@pytest.mark.parametrize('case',['match','mismatch','new_speech','hangup','no_key'])
+def test_independent_caption_proof_requires_matching_text_and_unchanged_audio(case):
+    from app.calling.caption_verification import CaptionVerification
+    c=InputAudioTimeline();v=CaptionVerification(c)
+    for start,raw,spoken in [(7000,b'\x80'*8000,True),(8000,b'\xff'*4000,False),
+        (8500,b'\x80'*8000,True),(9500,b'\xff'*4000,False)]:
+        c.observe(start,len(raw),spoken);v.observe(raw)
+    text='My name is Casey Example. Please check my appointment.'
+    record={'status':'in_progress','direction':'inbound','inbound_mode':'concierge','transcript':[{'speaker':'callee','text':text}]}
+    m=SimpleNamespace(stopping=set(),bridges={},appointments=None,caller_activity={'c':{'last_speech_ms':9500,'caption_covered_ms':8000}},
+        settings=SimpleNamespace(appointments_enabled=True,openai_api_key=SimpleNamespace(get_secret_value=lambda:'' if case=='no_key' else 'fake')),
+        db=SimpleNamespace(get=lambda _:record))
+    b=SimpleNamespace(manager=m,call_id='c',closing=False,handoff=False,end_requested=asyncio.Event(),transcript_offset_ms=0)
+    m.bridges['c']=b
+    async def transcribe(*_):
+        if case=='new_speech':m.caller_activity['c']['last_speech_ms']=11000
+        if case=='hangup':record['status']='completed'
+        return "No, don't book anything." if case=='mismatch' else text
+    v.transcribe=transcribe
+    async def run():
+        await v.verify(b)
+        assert m.caller_activity['c']['caption_covered_ms']==(9500 if case=='match' else 8000)
+        await v.close();assert not v.frames
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize('ratio',[1,2,3])
 def test_native_clock_calibrates_to_captured_speech_and_excludes_new_answer(ratio):
     c=InputAudioTimeline()

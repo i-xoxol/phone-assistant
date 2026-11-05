@@ -400,6 +400,8 @@ class MediaBridge:
                     self.manager.memory.observe(self.call_id,self,data.get('delta',''))
                 gateway=getattr(self.manager,'appointments',None)
                 if self.inbound and gateway and self.manager.settings.appointments_enabled:
+                    if event.type=='session.input_transcript.delta' and (verifier:=getattr(self.connection,'caption_verification',None)):
+                        verifier.notify(self)
                     if event.type=='session.input_transcript.delta':gateway.lookup_intent.notify(self)
                     gateway.voice_workflow.notify(self,caller=event.type=='session.input_transcript.delta')
                 if (event.type == 'session.output_transcript.delta' and data.get('delta')):

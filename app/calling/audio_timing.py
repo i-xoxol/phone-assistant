@@ -94,14 +94,15 @@ class InputAudioTimeline:
             if self.bound:self.bound['claimed']=True
         if not self.bound:return None,None
         self.bound['transcribed']=True
+        self.bound['caption_end']=self.bound['end']
         return (self.stream_time(self.bound['start']),
-                self.covered_time(self.bound['end']) if self.bound['closed'] else None)
+                self.covered_time(self.bound['caption_end']) if self.bound['closed'] else None)
 
     def finish_transcription(self):
         self.bound=None
 
     def transcript_coverage(self):
-        ends=[self.covered_time(span['end']) for span in self.utterances if span['transcribed'] and span['closed']]
+        ends=[self.covered_time(span.get('caption_end',span['end'])) for span in self.utterances if span['transcribed'] and span['closed']]
         return max((end for end in ends if end is not None),default=None)
 
 

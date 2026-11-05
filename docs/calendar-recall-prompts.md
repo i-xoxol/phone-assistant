@@ -14,7 +14,16 @@ did not represent a successful calendar read.
 The adapters now map captions to the actual sent 8 kHz audio and Twilio frames.
 Gemini's supported conversation configuration does not provide usable timestamp
 offsets in the verified Developer API session, so committed ASR is bound
-conservatively to captured speech spans. ElevenLabs' native rate is calibrated
+conservatively to captured speech spans. When one Gemini caption spans multiple
+audio utterances, a bounded independent transcription check can prove the known
+captured clip. It reuses the configured input-only OpenAI transcription path,
+requires its text to match the native caller transcript, and refuses to advance
+coverage after newer speech, hangup or a mismatch. It runs only for calendar
+discussion/proposals in a live concierge call, at most four times per connection.
+This incurs transcription usage only when needed; a fifteen-second RAM buffer is
+cleared on close and does not create a recording. Failure leaves the check pending
+for clarification/owner review. Ordinary timestamped and already-covered captions
+need no extra ASR. ElevenLabs' native rate is calibrated
 against captured speech onset; delayed captions cannot credit a newer answer.
 Unknown coverage stays pending. Display timestamps are never proof of current
 caller coverage. Reconnect offsets are applied once by the shared bridge.
