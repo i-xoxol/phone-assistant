@@ -23,7 +23,7 @@ def utcnow():
 
 class ProfileUpdate(BaseModel):
     model_config=ConfigDict(extra='forbid')
-    role: str=Field(max_length=200)
+    role: str | None=Field(default=None,max_length=1000)
     context: str=Field(max_length=2000)
 
 
@@ -108,13 +108,19 @@ class ConciergeContext:
     def set_profile(self,body:ProfileUpdate,expected_updated_at=...):
         with self.db.connect() as conn:
             conn.execute('BEGIN IMMEDIATE')
-            current=conn.execute('SELECT updated_at FROM concierge_profile WHERE id=1').fetchone()
+            current=conn.execute('SELECT role,updated_at FROM concierge_profile WHERE id=1').fetchone()
             if expected_updated_at is not ... and (current['updated_at'] if current else None)!=expected_updated_at:
                 raise ValueError('Owner context changed elsewhere. Reload it before saving your edits.')
+            role = body.role.strip() if body.role is not None else (current['role'] if current else '')
+            role_changed = body.role is not None and role != (current['role'] if current else '')
+            if role_changed and getattr(self, 'personalities', None):
+                self.personalities.legacy_role_changed(conn, role)
             conn.execute('INSERT INTO concierge_profile VALUES (1,?,?,?) ON CONFLICT(id) DO UPDATE SET '
                          'role=excluded.role,context=excluded.context,updated_at=excluded.updated_at',
-                         (body.role.strip(),body.context.strip(),utcnow().isoformat()))
-        return self.snapshot()
+                         (role,body.context.strip(),utcnow().isoformat()))
+        result = self.snapshot()
+        result['legacy_role_applied_to_personality'] = bool(role_changed and getattr(self, 'personalities', None))
+        return result
 
     def set_availability(self,body:AvailabilityUpdate):
         observed=body.observed_at.astimezone(timezone.utc).isoformat()
@@ -153,11 +159,21 @@ class ConciergeContext:
             conn.execute('UPDATE expected_calls SET active=0,updated_at=? WHERE context_id=?',(utcnow().isoformat(),context_id))
         return {'context_id':context_id,'status':'retired'}
 
-    def snapshot(self,*,caller_number=None,question=''):
+    def snapshot(self,*,caller_number=None,question='',for_voice=False):
         stamp=utcnow().isoformat()
         with self.db.connect() as conn:
             row=conn.execute('SELECT role,context,updated_at FROM concierge_profile WHERE id=1').fetchone()
             profile=dict(row) if row else {'role':'','context':'','updated_at':None}
+            if for_voice:
+                profile.pop('role', None)
+                profile['purpose'] = 'Shared reference information only; behavior and presentation come from the selected personality.'
+            elif getattr(self, 'personalities', None):
+                alias=conn.execute('SELECT p.personality_id,p.role FROM personality_context_migration m '
+                    'JOIN telephone_personalities p ON p.personality_id=m.personality_id WHERE m.id=1').fetchone()
+                if alias:
+                    profile['role']=alias['role']
+                    profile['role_personality_id']=alias['personality_id']
+                    profile['role_policy']='Deprecated compatibility alias, not a shared voice role.'
             row=conn.execute('SELECT observed_at,expires_at,time_zone,source FROM concierge_availability WHERE id=1').fetchone()
             availability=dict(row) if row else None
             if availability:
@@ -183,5 +199,5 @@ class ConciergeContext:
     def for_call(self,record,question=''):
         if record.get('direction')!='inbound' or record.get('inbound_mode')!='concierge':
             return {}
-        return self.snapshot(caller_number=record['phone_number'],question=question)
+        return self.snapshot(caller_number=record['phone_number'],question=question,for_voice=True)
 

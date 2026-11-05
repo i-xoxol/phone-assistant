@@ -309,12 +309,17 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False))
     def set_call_personality(name:str,instructions:str='',context:str='',greeting:str='',
-            personality_id:UUID|None=None,revision:int|None=None) -> dict:
+            personality_id:UUID|None=None,revision:int|None=None,role:str|None=None,
+            presentation_mode:Literal['assistant','owner_first_person']|None=None,spoken_name:str|None=None,
+            outbound_greeting:str|None=None) -> dict:
         """Create or update an owner-requested personality for NEW calls. Read profiles first; updates require
         the current revision to avoid losing another editor's changes. Context must be approved for callers.
+        Speak as assistant or authorized owner_first_person, with an optional spoken_name (independent of voice).
+        Omitted role/presentation/name/outbound_greeting preserve saved values. Honest identity answers remain required.
         Tone/greeting preferences never grant new tools, booking, spending or disclosure permission."""
         return manager.personalities.save(PersonalityUpdate(name=name,instructions=instructions,context=context,
-            greeting=greeting,revision=revision),personality_id)
+            greeting=greeting,revision=revision,role=role,presentation_mode=presentation_mode,
+            spoken_name=spoken_name,outbound_greeting=outbound_greeting),personality_id)
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False))
     def duplicate_call_personality(personality_id:UUID,name:str) -> dict:
@@ -401,13 +406,17 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
 
     @mcp.tool(annotations=read)
     def get_inbound_context() -> dict:
-        """Read owner-maintained role, phone-safe facts, availability freshness and anticipated-call notes.
+        """Read phone-safe facts, availability freshness and anticipated-call notes.
+        The role field is a deprecated compatibility alias for the migrated Default personality, not a global role.
         Caller ID matching is not authentication. Stale slots are withheld from the live assistant."""
-        return manager.context.snapshot()
+        return {**manager.context.snapshot(), 'legacy_role_personality_id': manager.personalities.catalog()['legacy_role_personality_id'],
+                'role_policy': 'Deprecated alias: update the migrated profile only; use set_call_personality for role/presentation.'}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False))
-    async def set_inbound_context(role:str,context:str) -> dict:
-        """Replace the default incoming concierge role and phone-safe facts. This content can be disclosed
+    async def set_inbound_context(context:str,role:str|None=None) -> dict:
+        """Replace shared phone-safe facts. Optional legacy role changes update only the migrated Default profile
+        for future calls, never the identity of active calls or other personalities. Prefer set_call_personality.
+        This content can be disclosed
         to unverified incoming callers. No secrets, full calendars or new financial/contractual authority.
         Keep friends/evening rules here; use expected-call notes for specific approved exceptions.
         Persists across calls/restarts and prompts active incoming sessions to fetch the latest context."""

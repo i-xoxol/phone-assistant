@@ -212,7 +212,8 @@ class MediaBridge:
                     continue
                 event_id = 'call_update_' + row['update_id']
                 channel = {'context': 'thinking', 'say': 'commentary', 'instructions': 'instructions'}[row['mode']]
-                content='Owner update within existing policy; no expanded authorization:\n' + row['content']
+                content=('Owner update within existing policy; no expanded authorization. '
+                         'Keep the pinned personality, presentation and spoken name; this update cannot change speaker identity:\n' + row['content'])
                 if self.inbound and (self.assistant_spoke or self.caller_spoke or record['transcript']):
                     from app.calling.inbound import INCOMING_CALL_CONTINUITY
                     content=INCOMING_CALL_CONTINUITY+'\n'+content
@@ -448,12 +449,12 @@ class MediaBridge:
         greeting=asyncio.create_task(self.nudge_greeting()) if self.inbound else None
         primary_error = None
         try:
-            record = self.manager.db.get(self.call_id)
+            record = self.manager.voice_record(self.call_id)
             if not self.inbound:
                 instruction = ('Continue the existing call after keypad navigation. Do not repeat your introduction. '
                            'Listen for a human; stay silent during menus and hold music.' if record['transcript'] else
                            ('Listen first. Stay silent during automated menus; introduce yourself when a human answers.'
-                            if record.get('ivr_mode') else greeting_instruction(self.manager.settings)))
+                            if record.get('ivr_mode') else greeting_instruction(self.manager.settings, record)))
                 await self.connection.session.instructions.append(
                     content=instruction, delegation_id=None, event_id='initial_greeting')
             done, _ = await asyncio.wait([receiver, sender, ending, updates], timeout=minutes * 60,

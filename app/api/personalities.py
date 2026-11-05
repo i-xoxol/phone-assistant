@@ -93,7 +93,7 @@ async def contact(body: SaveContact, request: Request):
 @router.get('/live/owner-context', dependencies=[Depends(owner)])
 def context(request: Request):
     manager = request.app.state.manager
-    return {**manager.context.snapshot(), 'knowledge': manager.knowledge.search(owner=True, limit=500)}
+    return {**manager.context.snapshot(for_voice=True), 'knowledge': manager.knowledge.search(owner=True, limit=500)}
 
 
 class OwnerProfileUpdate(ProfileUpdate):
@@ -149,6 +149,7 @@ class Preview(BaseModel):
 def prompt_preview(manager, body):
     """No pins, provider connections, calendar requests or telephone side effects."""
     from app.calling.prompts import session_config
+    from app.calling.presentation import resolve_presentation, outbound_opening
     if body.call_id:
         record = manager.db.get(str(body.call_id))
         record['personality'] = manager.personalities.for_call(record['call_id']) or manager.personalities.resolve(record)
@@ -185,6 +186,7 @@ def prompt_preview(manager, body):
         if record['inbound_mode'] == 'messages' and not manager.hours.state()['office_open']:
             record['closed_announcement'] = manager.hours.closed_announcement()
     config = session_config(manager.settings, record)
+    presentation = resolve_presentation(manager.settings, record)
     native = None
     provider = record['voice_backend']['provider']
     if provider == 'elevenlabs':
@@ -194,11 +196,13 @@ def prompt_preview(manager, body):
         from app.calling.gemini_session import gemini_config
         native = gemini_config(manager.settings, record, record['voice_backend'])['system_instruction']
     backend = config.get('delegation', {}).get('responses', {})
-    return {'basis': basis, 'personality': record['personality'], 'test_mode': record['test_mode'], 'answering': record['voice_backend'],
+    return {'basis': basis, 'personality': record['personality'], 'presentation': presentation,
+            'greeting': config.get('input', []) if record.get('direction') == 'inbound' else outbound_opening(manager.settings, record),
+            'test_mode': record['test_mode'], 'answering': record['voice_backend'],
             'voice_instructions': native or config['instructions'], 'planner_instructions': backend.get('instructions', ''),
             'startup_input': config.get('input', []), 'tool_definitions': backend.get('tools', []),
-            'context': record.get('incoming_context', {}), 'owner_context': manager.context.snapshot(),
-            'policy': 'Edit owner role/context, personalities, contacts and approved facts below. Fixed identity, authorization, '
+            'context': record.get('incoming_context', {}), 'owner_context': manager.context.snapshot(for_voice=True),
+            'policy': 'Edit personality role/presentation, shared facts, contacts and approved information below. Fixed honesty, authorization, '
                       'tool, routing and recording policies are visible here and enforced by the server. '
                       'Dynamic availability expires and is refreshed by the calendar bridge.'}
 

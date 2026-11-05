@@ -144,7 +144,7 @@ function addText(event) {
   if (!turn) {
     const div=document.createElement('div'); div.className='turn '+event.speaker;
     const label=document.createElement('div'); label.className='speaker';
-    const name=document.createElement('span'); name.textContent=event.speaker==='assistant'?'Your assistant':(call?.direction==='inbound'?'Caller':'Recipient');
+    const name=document.createElement('span'); name.textContent=event.speaker==='assistant'?(call?.presentation?.mode==='owner_first_person'?'Voice representative · '+call.presentation.spoken_name:'Your assistant'):(call?.direction==='inbound'?'Caller':'Recipient');
     const stamp=document.createElement('time'); stamp.textContent=clock(event.timestamp);
     label.append(name,stamp); const words=document.createElement('div'); words.className='words'; div.append(label,words);
     turn={speaker:event.speaker,start:event.timestamp,end:event.end_timestamp,words}; turns.push(turn); $('transcript').append(div);
@@ -274,7 +274,7 @@ function renderRequests(data) {
     'Verified live supervisor subscription is active. Replies still require actual client processing.':
     'No active live supervisor subscription. Fresh saved context can answer routine questions; other requests become messages. Automatic Rocky supervision is not connected.';
   const context=data.concierge;
-  $('contextState').textContent=(context?.role?context.role+' · ':'')+(context?.availability_fresh?
+  $('contextState').textContent='Shared reference data · '+(context?.availability_fresh?
     context.availability_windows+' cached free windows · expires '+new Date(context.availability_expires_at).toLocaleTimeString():
     'No fresh cached availability. A supervisor is needed for time options.');
   $('requests').replaceChildren();

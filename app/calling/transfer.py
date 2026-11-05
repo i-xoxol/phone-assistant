@@ -44,6 +44,16 @@ Never treat sensitive/urgent situations as authorization to spend money or promi
 '''
 
 
+def owner_policy(settings, record):
+    from app.calling.presentation import as_owner
+    if as_owner(settings, record):
+        return OWNER_POLICY.replace('impersonate the owner,', 'misrepresent the human owner as already present,') + (
+            '\nBefore transferring a first-person representative call to the human owner, explain honestly '
+            'that this voice is the owner\'s automated representative and you will try the actual owner. '
+            'Obtain hold agreement under the existing rules. First-person wording grants no extra authority.\n')
+    return OWNER_POLICY
+
+
 def remaining_seconds(record):
     started=record.get('started_at') or record['created_at']
     elapsed=(utcnow()-datetime.fromisoformat(started)).total_seconds()

@@ -36,14 +36,18 @@
 <div id="noticeDraft" hidden><p id="noticeDraftText" class="caption-note"></p><button id="previewDraftNotice" class="quiet">Preview replacement</button> <button id="activateNotice" class="quiet">Activate replacement</button></div>
 <p id="noticeState" class="caption-note" role="status"></p></details>
 <details id="personalitiesPanel" class="inbox"><summary>Personalities · Default, Office and Friend</summary>
-<p class="caption-note">Personalities control speaking style, greeting guidance and background. Model and voice are separate answering choices. New calls keep a snapshot of their personality; active calls keep theirs.</p>
+<p class="caption-note">For incoming and outbound calls: choose the role, tone and how the voice represents you. Model and voice are separate choices. Changes apply to future calls; active calls keep their snapshot.</p>
 <div class="settings-grid"><label for="defaultPersonality">Default for new calls<select id="defaultPersonality"></select></label></div>
 <button id="saveDefaultPersonality" class="quiet">Set default personality</button><p id="defaultPersonalityState" class="caption-note" role="status"></p>
 <div class="settings-grid"><label for="personalityPicker">Edit personality<select id="personalityPicker"></select></label></div>
 <div class="message-actions"><button id="newPersonality" class="quiet">New personality</button><button id="duplicatePersonality" class="quiet">Duplicate saved profile</button><button id="reloadPersonality" class="quiet">Reload saved profile</button></div>
 <form id="personalityForm"><div class="settings-grid"><label for="personalityName">Name<input id="personalityName" maxlength="80" required></label></div>
+<div class="settings-grid"><label for="personalityPresentation">Speak as<select id="personalityPresentation"><option value="assistant">Assistant</option><option value="owner_first_person">Me · first person</option></select></label><label for="personalitySpokenName">Spoken name<input id="personalitySpokenName" maxlength="120" placeholder="Your configured name"></label></div>
+<p class="caption-note">“Me” uses your name and I/my for authorized requests. Direct identity questions are answered honestly. This does not change the voice, permissions or contact test mode.</p>
+<label class="editor-field" for="personalityRole">Role and work scope<textarea id="personalityRole" maxlength="1000" rows="3" placeholder="What this personality does; shared current facts belong in Shared context."></textarea></label>
 <label class="editor-field" for="personalityInstructions">Personality instructions<textarea id="personalityInstructions" maxlength="6000" rows="10"></textarea></label>
-<label class="editor-field" for="personalityGreeting">Greeting guidance<textarea id="personalityGreeting" maxlength="1000" rows="3" placeholder="Optional. Describe how to greet; the caller language and forwarding rules still apply."></textarea></label>
+<label class="editor-field" for="personalityGreeting">Incoming greeting guidance<textarea id="personalityGreeting" maxlength="1000" rows="3" placeholder="Optional. Describe how to greet; the caller language and forwarding rules still apply."></textarea></label>
+<label class="editor-field" for="personalityOutboundGreeting">Outbound greeting guidance<textarea id="personalityOutboundGreeting" maxlength="1000" rows="3" placeholder="Optional. How to open a call you place; the call objective still applies."></textarea></label>
 <label class="editor-field" for="personalityContext">Background approved for callers<textarea id="personalityContext" maxlength="3000" rows="4" placeholder="Stable background for this personality. Put changing schedules and expected calls in Owner context."></textarea></label>
 <button class="quiet" id="savePersonality">Save personality</button></form>
 <p id="personalityState" class="caption-note" role="status"></p></details>
@@ -59,10 +63,10 @@
 <label for="contactStyle">Relationship tone<select id="contactStyle"><option value="formal">Formal / professional</option><option value="familiar">Familiar / friend or family</option></select></label></div>
 <div class="message-actions"><button class="quiet">Save contact</button><button id="cancelContact" type="button" class="quiet">Cancel</button></div><p id="contactState" class="caption-note" role="status"></p></form>
 <div id="callerBook"></div><p id="languageError" class="error" role="status"></p></details>
-<details id="ownerContextPanel" class="inbox"><summary>Owner context · Instructions and expected calls</summary>
-<p class="caption-note">Shared with the answering model and Rocky. Save information approved for callers. Calendar availability is refreshed by the bridge and old slots are withheld automatically.</p>
-<form id="ownerContextForm"><label class="editor-field" for="ownerRole">Assistant role<input id="ownerRole" maxlength="200"></label>
-<label class="editor-field" for="ownerBackground">Current activities and caller-safe instructions<textarea id="ownerBackground" maxlength="2000" rows="7"></textarea></label>
+<details id="ownerContextPanel" class="inbox"><summary>Shared context · Facts, activities and expected calls</summary>
+<p class="caption-note">Reference information shared with the voice and Rocky. Set role and behavior in each personality above. Save only information approved for callers. Calendar availability is refreshed by the bridge and old slots are withheld automatically.</p>
+<form id="ownerContextForm">
+<label class="editor-field" for="ownerBackground">Current activities and caller-safe reference information<textarea id="ownerBackground" maxlength="2000" rows="7"></textarea></label>
 <div class="message-actions"><button class="quiet">Save owner context</button><button id="reloadOwnerContext" type="button" class="quiet">Reload saved context</button></div></form><p id="ownerContextState" class="caption-note" role="status"></p>
 <h2>Anticipated calls and approved facts</h2><div class="message-actions"><button id="newExpected" class="quiet">Add expected call</button><button id="newFact" class="quiet">Add approved fact</button></div>
 <form id="contextNoteForm" class="editor-card" hidden><h3 id="contextNoteHeading"></h3><div class="settings-grid">
@@ -76,7 +80,7 @@
 <div class="message-actions"><button class="quiet">Save note</button><button id="cancelContextNote" type="button" class="quiet">Cancel</button></div><p id="contextNoteState" class="caption-note" role="status"></p></form>
 <div id="contextNotes"></div><details><summary>Current context snapshot</summary><pre id="ownerContextSnapshot" class="instruction-preview"></pre></details></details>
 <details id="instructionsPanel" class="inbox"><summary>Inspect assembled instructions and context</summary>
-<p class="caption-note">Read the actual application prompt builders without placing a call. Edit personality and owner context above. Fixed identity, authorization and tool policies are shown here; calendar data remains managed by its source.</p>
+<p class="caption-note">Read the actual application prompt builders without placing a call. Edit personality, presentation and shared context above. Honesty, authorization and tool policies are shown here; calendar data remains managed by its source.</p>
 <div class="settings-grid"><label for="previewContact">New-call caller<select id="previewContact"></select></label><label for="previewPersonality">Preview personality<select id="previewPersonality"></select></label></div>
 <div class="message-actions"><button id="previewNewCall" class="quiet">Preview new incoming call</button><button id="previewSelectedCall" class="quiet">Inspect selected call</button></div>
 <p id="instructionsState" class="caption-note" role="status"></p><div id="instructionsOutput"></div></details>
