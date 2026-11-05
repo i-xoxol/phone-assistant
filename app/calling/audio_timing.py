@@ -63,14 +63,16 @@ class InputAudioTimeline:
         if start is None or end is None:return None,None
         scale=self.native_scale
         if pending and scale is None:
-            options=sorted((abs(start*r-pending['start']),r) for r in (1,2,3))
-            if options[0][0]<=250 and (options[1][0]-options[0][0]>=100 or options[0][1]==1):
+            # A caller can already be speaking on reconnect (onset near zero).
+            # A closed endpoint then disambiguates otherwise identical onsets.
+            options=sorted((abs(start*r-pending['start'])+
+                (abs(end*r-pending['end'])*.25 if pending['closed'] else 0),r) for r in (1,2,3))
+            if abs(start*options[0][1]-pending['start'])<=250 and (options[1][0]-options[0][0]>=100 or options[0][1]==1):
                 scale=options[0][1]
             else:return None,None
         elif scale is None:scale=1
         mapped_start=self.stream_time(start*scale);mapped_end=self.covered_time(end*scale)
         if mapped_end is None:return mapped_start,None
-        self.native_scale=scale
         covered=[]
         for span in self.utterances:
             if start*scale-250<=span['start'] and span['closed'] and span['end']<=end*scale:
@@ -78,6 +80,7 @@ class InputAudioTimeline:
                 covered.append(self.covered_time(span['end']))
         # Provider endpoint padding must not credit a newer, still-speaking caller.
         if self.utterances:mapped_end=max((v for v in covered if v is not None),default=None)
+        if mapped_end is not None:self.native_scale=scale
         return mapped_start,mapped_end
 
     def transcription_span(self):

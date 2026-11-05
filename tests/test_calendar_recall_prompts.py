@@ -71,6 +71,13 @@ def test_native_clock_calibrates_to_captured_speech_and_excludes_new_answer(rati
     assert not current_caller_audio(m,'c',[])
 
 
+@pytest.mark.parametrize('ratio',[1,2,3])
+def test_reconnect_while_caller_is_already_speaking_calibrates_endpoint(ratio):
+    c=InputAudioTimeline();c.observe(20000,16000,True);c.observe(22000,8000,False)
+    assert c.native_span(0,2100/ratio)==(20000,22000)
+    assert c.native_scale==ratio
+
+
 def test_elevenlabs_final_caption_uses_audio_not_provider_wall_clock():
     async def run():
         c=eleven_connection()
