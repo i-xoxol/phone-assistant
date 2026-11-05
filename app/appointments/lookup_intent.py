@@ -54,7 +54,7 @@ class MiniLookupIntent:
 
     def notify(self,bridge):
         cid=bridge.call_id
-        if (getattr(bridge.connection,'config',{}).get('model')!='eleven_realtime_v1_mini'
+        if ((getattr(bridge.connection,'config',None) or {}).get('model')!='eleven_realtime_v1_mini'
                 or cid in self.tasks or self.counts.get(cid,0)>=12 or not self.current(bridge)) :return
         task=asyncio.create_task(self.run(bridge));self.tasks[cid]=task
         task.add_done_callback(lambda _:self.tasks.pop(cid,None))

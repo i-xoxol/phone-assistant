@@ -220,6 +220,15 @@ def test_recall_reserves_updates_for_live_calendar_and_owner_work(service):
     asyncio.run(run())
 
 
+@pytest.mark.parametrize('config',[None,{}, {'model':'gpt-live-1'}])
+def test_mini_lookup_helper_leaves_other_voice_connections_alone(config):
+    from app.appointments.lookup_intent import MiniLookupIntent
+    g=SimpleNamespace(booking_agent=SimpleNamespace(client=None))
+    intent=MiniLookupIntent(g)
+    intent.notify(SimpleNamespace(call_id='c',connection=SimpleNamespace(config=config)))
+    assert not intent.tasks
+
+
 @pytest.mark.parametrize('case',['match','unproven_name','changed_audio','message_only','already_dispatched','new_booking'])
 def test_mini_lookup_helper_uses_same_calendar_guards_and_never_writes(service,tmp_path,case):
     from tests.test_appointments_gateway import prepare,speech
