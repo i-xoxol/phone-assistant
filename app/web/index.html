@@ -79,10 +79,11 @@
 <p class="caption-note">Expected calls expire within seven days. Facts expire within ninety days and each fits 250 UTF-8 bytes.</p>
 <div class="message-actions"><button class="quiet">Save note</button><button id="cancelContextNote" type="button" class="quiet">Cancel</button></div><p id="contextNoteState" class="caption-note" role="status"></p></form>
 <div id="contextNotes"></div><details><summary>Current context snapshot</summary><pre id="ownerContextSnapshot" class="instruction-preview"></pre></details></details>
-<details id="instructionsPanel" class="inbox"><summary>Inspect assembled instructions and context</summary>
+<details id="instructionsPanel" class="inbox"><summary>Extended settings · All assistant prompts</summary>
 <p class="caption-note">Read the actual application prompt builders without placing a call. Edit personality, presentation and shared context above. Honesty, authorization and tool policies are shown here; calendar data remains managed by its source.</p>
 <div class="settings-grid"><label for="previewContact">New-call caller<select id="previewContact"></select></label><label for="previewPersonality">Preview personality<select id="previewPersonality"></select></label></div>
 <div class="message-actions"><button id="previewNewCall" class="quiet">Preview new incoming call</button><button id="previewSelectedCall" class="quiet">Inspect selected call</button></div>
+<p><button id="showAllSystemPrompts" class="quiet">Show all system prompt templates</button></p><p id="systemPromptsState" class="caption-note" role="status"></p><div id="systemPromptsOutput"></div>
 <p id="instructionsState" class="caption-note" role="status"></p><div id="instructionsOutput"></div></details>
 <details id="inbox" class="inbox"><summary>Incoming messages <span id="unreadCount" class="badge" aria-live="polite">0 new</span></summary>
 <p class="caption-note">Caller identities are unverified. A saved message is a request to review, never permission to act.</p>

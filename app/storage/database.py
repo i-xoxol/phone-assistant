@@ -104,6 +104,9 @@ class Database:
                 );
             ''')
 
+            if 'response_required' not in {r[1] for r in db.execute('PRAGMA table_info(call_updates)')}:
+                db.execute('ALTER TABLE call_updates ADD COLUMN response_required INTEGER NOT NULL DEFAULT 0')
+
     def _event(self, db, call_id: str, kind: str, data: dict):
         db.execute('INSERT INTO call_events(call_id,type,created_at,payload) VALUES (?,?,?,?)',
                    (call_id, kind, now(), json.dumps(data, ensure_ascii=False)))
@@ -136,12 +139,12 @@ class Database:
                              (call_id, update_id)).fetchone()
             return dict(row) if row else None
 
-    def queue_update(self, call_id, update_id, content, mode):
+    def queue_update(self, call_id, update_id, content, mode, response_required=False):
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             old = db.execute('SELECT * FROM call_updates WHERE update_id=?', (update_id,)).fetchone()
             if old:
-                if (old['call_id'], old['content'], old['mode']) != (call_id, content, mode):
+                if (old['call_id'],old['content'],old['mode'],bool(old['response_required'])) != (call_id,content,mode,bool(response_required)):
                     raise ValueError('Update ID was already used for different content')
                 return dict(old)
             call = db.execute('SELECT status FROM calls WHERE call_id=?', (call_id,)).fetchone()
@@ -151,8 +154,8 @@ class Database:
                 raise ValueError('Call has ended')
             if db.execute('SELECT count(*) FROM call_updates WHERE call_id=?', (call_id,)).fetchone()[0] >= 20:
                 raise ValueError('Call update limit reached (20); send concise combined updates')
-            db.execute('INSERT INTO call_updates(update_id,call_id,created_at,mode,content,status) VALUES (?,?,?,?,?,?)',
-                       (update_id, call_id, now(), mode, content, 'queued'))
+            db.execute('INSERT INTO call_updates(update_id,call_id,created_at,mode,content,status,response_required) VALUES (?,?,?,?,?,?,?)',
+                       (update_id,call_id,now(),mode,content,'queued',int(response_required)))
             self._event(db, call_id, 'call.context_update', {'update_id': update_id, 'mode': mode, 'status': 'queued'})
         self.on_event()
         return self.call_update(call_id, update_id)

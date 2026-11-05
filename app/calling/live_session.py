@@ -218,9 +218,11 @@ class MediaBridge:
                     from app.calling.inbound import INCOMING_CALL_CONTINUITY
                     content=INCOMING_CALL_CONTINUITY+'\n'+content
                 try:
-                    await asyncio.wait_for(getattr(self.connection.session, channel).append(
-                        event_id=event_id, delegation_id=None,
-                        content=content), 5)
+                    if row.get('response_required') and channel=='instructions' and hasattr(self.connection,'append_instruction'):
+                        await asyncio.wait_for(self.connection.append_instruction(content,event_id,respond=True),5)
+                    else:
+                        await asyncio.wait_for(getattr(self.connection.session,channel).append(
+                            event_id=event_id,delegation_id=None,content=content),5)
                 except asyncio.CancelledError:
                     self.manager.db.finish_update(self.call_id, row['update_id'], self.session_id,
                         'unconfirmed', error_code='send_interrupted')
@@ -301,6 +303,9 @@ class MediaBridge:
                 raise ValueError('Stream mismatch')
             if message['event'] == 'media':
                 if message['media'].get('track') == 'inbound':
+                    raw=base64.b64decode(message['media']['payload'],validate=True)
+                    if observe:=getattr(self.connection,'observe_input_audio',None):
+                        observe(int(message['media'].get('timestamp',0)),raw)
                     if self.manager.settings.appointments_enabled:
                         raw=base64.b64decode(message['media']['payload'],validate=True)
                         if has_speech(raw):
@@ -308,13 +313,18 @@ class MediaBridge:
                             at=int(message['media'].get('timestamp',0))+self.transcript_offset_ms
                             previous=self.manager.caller_activity.get(self.call_id,{})
                             epoch=previous.get('epoch',0)+(at-previous.get('last_speech_ms',-1000)>400)
-                            self.manager.caller_activity[self.call_id]={'epoch':epoch,'last_speech_ms':at}
+                            self.manager.caller_activity[self.call_id]={**previous,'epoch':epoch,'last_speech_ms':at,
+                                'provider_timing_required':bool(getattr(self.connection,'provider_timing_required',False))}
                     if self.inbound and not self.caller_spoke:
                         speech=has_speech(base64.b64decode(message['media']['payload'],validate=True))
                         self.input_speech_frames=self.input_speech_frames+1 if speech else 0
                         self.caller_spoke=self.input_speech_frames>=3
                     # Forward all codec frames, including silence. GPT-Live is full duplex.
                     await self.connection.session.input_audio.append(audio=message['media']['payload'])
+                    if coverage:=getattr(self.connection,'input_caption_coverage',None):
+                        end=coverage();activity=self.manager.caller_activity.get(self.call_id)
+                        if end is not None and activity is not None:
+                            activity['caption_covered_ms']=max(activity.get('caption_covered_ms',-1),end+self.transcript_offset_ms)
             elif message['event'] == 'mark':
                 if self.pending_marks.pop(message['mark']['name'], None) is not None:
                     self.playback_progress.set()
@@ -381,9 +391,16 @@ class MediaBridge:
                 data = {**data, 'event_id': f"{self.stream_sid}:{data['event_id']}",
                         'start_ms': data['start_ms'] + self.transcript_offset_ms,
                         'end_ms': data['end_ms'] + self.transcript_offset_ms}
+                if event.type=='session.input_transcript.delta' and data.get('input_audio_end_ms') is not None:
+                    activity=self.manager.caller_activity.get(self.call_id)
+                    if activity is not None:
+                        activity['caption_covered_ms']=max(activity.get('caption_covered_ms',-1),data['input_audio_end_ms']+self.transcript_offset_ms)
                 self.manager.db.transcript(self.call_id, data)
+                if self.inbound and event.type=='session.input_transcript.delta':
+                    self.manager.memory.observe(self.call_id,self,data.get('delta',''))
                 gateway=getattr(self.manager,'appointments',None)
                 if self.inbound and gateway and self.manager.settings.appointments_enabled:
+                    if event.type=='session.input_transcript.delta':gateway.lookup_intent.notify(self)
                     gateway.voice_workflow.notify(self,caller=event.type=='session.input_transcript.delta')
                 if (event.type == 'session.output_transcript.delta' and data.get('delta')):
                     self.closing_transcript_seen = True

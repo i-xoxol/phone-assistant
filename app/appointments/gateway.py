@@ -89,6 +89,9 @@ class AppointmentGateway:
         self.voice_workflow=VoiceBookingWorkflow(self)
         from app.appointments.booking_agent import BookingAgent
         self.booking_agent=BookingAgent(self)
+        self.last_voice_lookup={}
+        from app.appointments.lookup_intent import MiniLookupIntent
+        self.lookup_intent=MiniLookupIntent(self)
 
     def transcript(self,call_id):return self.m.db.get(call_id)['transcript']
     def revision(self,call_id):
@@ -174,9 +177,8 @@ class AppointmentGateway:
         # Acknowledgment alone is insufficient: require observed assistant readback followed by caller assent.
         heard,yes=spoken_consent(turns,value,matches=matcher)
         # All current caller audio is part of the revision: any later changed detail/withdrawal fails closed.
-        activity=getattr(self.m,'caller_activity',{}).get(draft['call_id'])
-        caption_end=max((t['end_ms'] for t in turns if t['speaker']=='callee'),default=-1)
-        audio_observed=not activity or caption_end>=activity['last_speech_ms']
+        from app.calling.audio_timing import current_caller_audio
+        audio_observed=current_caller_audio(self.m,draft['call_id'],self.transcript(draft['call_id']))
         if not (accepted and accepted['status']=='acknowledged' and heard and audio_observed and yes):
             log_event('appointment_consent_evidence',call_id=draft['call_id'],
                 readback_acknowledged=bool(accepted and accepted['status']=='acknowledged'),
@@ -241,7 +243,7 @@ class AppointmentGateway:
             db.execute('INSERT INTO appointment_readbacks VALUES(?,?,?,?,?) ON CONFLICT(draft_id,draft_revision) '+conflict,
                 (draft['draft_id'],draft['revision'],str(uid),self.clock().isoformat(),cursor))
         if self.booking_agent.native(draft['call_id']):self.booking_agent.issued(draft,uid)
-        await self.m.send_call_update(draft['call_id'],CallUpdateRequest(mode='instructions',content=instruction,update_id=uid))
+        await self.m.send_call_update(draft['call_id'],CallUpdateRequest(mode='instructions',response_required=True,content=instruction,update_id=uid))
         return True
 
     async def retry_consent(self,call_id,args):
@@ -375,7 +377,7 @@ class AppointmentGateway:
             local=value.interval.start.astimezone(ZoneInfo(value.interval.zone))
             text='Great, see you '+local.strftime('%A')+' at '+local.strftime('%I:%M %p').lstrip('0')+'. Confirmed.'
         try:
-            with self.store.measure('result_injection'):await self.m.send_call_update(call_id,CallUpdateRequest(mode='instructions',
+            with self.store.measure('result_injection'):await self.m.send_call_update(call_id,CallUpdateRequest(mode='instructions',response_required=True,
                 content=('Google verified this booking. Tell the caller once naturally; no further approval is needed:\n' if self.booking_agent.native(call_id)
                     else 'Verified booking. Read exactly to the caller:\n')+text,update_id=uid))
         except Exception:
@@ -439,11 +441,10 @@ class AppointmentGateway:
 
     def lookup_evidence(self,call_id,args,*,name_proof=None):
         turns=self.transcript(call_id)
-        activity=getattr(self.m,'caller_activity',{}).get(call_id)
-        caption_end=max((t['end_timestamp']*1000 for t in turns if t['speaker']=='callee'),default=-1)
+        from app.calling.audio_timing import current_caller_audio
         return (name_proof.supports(turns,args.first_name,args.last_name) if name_proof else
             caller_identified(turns,args.first_name,args.last_name,for_lookup=True),
-            not activity or caption_end>=activity['last_speech_ms'])
+            current_caller_audio(self.m,call_id,turns))
 
     async def own(self,call_id,args,*,name_proof=None):
         args=AppointmentLookup.model_validate(args)
@@ -471,6 +472,7 @@ class AppointmentGateway:
 
     async def own_voice(self,call_id,args,bridge,*,search_names=False):
         """A read-only voice lookup waits for current caller evidence, not another tool call."""
+        self.last_voice_lookup[call_id]=self.revision(call_id)
         args=AppointmentLookup.model_validate(args)
         log_event('appointment_lookup_requested',call_id=call_id)
         def active():
@@ -489,7 +491,7 @@ class AppointmentGateway:
             log_event('appointment_lookup',call_id=call_id,status='pending',reason='caller_captions_pending')
             return {'status':'pending','reason':'caller_captions_pending',
                 'instruction':'The read-only lookup is waiting for current caller audio/captions. This is not a missing appointment. '
-                    'Do not claim it was not found, ask for its forgotten date/time, or search other appointments. Wait for the complete name/answer and resume this same lookup.'}
+                    'Do not claim it was not found or ask for its forgotten date/time. Explain once that verification could not finish; ask for a short name clarification or offer owner review. Do not keep saying still checking or automatically repeat this lookup.'}
         try:
             async with asyncio.timeout(self.lookup_wait_seconds):
                 while True:
@@ -628,6 +630,7 @@ class AppointmentGateway:
         return result
 
     async def close(self):
+        await self.lookup_intent.close()
         await self.voice_workflow.close()
         await self.booking_agent.close()
         if self.sync_task:

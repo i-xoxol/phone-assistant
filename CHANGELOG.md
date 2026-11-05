@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Align native captions with telephone audio for calendar checks, explicitly request spoken booking offers/results, add natural same-number return-call recall with richer Luna evidence, and expose application-owned prompt templates in authenticated extended settings.
+
 - Optional ElevenLabs Realtime Mini/Max telephone voice adapter, separately configured library voice, pinned per-call selection, owner portal/MCP controls and shared tool authorization; OpenAI remains the default.
 
 - Give the phone assistant a gently reserved delivery, natural thinking sounds and a light Ukrainian accent in English while retaining prompt greetings, initiative on authorized tasks and owner approval boundaries.

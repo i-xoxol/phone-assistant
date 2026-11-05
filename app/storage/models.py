@@ -44,6 +44,7 @@ class CallUpdateRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     content: str = Field(min_length=1, max_length=400)
     mode: Literal['context', 'say', 'instructions'] = 'context'
+    response_required: bool = False
     update_id: UUID | None = None
 
     @field_validator('content')

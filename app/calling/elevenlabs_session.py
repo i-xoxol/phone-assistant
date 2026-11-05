@@ -17,12 +17,33 @@ import httpx
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
-from app.calling.live_session import BridgeFailure, MediaBridge
+from app.calling.live_session import BridgeFailure, MediaBridge,has_speech
 from app.calling.prompts import session_config
+from app.calling.audio_timing import InputAudioTimeline
 from app.logging_config import log_event
 
 SECRET_URL = 'https://api.elevenlabs.io/v1/convai/realtime/client_secrets'
 SOCKET_URL = 'wss://api.elevenlabs.io/v1/convai/realtime'
+
+MINI_CALENDAR_POLICY='''
+CALENDAR TOOLS: Distinguish retrieving an EXISTING appointment from requesting a NEW booking.
+EXISTING: When asked to check an appointment, call get_my_appointment using the caller's first and last name
+already heard in THIS call. Ask only a missing name component. NEVER collect purpose, duration, arrangement
+or desired date/time for retrieval. Do not claim to check without a real tool call. Say the verified returned
+spoken_answer including its location once. Follow the server's missing_fields or clarification instruction.
+After needs_name_search use search_appointment_name with the same name; ask spelling only if requested.
+Pending captions are not a missing appointment. Wait; do not repeatedly ask the name or invent progress.
+NEW: Collect name, purpose, duration (ordinary default fifteen minutes) and a specific location/connection.
+For earliest/first available use get_appointment_availability or find_first_available_slot; do not ask a date.
+For a stated exact time use check_appointment_slot. Offer the verified concrete time once, then listen.
+The server's Luna agent understands natural agreement and resumes booking; no exact phrase or second yes.
+book_appointment and get_booking_status take no arguments; the server owns identities and idempotency.
+Only a verified state=confirmed authorizes saying booked. Refusal, corrections, incomplete captions,
+expired authority or uncertain writes require the server's current decision; never retry an uncertain create.
+Existing history, a name, an owner note or a cached window is not booking consent or current calendar proof.
+No rescheduling, cancellation, invitations, private titles, candidate names or unrelated event disclosures.
+Use only these bounded tools; all authorization and caller-evidence checks remain enforced by the server.
+'''
 
 
 def realtime_config(settings, record, selection):
@@ -32,6 +53,9 @@ def realtime_config(settings, record, selection):
     # A separate Responses planner prompt would conflict with a single model's
     # speaking role. Keep its tool schemas, never ask this model to play both roles.
     instructions = live['instructions']
+    if selection['model']=='eleven_realtime_v1_mini':
+        from app.appointments.schemas import VOICE_POLICY
+        instructions=instructions.replace(VOICE_POLICY,MINI_CALENDAR_POLICY)
     instructions += '''\nREALTIME TOOL EXECUTION: You perform both voice and reasoning in this session.
 References above to delegating to the backend mean calling one of your listed function tools directly.
 Do not ask another model to call tools, emit special tokens or speak tool arguments.
@@ -46,6 +70,13 @@ Use the shared generated presentation consistently. A selected voice changes sou
 '''
     if record.get('voice_opening_claimed'):
         instructions+='\nThis call already received its opening. Do not greet or introduce yourself again. Continue the existing conversation.'
+    if any(t['name']=='get_my_appointment' for t in backend.get('tools',[])):
+        instructions+='''\nCALENDAR INTENT: “check my appointment”, “when is my appointment” and similar requests refer to an EXISTING meeting.
+Use get_my_appointment immediately once the caller has supplied a first and last name. Do not collect purpose,
+duration, arrangement or a desired time for this retrieval. Those fields apply only when creating a NEW booking.
+After a verified match, say its returned time AND location naturally. If captions are pending, wait for completion;
+never switch to new-booking intake. Do not use expressive stage-direction tags in speech or transcript.
+'''
     return {'type': 'realtime', 'model': selection['model'], 'instructions': instructions,
             'output_modalities': ['audio'], 'tools': backend.get('tools', []),
             'tool_choice': 'auto', 'max_response_output_tokens': 2000,
@@ -109,6 +140,8 @@ class ResponseOutput:
 class RealtimeConnection:
     """Only the small bridge-facing Live surface; not a general SDK emulation."""
     def __init__(self, socket, config, record, current_record=None, claim_opening=None):
+        self.input_timeline=InputAudioTimeline()
+        self.provider_timing_required=True
         self.bridge_class = RealtimeMediaBridge
         self.socket, self.config, self.record = socket, config, record
         self.current_record = current_record or (lambda: self.record)
@@ -136,6 +169,9 @@ class RealtimeConnection:
         self.functions = {}
         self.lock = asyncio.Lock()
 
+    def observe_input_audio(self,start_ms,payload):
+        self.input_timeline.observe(start_ms,len(payload),has_speech(payload))
+
     def milliseconds(self):
         return max(0, round((time.monotonic() - self.started_at) * 1000))
 
@@ -144,7 +180,10 @@ class RealtimeConnection:
         async with self.lock:
             await self.socket.send(json.dumps(event, ensure_ascii=False))
 
-    async def append_note(self, channel, content, event_id):
+    async def append_instruction(self,content,event_id,*,respond=False):
+        await self.append_note('instructions',content,event_id,respond=respond)
+
+    async def append_note(self, channel, content, event_id,*,respond=False):
         if event_id in ('initial_greeting','startup_greeting_fallback'):
             if self.opening_sent or not self.claim_opening(): return
             self.opening_sent=True
@@ -161,6 +200,7 @@ class RealtimeConnection:
                 self.pending_instructions[key] = (event_id, channel)
             await self.send({'type': 'session.update', 'event_id': event_id or 'note_' + uuid4().hex,
                              'session': {'type': 'realtime', 'instructions': instructions}})
+            if respond:await self.request_response()
             return
         item_id = 'item_' + uuid4().hex
         if event_id:
@@ -200,9 +240,15 @@ class RealtimeConnection:
         await self.socket.close()
 
     def transcript(self, data, speaker, text, item_id):
-        start, end = self.speech_times.get(item_id, (self.milliseconds(), self.milliseconds()))
-        return {'type': f'session.{speaker}_transcript.delta', 'event_id': data.get('event_id') or uuid4().hex,
-                'delta': text, 'start_ms': start, 'end_ms': max(start, end)}
+        if speaker=='input':
+            start,end=self.speech_times.get(item_id,(None,None))
+            mapped_start,mapped_end=self.input_timeline.native_span(start,end)
+        else:
+            mapped_start=mapped_end=round(self.input_timeline.stream_end) if self.input_timeline.segments else self.milliseconds()
+        event={'type':f'session.{speaker}_transcript.delta','event_id':data.get('event_id') or uuid4().hex,
+            'delta':text,'start_ms':mapped_start or 0,'end_ms':max(mapped_start or 0,mapped_end or 0)}
+        if speaker=='input' and mapped_end is not None:event['input_audio_end_ms']=mapped_end
+        return event
 
     async def translate(self, data):
         """Yield bridge events only after a real provider event, including update ACKs."""
@@ -229,14 +275,19 @@ class RealtimeConnection:
                 self.output_bytes += len(base64.b64decode(data['delta'], validate=True))
                 yield {'type': 'session.output_audio.delta', 'delta': data['delta']}
         elif kind == 'input_audio_buffer.speech_started':
-            self.speech_times[data['item_id']] = (data.get('audio_start_ms', self.milliseconds()), self.milliseconds())
+            self.speech_times[data['item_id']] = (data.get('audio_start_ms'),None)
             if self.active_response:
                 self.cancelled.add(self.active_response)
             yield {'type': 'session.output_audio.clear'}
         elif kind == 'input_audio_buffer.speech_stopped':
             item_id = data['item_id']
-            start = self.speech_times.get(item_id, (self.milliseconds(), 0))[0]
-            self.speech_times[item_id] = (start, max(start, data.get('audio_end_ms', self.milliseconds())))
+            start=self.speech_times.get(item_id,(None,None))[0]
+            end=data.get('audio_end_ms')
+            self.speech_times[item_id]=(start,end)
+            covered=self.input_timeline.covered_time(end)
+            if covered is not None:
+                # Coverage is committed alongside a transcript, never from VAD alone.
+                self.speech_times[item_id]=(start,end)
         elif kind in ('conversation.item.input_audio_transcription.delta',
                       'conversation.item.input_audio_transcription.completed'):
             item_id = data['item_id']
@@ -244,8 +295,8 @@ class RealtimeConnection:
             text = data.get('delta', '') if kind.endswith('.delta') else (
                 data.get('transcript', '')[len(previous):] if data.get('transcript', '').startswith(previous) else '')
             self.input_text[item_id] = previous + text
-            if text:
-                yield self.transcript(data, 'input', text, item_id)
+            if text or kind.endswith('.completed'):
+                yield self.transcript(data,'input',text,item_id)
         elif kind in ('response.output_audio_transcript.delta', 'response.output_audio_transcript.done'):
             item_id = data['item_id']
             previous = self.output_text.get(item_id, '')

@@ -214,7 +214,7 @@ async function showInstructions(forSelected) {
     for(const [label,value] of [['Personality, presentation and answering',{personality:result.personality,presentation:result.presentation,answering:result.answering,test_mode:result.test_mode}],
       ['Effective greeting',result.greeting],
       ['Voice instructions',result.voice_instructions],['Tool planner instructions',result.planner_instructions],
-      ['One-time startup input',result.startup_input],['Tool definitions',result.tool_definitions],['Caller context',result.context],['Shared owner context',result.owner_context]]) {
+      ['Live owner/server updates',result.runtime_updates],['One-time startup input',result.startup_input],['Tool definitions',result.tool_definitions],['Caller context',result.context],['Shared owner context',result.owner_context]]) {
       const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent=label;
       const text=document.createElement('pre');text.className='instruction-preview';text.textContent=typeof value==='string'?value:JSON.stringify(value,null,2);
       details.append(summary,text);output.append(details);
@@ -222,3 +222,17 @@ async function showInstructions(forSelected) {
   } catch(e) {$('instructionsState').textContent='Preview failed: '+e.message;}
 }
 $('previewNewCall').onclick=()=>showInstructions(false);$('previewSelectedCall').onclick=()=>showInstructions(true);
+
+$('showAllSystemPrompts').onclick=async()=>{
+  const button=$('showAllSystemPrompts');button.disabled=true;
+  try {
+    const result=await api('/live/system-prompts');$('systemPromptsState').textContent=result.scope;
+    const output=$('systemPromptsOutput');output.replaceChildren();
+    for(const section of result.sections) {
+      const details=document.createElement('details'),summary=document.createElement('summary'),pre=document.createElement('pre');
+      summary.textContent=section.title+' · '+section.source+':'+section.line;
+      pre.className='instruction-preview';pre.textContent=section.text;
+      details.append(summary,pre);output.append(details);
+    }
+  } catch(e) {$('systemPromptsState').textContent='Could not load prompts: '+e.message;} finally {button.disabled=false;}
+};

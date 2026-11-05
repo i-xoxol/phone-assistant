@@ -124,9 +124,8 @@ class BookingAgent:
         return True
 
     def current_audio(self,call_id):
-        turns=self.g.transcript(call_id);activity=getattr(self.g.m,'caller_activity',{}).get(call_id)
-        end=max((round(t['end_timestamp']*1000) for t in turns if t['speaker']=='callee'),default=-1)
-        return not activity or end>=activity['last_speech_ms']
+        from app.calling.audio_timing import current_caller_audio
+        return current_caller_audio(self.g.m,call_id,self.g.transcript(call_id))
 
     def evidence(self,draft):
         row=self.row(draft)

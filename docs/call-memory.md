@@ -17,13 +17,35 @@ leave history and answer delay off by default.
 
 ## Recall behavior
 
+Explicit return-call cues now trigger richer recall. “I just called”, “it's me again”
+and similar cues use the exact same number's completed calls in the last ten
+minutes. Local caller details load immediately, without waiting for Luna. The
+voice model can acknowledge the return naturally and gently check a previous
+first name, then continue the unfinished topic. There is no prescribed reply.
+
+“I called today” searches the previous rolling 24 hours. “I called yesterday”
+uses the office time zone; older references search at most seven days. For older
+calls the caller must explain the topic first, including in an answer to a
+clarification question. Luna selects up to eight exact evidence fragments
+covering name, topic, details and outcome, rather than only two short fragments.
+Source calls are bounded to eight and the evidence pool to 160 excerpts. The
+existing Luna Fast preference applies; answering models are unchanged.
+
+Return-call context persists for owner inspection/reconnect metadata. Each call
+receives at most eight recall updates, reserving at least eight of the existing
+twenty update slots for owner/calendar work. If Luna is unavailable, immediate
+recent-call context remains useful. Ambiguous forwarding, unmatched numbers,
+owner-only speech and filtered sensitive details do not enter this recall.
+Past names and claimed bookings remain historical evidence: live name, calendar
+verification and current assent requirements still apply.
+
 For a new incoming call, the server finds up to five earlier terminal calls
 within the configured window, in both directions. It excludes the current call,
 later calls, withheld/invalid numbers and every other number. Initial metadata
 contains dates, direction, status and duration. An unanswered outgoing call
 retains its original objective, without claiming a conversation happened.
 
-A bounded Luna lookup starts in the background when matching history exists.
+A bounded initial Luna lookup starts in the background when matching history exists.
 It selects exact excerpts: the previous objective, up to six recent conversation
 turns or a confirmed saved message. GPT-Live can request another lookup after
 the caller explains their purpose. Excerpts carry source dates and call IDs and

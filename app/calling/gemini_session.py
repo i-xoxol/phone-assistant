@@ -13,9 +13,10 @@ from uuid import uuid4
 from google import genai
 from google.genai import types
 from app.calling.elevenlabs_session import AppendChannel, Event, RealtimeMediaBridge, realtime_config
-from app.calling.live_session import BridgeFailure
+from app.calling.live_session import BridgeFailure,has_speech
 from app.calling.prompts import session_config
 from app.calling.streaming_audio import StreamingAudio
+from app.calling.audio_timing import InputAudioTimeline,duration_ms
 
 
 def gemini_config(settings,record,selection):
@@ -83,6 +84,8 @@ class GeminiConnection:
             instructions=AppendChannel(self,'instructions'))
         self.response=GeminiResponse(self)
         self.audio=StreamingAudio()
+        self.input_timeline=InputAudioTimeline()
+        self.provider_timing_required=True
         self.queue=asyncio.Queue(maxsize=256)
         self.started_at=time.monotonic()
         self.closing=False
@@ -94,14 +97,19 @@ class GeminiConnection:
         self.names={t['name'] for group in config.get('tools',[]) for t in group.get('function_declarations',[])}
         self.lock=asyncio.Lock()
 
+    def input_caption_coverage(self):return self.input_timeline.transcript_coverage()
+
     def tool_cancelled(self,call_id): return call_id in self.cancelled or self.closing
 
-    async def append_note(self,channel,content,event_id):
+    async def append_instruction(self,content,event_id,*,respond=False):
+        await self.append_note('instructions',content,event_id,respond=respond)
+
+    async def append_note(self,channel,content,event_id,*,respond=False):
         initial=event_id in ('initial_greeting','startup_greeting_fallback')
         if initial:
             if self.greeting_sent or not self.claim_opening(): return
             self.greeting_sent=True
-        spoken=channel=='commentary' or (initial and not self.record.get('ivr_mode') and not self.record.get('transcript'))
+        spoken=respond or channel=='commentary' or (initial and not self.record.get('ivr_mode') and not self.record.get('transcript'))
         label='APPLICATION NOTE ('+channel+'; not caller speech; no expanded authority):\n'
         if spoken and not initial:
             label+='Convey this request TO THE CALLER now. Ask the caller any supplied question, then listen. Do not answer or look up that question yourself.\n'
@@ -116,10 +124,26 @@ class GeminiConnection:
         # No API exists to assert how much the human heard; never claim playback.
         return
 
-    def transcript(self,speaker,text):
-        ms=max(0,round((time.monotonic()-self.started_at)*1000))
-        return {'type':'session.'+speaker+'_transcript.delta','event_id':uuid4().hex,
-                'delta':text,'start_ms':ms,'end_ms':ms}
+    def observe_input_audio(self,start_ms,payload):
+        self.input_timeline.observe(start_ms,len(payload),has_speech(payload))
+
+    def transcript(self,speaker,text,transcription=None):
+        transcription=transcription or {}
+        start=duration_ms(transcription.get('start_offset'))
+        end=duration_ms(transcription.get('end_offset'))
+        words=transcription.get('words') or []
+        if start is None and words:start=duration_ms(words[0].get('start_offset'))
+        if end is None and words:end=duration_ms(words[-1].get('end_offset'))
+        mapped_start=self.input_timeline.stream_time(start)
+        mapped_end=self.input_timeline.covered_time(end)
+        if speaker=='input' and mapped_end is None and end is None:
+            mapped_start,mapped_end=self.input_timeline.transcription_span()
+        display=round(self.input_timeline.stream_end) if self.input_timeline.segments else max(0,round((time.monotonic()-self.started_at)*1000))
+        event={'type':'session.'+speaker+'_transcript.delta','event_id':uuid4().hex,
+            'delta':text,'start_ms':mapped_start if mapped_start is not None else display,
+            'end_ms':max(mapped_start or 0,mapped_end if mapped_end is not None else display)}
+        if speaker=='input' and mapped_end is not None:event['input_audio_end_ms']=mapped_end
+        return event
 
     async def translate(self,data):
         # Cancellation must run before any function calls in the same event.
@@ -145,7 +169,7 @@ class GeminiConnection:
                 if audio: yield {'type':'session.output_audio.delta','delta':base64.b64encode(audio).decode()}
         for key,speaker in [('input_transcription','input'),('output_transcription','output')]:
             if text:=(content.get(key) or {}).get('text'):
-                yield self.transcript(speaker,text)
+                yield self.transcript(speaker,text,content[key])
         if content.get('turn_complete') and not interrupted:
             tail=self.audio.to_twilio(b'',last=True)
             self.audio.reset_output()
@@ -162,6 +186,8 @@ class GeminiConnection:
                           {'type':'response.output_item.done','response_id':rid,'item':item},
                           {'type':'response.completed','response':{'id':rid}}]:
                 yield {'type':'response.event','delegation_id':rid,'event':event}
+        if content.get('model_turn') or content.get('turn_complete') or data.get('tool_call'):
+            self.input_timeline.finish_transcription()
         if data.get('go_away'):
             # Bounded call finalization instead of a paid silent socket/redial.
             raise BridgeFailure('gemini_session_expiring')
