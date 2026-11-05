@@ -507,14 +507,19 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
     async def place_call(phone_number: str, objective: str, recipient: str = '', context: str = '',
                          constraints: list[str] | None = None, max_duration_minutes: int = 15,
                          ivr_mode: bool = False, voice_provider:Literal['openai','elevenlabs','gemini']|None=None,
-                         voice_model:str|None=None,voice:str|None=None) -> dict:
+                         voice_model:str|None=None,voice:str|None=None,
+                         caller_id:Literal['default','twilio','mobile']='default',request_id:UUID|None=None) -> dict:
         """Place one real outbound call on the owner's behalf. Requires the owner's explicit request; costs money.
         Use E.164 number. Set ivr_mode for business menus. Returns voice_tools_enabled:
         if true, spoken keypad requests execute inside the live voice backend; do not instruct it to
-        wait for ChatGPT or send duplicate digits. Returns immediately; do not duplicate/retry blindly."""
+        wait for ChatGPT or send duplicate digits. caller_id chooses the saved default, office Twilio number,
+        or the owner's configured verified mobile. Mobile is reverified before dialing; arbitrary caller IDs are not accepted.
+        Supply request_id for idempotency: repeating the same ID/brief returns the original call, never redials.
+        Returns immediately; do not duplicate/retry blindly."""
         return await manager.place_call(CallRequest(phone_number=phone_number, recipient=recipient,
             objective=objective, context=context, constraints=constraints or [],
-            max_duration_minutes=max_duration_minutes, ivr_mode=ivr_mode,voice_provider=voice_provider,voice_model=voice_model,voice=voice))
+            max_duration_minutes=max_duration_minutes, ivr_mode=ivr_mode,voice_provider=voice_provider,voice_model=voice_model,voice=voice,
+            caller_id=caller_id,request_id=request_id))
 
     @mcp.tool(annotations=read)
     async def get_call_status(call_id: UUID) -> dict:

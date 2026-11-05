@@ -54,6 +54,8 @@ class CallManager:
         self.voices = VoicePreferences(database,settings)
         from app.calling.voice_backends import VoiceBackends
         self.voice_backends = VoiceBackends(database,settings,self)
+        from app.calling.outbound import OutboundCalls
+        self.outbound = OutboundCalls(self)
         self.transfer = OwnerTransfer(self)
         from app.calling.owner_screening import OwnerScreening
         self.screening=OwnerScreening(self)
@@ -76,6 +78,7 @@ class CallManager:
                 'personality':self.personalities.for_call(call_id),
                 'test_mode':self.test_contacts.for_call(call_id),
                 'voice_backend':self.voice_backends.for_call(call_id),
+                'origination':self.outbound.for_call(call_id),
                 'owner_transfer':self.transfer.for_call(call_id),'owner_coaching':self.observer.history(call_id),
                 'forwarding':self.routing.get(self.db.get(call_id)),'audio_recording':self.recordings.snapshot(call_id)}
 
@@ -296,18 +299,24 @@ class CallManager:
             self.navigation.pop(call_id, None)
 
     async def place_call(self, request: CallRequest) -> dict:
+        if previous := self.outbound.previous(request):
+            return self.status(previous)
         if missing := self.settings.missing():
             raise ValueError('Missing configuration: ' + ', '.join(missing))
         self.voice_backends.for_record({'phone_number':request.phone_number,'direction':'outbound'},
             request.voice_provider,request.voice_model,request.voice)
-        call_id = self.db.create(request)
+        origin = await self.outbound.resolve(request.caller_id)
+        call_id, created = self.db.claim_outbound(request,origin,self.outbound.fingerprint(request))
+        if not created:
+            return self.status(call_id)
         record = self.db.get(call_id)
         record['voice_name'] = self.voices.pin(record)
         self.voice_backends.pin(record, request.voice_provider,request.voice_model,request.voice)
         self.recordings.pin(call_id)
-        log_event('call_created', call_id=call_id)
+        log_event('call_created', call_id=call_id, caller_id_choice=origin['caller_id'])
         try:
-            call = await self.gateway.place(call_id, request.phone_number, request.max_duration_minutes)
+            kwargs = {'from_number':origin['from_number']} if origin['caller_id']=='mobile' else {}
+            call = await self.gateway.place(call_id, request.phone_number, request.max_duration_minutes, **kwargs)
             self.db.update(call_id, twilio_call_sid=call.sid)
             self.transition(call_id, normalize_status(call.status))
         except Exception as exc:
@@ -315,6 +324,14 @@ class CallManager:
             self.db.update(call_id, error_message=f'Twilio creation failed or unconfirmed ({type(exc).__name__}); check Twilio before retrying.')
             self.transition(call_id, 'failed')
             log_event('twilio_create_failed', call_id=call_id, error_type=type(exc).__name__)
+        # A portal observer can press Hang up while Twilio's create request is
+        # still in flight. Honor that request as soon as its SID becomes known.
+        if call_id in self.stopping and self.db.get(call_id)['twilio_call_sid']:
+            try:
+                await self.hangup_call(call_id)
+            except Exception as exc:
+                self.db.update(call_id,error_message='Hangup during call creation is unconfirmed; check Twilio before continuing.')
+                log_event('creation_hangup_unconfirmed',call_id=call_id,error_type=type(exc).__name__)
         return self.status(call_id)
 
     def transition(self, call_id: str, status: str, **kwargs):
@@ -333,6 +350,7 @@ class CallManager:
         if record['started_at'] and record['status'] not in TERMINAL:
             duration = int((datetime.now(timezone.utc) - datetime.fromisoformat(record['started_at'])).total_seconds())
         return {'call_id': call_id, 'status': record['status'], 'duration_seconds': max(0, duration),
+                'origination':self.outbound.for_call(call_id),
                 'direction':record['direction'], 'message_id':record['message_id'],
                 'inbound_mode':record['inbound_mode'], 'inbound_booking_allowed':bool(record['inbound_booking_allowed']),
                 'voice_tools_enabled': self.settings.live_tools_enabled or record['direction'] == 'inbound',

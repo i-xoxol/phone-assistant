@@ -28,9 +28,13 @@ class TwilioGateway:
                       self.settings.twilio_auth_token.get_secret_value(),
                       http_client=TwilioHttpClient(timeout=15, max_retries=0))
 
-    async def place(self, call_id: str, phone_number: str, minutes: int):
+    async def verified_caller_id(self, number: str) -> bool:
+        rows = await asyncio.to_thread(self.client().outgoing_caller_ids.list, phone_number=number, limit=5)
+        return any(row.phone_number == number for row in rows)
+
+    async def place(self, call_id: str, phone_number: str, minutes: int, *, from_number: str | None = None):
         return await asyncio.to_thread(
-            self.client().calls.create, to=phone_number, from_=self.settings.twilio_phone_number,
+            self.client().calls.create, to=phone_number, from_=from_number or self.settings.twilio_phone_number,
             url=self.settings.public_url(f'/twilio/voice/{call_id}'), method='POST',
             status_callback=self.settings.public_url(f'/twilio/status/{call_id}'),
             status_callback_event=['initiated', 'ringing', 'answered', 'completed'],

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     twilio_account_sid: str = ''
     twilio_auth_token: SecretStr = SecretStr('')
     twilio_phone_number: str = ''
+    outbound_mobile_number: str = Field(default='',pattern=r'^(?:|\+[1-9][0-9]{7,14})$')
     public_base_url: str = ''
     private_portal_origin: str = ''
     private_portal_trusted_peers: list[str] = Field(default_factory=list)

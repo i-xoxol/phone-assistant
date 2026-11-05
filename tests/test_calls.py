@@ -17,14 +17,24 @@ class MockTwilio:
         self.failure = False
         self.status = 'queued'
         self.incoming_preparations = []
+        self.from_numbers = []
+        self.verified = True
+        self.verification_failure = False
+        self.verification_calls = []
 
     async def prepare_inbound(self, sid, minutes):
         self.incoming_preparations.append((sid,minutes))
 
-    async def place(self, call_id, number, minutes):
+    async def verified_caller_id(self, number):
+        self.verification_calls.append(number)
+        if self.verification_failure:raise RuntimeError('private-token-do-not-expose')
+        return self.verified
+
+    async def place(self, call_id, number, minutes, *, from_number=None):
         if self.failure:
             raise RuntimeError('secret-token-must-not-leak')
         self.calls.append((call_id, number, minutes))
+        self.from_numbers.append(from_number)
         return SimpleNamespace(sid='CA123', status='queued')
 
     async def fetch(self, sid):

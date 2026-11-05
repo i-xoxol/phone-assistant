@@ -33,6 +33,8 @@ class CallRequest(BaseModel):
     voice_model: str | None = Field(default=None,max_length=100)
     voice: str | None = Field(default=None,max_length=100)
     voice_provider: Literal['openai', 'elevenlabs', 'gemini'] | None = None
+    caller_id: Literal['default', 'twilio', 'mobile'] = 'default'
+    request_id: UUID | None = None
 
 
 class DigitsRequest(BaseModel):

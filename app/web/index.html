@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="csrf-token" content="{{csrf}}"><title>Phone Assistant · Call monitor</title>
-<link rel="stylesheet" href="/live/style.css"><script src="/live/app.js" defer></script><script src="/live/personalities.js" defer></script></head>
+<link rel="stylesheet" href="/live/style.css"><script src="/live/app.js" defer></script><script src="/live/personalities.js" defer></script><script src="/live/outbound.js" defer></script></head>
 <body><main class="monitor">
 <header><div><p class="eyebrow">PHONE ASSISTANT</p><h1>Call monitor</h1></div>
 <div class="header-actions"><a class="quiet" href="/live/password">Password</a><button id="pairMobile" class="quiet">Pair mobile</button><button id="logout" class="quiet">Sign out</button></div></header>
@@ -10,6 +10,22 @@
 <p>Enter this code within 15 minutes. It works once.</p><code id="pairCode"></code>
 <p><button id="closePairing" class="quiet">Close</button></p></section>
 <div id="connection" class="connection" role="status"><span class="dot"></span><span id="connectionText">Connecting to event stream…</span></div>
+<details id="outboundPanel" class="inbox"><summary>Place a call</summary>
+<p class="caption-note">Give the assistant a destination and objective. It uses the contact’s saved personality, model and voice, or your current defaults. The call opens in this live monitor.</p>
+<form id="outboundForm">
+<div class="settings-grid"><label for="outboundContact">Saved contact<select id="outboundContact"><option value="">Enter a number</option></select></label><label for="outboundNumber">Phone number<input id="outboundNumber" type="tel" placeholder="+12025550101" pattern="\+[1-9][0-9]{7,14}" required></label></div>
+<div class="settings-grid"><label for="outboundRecipient">Recipient (optional)<input id="outboundRecipient" maxlength="200"></label><label for="outboundCallerId">Show my caller ID as<select id="outboundCallerId"><option value="default">Default</option></select></label></div>
+<label class="editor-field" for="outboundObjective">Call objective<textarea id="outboundObjective" maxlength="4000" rows="3" required placeholder="What should the assistant accomplish?"></textarea></label>
+<label class="editor-field" for="outboundContext">Context for this call<textarea id="outboundContext" maxlength="8000" rows="5" placeholder="Relevant facts and information the assistant may share."></textarea></label>
+<label class="editor-field" for="outboundConstraints">Additional limits · one per line<textarea id="outboundConstraints" rows="3" placeholder="For example: do not change the appointment."></textarea></label>
+<div class="settings-grid"><label for="outboundMinutes">Maximum minutes<input id="outboundMinutes" type="number" min="1" max="15" value="15" required></label></div>
+<label class="check-setting"><input id="outboundIvr" type="checkbox"> Expect a phone menu / hold music</label>
+<p id="outboundDefaultNote" class="caption-note"></p>
+<div class="message-actions"><button id="placeOutbound" class="quiet" type="submit">Place call</button><button id="checkOutbound" class="quiet" type="button" hidden>Check submitted call</button><button id="newOutbound" class="quiet" type="button">New call</button></div>
+<p id="outboundState" class="caption-note" role="status"></p>
+<details class="editor-card"><summary>Reusable call defaults</summary><p class="caption-note">Save the objective, context, additional limits, duration, menu setting and caller ID from this form. The destination and recipient are never saved as defaults. Saving does not place a call. Existing server permissions still apply.</p>
+<div class="message-actions"><button id="useOutboundDefaults" type="button" class="quiet">Use saved defaults</button><button id="saveOutboundDefaults" type="button" class="quiet">Save form as defaults</button></div><p id="outboundDefaultsState" class="caption-note" role="status"></p></details>
+</form></details>
 <details id="answeringPanel" class="inbox"><summary>Answering settings</summary>
 <p class="caption-note">Saved choices apply to new calls. Active calls retain their provider, model, voice and recording policy. Lookup and private owner coaching use their separate settings.</p>
 <div class="settings-grid"><label>Provider<select id="voiceBackend"></select></label>
