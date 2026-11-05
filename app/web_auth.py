@@ -29,6 +29,9 @@ class WebAuth:
             db.executescript('''
                 CREATE TABLE IF NOT EXISTS web_pairing (hash TEXT PRIMARY KEY, expires REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS web_sessions (hash TEXT PRIMARY KEY, csrf TEXT NOT NULL, expires REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS web_session_origins (
+                    hash TEXT PRIMARY KEY REFERENCES web_sessions(hash) ON DELETE CASCADE,
+                    origin TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS web_password (
                     id INTEGER PRIMARY KEY CHECK(id=1), salt BLOB NOT NULL,
                     hash BLOB NOT NULL, updated REAL NOT NULL);
@@ -133,11 +136,23 @@ class WebAuth:
             for table in ('web_password', 'web_sessions', 'web_pairing', 'web_login_attempts'):
                 db.execute(f'DELETE FROM {table}')
 
-    def session(self, token: str) -> dict | None:
+    def bind_session_origin(self, token: str, origin: str):
         with self.db.connect() as db:
-            row = db.execute('SELECT csrf,expires FROM web_sessions WHERE hash=? AND expires>?',
+            db.execute('BEGIN IMMEDIATE')
+            if not db.execute('SELECT 1 FROM web_sessions WHERE hash=? AND expires>?', (digest(token), time.time())).fetchone():
+                raise ValueError('Sign in again')
+            db.execute('INSERT OR IGNORE INTO web_session_origins VALUES (?,?)', (digest(token), origin))
+            if db.execute('SELECT origin FROM web_session_origins WHERE hash=?', (digest(token),)).fetchone()[0] != origin:
+                raise ValueError('Session cannot move to another origin')
+
+    def session(self, token: str, *, origin: str | None = None, allow_legacy: bool = True) -> dict | None:
+        with self.db.connect() as db:
+            row = db.execute('SELECT s.csrf,s.expires,o.origin FROM web_sessions s LEFT JOIN web_session_origins o USING(hash) '
+                             'WHERE s.hash=? AND s.expires>?',
                              (digest(token), time.time())).fetchone()
-            return dict(row) if row else None
+            if not row or (origin is not None and (row['origin'] != origin if row['origin'] else not allow_legacy)):
+                return None
+            return {key: row[key] for key in ('csrf', 'expires')}
 
     def logout(self, token: str):
         with self.db.connect() as db:
