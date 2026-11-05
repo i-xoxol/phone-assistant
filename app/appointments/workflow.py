@@ -124,7 +124,7 @@ class VoiceBookingWorkflow:
             if self.g.m.db.call_update(call_id,str(uid)):return
             text=('The booking agent could not finish. Nothing was booked. Explain that once and offer owner review; do not keep saying confirmation is pending.' if native['action']=='unavailable' else
                 'Clarify only the caller’s contradictory time choice. Minor uncertainty, imperfect spelling and ordinary vague agreement are acceptable. Do not repeat a full recap or demand a booking phrase.')
-            await self.g.m.send_call_update(call_id,CallUpdateRequest(mode='instructions',update_id=uid,content=text))
+            await self.g.m.send_call_update(call_id,CallUpdateRequest(mode='instructions',response_required=True,update_id=uid,content=text))
             return
         if not self.g.consent(draft,None).readback_observed:return
         with self.g.m.db.connect() as db:
@@ -138,7 +138,7 @@ class VoiceBookingWorkflow:
         if not caller or not ambiguous_agreement(caller['text']):return
         uid=uuid5(UUID(draft['draft_id']),'clarify-agreement-'+str(draft['revision'])+'-'+str(caller['id']))
         if self.g.m.db.call_update(call_id,str(uid)):return
-        await self.g.m.send_call_update(call_id,CallUpdateRequest(mode='instructions',update_id=uid,
+        await self.g.m.send_call_update(call_id,CallUpdateRequest(mode='instructions',response_required=True,update_id=uid,
             content='The exact appointment proposal was already spoken. Do not repeat its details. Ask only: Does that work for you? Then wait. Nothing is booked yet; a refusal or correction must be respected.'))
 
     async def advance(self,bridge):
@@ -168,7 +168,7 @@ class VoiceBookingWorkflow:
                     text=('The booking could not be verified. Do not claim success or absence, and do not create another event. Offer owner review.'
                         if uncertain else 'The appointment is not confirmed. Explain that the slot or authorization changed; collect a new request only if the caller wants one.')
                     uid=uuid5(UUID(cid),'voice-booking-state-'+str(result.get('operation_id',''))+'-'+result['state'])
-                    await self.g.m.send_call_update(cid,CallUpdateRequest(mode='instructions',content=text,update_id=uid))
+                    await self.g.m.send_call_update(cid,CallUpdateRequest(mode='instructions',response_required=True,content=text,update_id=uid))
                 if result['state']!='confirmed' and generation!=self.generations.get(cid,0):continue
                 return
         except (ValueError,KeyError,RuntimeError) as exc:

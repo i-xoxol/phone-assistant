@@ -227,6 +227,7 @@ class CallManager:
         await self.screening.stop()
         await self.observer.stop()
         await self.lookup.stop()
+        await self.memory.stop()
         tasks = list(self.supervisor_tasks.values())
         for task in tasks:
             task.cancel()
@@ -254,7 +255,7 @@ class CallManager:
         if not existing and (call_id in self.stopping or
                 (bridge and bridge.end_requested.is_set() and not bridge.handoff)):
             raise ValueError('Call is ending; an update cannot reverse hangup')
-        row = self.db.queue_update(call_id, update_id, request.content, request.mode)
+        row = self.db.queue_update(call_id, update_id, request.content,request.mode,request.response_required)
         if bridge and not bridge.closing and not bridge.handoff:
             bridge.updates_ready.set()
             await bridge.send_pending_updates()
@@ -320,6 +321,8 @@ class CallManager:
         if self.db.transition(call_id, status, **kwargs):
             log_event('call_state_changed', call_id=call_id, status=status)
             if status in TERMINAL:
+                self.memory.ended(call_id)
+                if self.appointments:self.appointments.lookup_intent.ended(call_id)
                 self.observer.call_ended(call_id)
                 self.greetings.ended(call_id)
                 self.warm_sockets.ended(call_id)

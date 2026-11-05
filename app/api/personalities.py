@@ -201,7 +201,8 @@ def prompt_preview(manager, body):
             'test_mode': record['test_mode'], 'answering': record['voice_backend'],
             'voice_instructions': native or config['instructions'], 'planner_instructions': backend.get('instructions', ''),
             'startup_input': config.get('input', []), 'tool_definitions': backend.get('tools', []),
-            'context': record.get('incoming_context', {}), 'owner_context': manager.context.snapshot(for_voice=True),
+            'context': record.get('incoming_context', {}), 'runtime_updates':record.get('call_updates',[]),
+            'owner_context': manager.context.snapshot(for_voice=True),
             'policy': 'Edit personality role/presentation, shared facts, contacts and approved information below. Fixed honesty, authorization, '
                       'tool, routing and recording policies are visible here and enforced by the server. '
                       'Dynamic availability expires and is refreshed by the calendar bridge.'}
@@ -211,3 +212,10 @@ def prompt_preview(manager, body):
 @router.post('/voice/instructions-preview', dependencies=[Depends(authenticated)])
 def preview(body: Preview, request: Request):
     return checked(prompt_preview, request.app.state.manager, body)
+
+
+@router.get('/live/system-prompts',dependencies=[Depends(owner)])
+@router.get('/voice/system-prompts',dependencies=[Depends(authenticated)])
+def system_prompts(request:Request):
+    from app.calling.prompt_catalog import system_prompt_catalog
+    return system_prompt_catalog()

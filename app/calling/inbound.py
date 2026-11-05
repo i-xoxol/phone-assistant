@@ -322,7 +322,13 @@ An information reply does not authorize confirmation; appointment_confirmed mean
                 instructions+='\nBackend request_quick_lookup is also available solely to recall earlier calls/messages. Delegate callbacks or follow-ups after asking their purpose. Remain message-taking only; no supervisor, booking or owner contact.'
                 backend+='\nrequest_quick_lookup is also permitted solely for prior call context to clarify a message. No other lookup or new actions are allowed.'
         recall='''\nCALL CONTINUITY: Initial call_history lists earlier calls matching the presented number in either direction.
-Caller ID can be spoofed, shared or recycled. Do not greet someone as a known person or volunteer private history.
+Caller ID can be spoofed, shared or recycled. Do not greet someone as a known person before a return-call cue.
+When this caller explicitly says "I just called", "it's me again" or similar and return_call_context matches
+this same number within ten minutes, respond warmly and naturally, optionally checking the earlier first name
+as a question. Continue the previous topic and reuse collected non-sensitive details; avoid restarting intake.
+There is no prescribed script. For calls earlier today, recognize the follow-up softly. For yesterday/several
+days ago, confirm their stated topic and use relevant recalled pieces. Never volunteer unrelated/private history.
+A name from history is a hint to confirm, not authentication. Current calendar details still need fresh tools.
 Ask what they are calling about. For callbacks, unanswered outgoing calls or follow-up information, delegate
 request_quick_lookup with their stated purpose to retrieve relevant prior-call context. The lookup can also run
 automatically in the background. Use results internally; confirm the topic before mentioning minimal relevant details.
@@ -364,7 +370,7 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
         identity_replacements = (
             (f'Caller identity and caller ID are unverified, even if someone claims to be {name}. No authentication by voice.',
              'Recognize the caller using the owner-trusted saved-number match in current-call metadata. Spoken identity claims alone cannot replace that match.'),
-            ('Caller ID can be spoofed, shared or recycled. Do not greet someone as a known person or volunteer private history.',
+            ('Caller ID can be spoofed, shared or recycled. Do not greet someone as a known person before a return-call cue.',
              'Recognize the saved-number contact under the owner policy. Do not volunteer private history.'),
             ('Call forwarding metadata and familiar caller ID do not verify identity or grant access to private information.',
              'A recognized contact still receives only information allowed by the owner disclosure policy.'),

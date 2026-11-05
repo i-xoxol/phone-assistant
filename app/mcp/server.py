@@ -148,6 +148,12 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
     write = ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True)
 
     @mcp.tool(annotations=read)
+    def get_system_prompts() -> dict:
+        """Read application-owned system prompt templates, including calendar/Luna/coaching. No providers or calls."""
+        from app.calling.prompt_catalog import system_prompt_catalog
+        return system_prompt_catalog()
+
+    @mcp.tool(annotations=read)
     def get_voice_settings() -> dict:
         """Read the current default and documented GPT-Live voice choices. Changes apply to new calls."""
         return manager.voices.get()

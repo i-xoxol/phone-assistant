@@ -98,7 +98,7 @@ def test_mcp_creation_and_retrieval(service):
                          'list_messages','get_message','mark_message_read','list_call_requests','respond_to_call_request',
                          'get_inbound_context','set_inbound_context','set_inbound_availability','expect_incoming_call','retire_expected_call',
                          'search_call_knowledge','set_call_contact','set_caller_language','set_call_fact','retire_call_fact',
-                         'get_voice_settings','set_voice','get_voice_backend','set_voice_backend',
+                         'get_system_prompts','get_voice_settings','set_voice','get_voice_backend','set_voice_backend',
                          'get_contact_voice','set_contact_voice','get_recording_settings','set_recording_settings',
                          'get_recording_notices','generate_recording_notice','activate_recording_notice','refresh_voice_library',
                          'reach_owner','get_operating_hours','set_operating_hours','get_contact_call_history'}
