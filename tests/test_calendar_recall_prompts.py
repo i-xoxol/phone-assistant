@@ -305,3 +305,22 @@ def test_mini_lookup_helper_uses_same_calendar_guards_and_never_writes(service,t
         else:assert not reads and not updates
         assert p.writes==0
     client.portal.call(run)
+
+
+def test_confirmed_prior_intake_supplies_only_a_tentative_first_name_hint(service,tmp_path):
+    from tests.test_appointments_gateway import prepare,agree
+    from tests.test_call_updates import UpdateConnection
+    from app.calling.live_session import MediaBridge
+    client,m,p,g,prior,result=prepare(service,tmp_path)
+    agree(m,g,prior,result)
+    booked=client.portal.call(g.book,prior,dict(draft_id=result['draft_id'],check_id=result['check_id'],idempotency_key='fictional-recall'))
+    assert booked['state']=='confirmed'
+    m.transition(prior,'completed');m.settings.call_history_enabled=True;m.settings.subscription_lookup_enabled=False
+    stamp=(utcnow()-timedelta(minutes=2)).isoformat()
+    with m.db.connect() as db:db.execute('UPDATE calls SET created_at=?,completed_at=? WHERE call_id=?',(stamp,stamp,prior))
+    cid=m.db.create_inbound('CA_FICTIONAL_RECALL',m.db.get(prior)['phone_number'],5,10,'concierge',False)
+    m.transition(cid,'in_progress');b=MediaBridge(None,UpdateConnection(),m,cid,'MZ_RECALL_HINT');m.attach_bridge(cid,b)
+    client.portal.call(m.memory.recall,m.db.get(cid),'I just called','recent',b)
+    hints=[u['content'] for u in m.db.get(cid)['call_updates'] if 'verified booking intake used first name' in u['content']]
+    assert len(hints)==1 and 'Casey' in hints[0] and 'Example' not in hints[0]
+    assert 'fresh LAST name' in hints[0] and p.writes==1

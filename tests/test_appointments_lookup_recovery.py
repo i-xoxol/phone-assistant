@@ -88,3 +88,33 @@ def test_native_lookup_after_a_booking_retrieves_only_verified_details_without_a
         assert await g.own(lookup,dict(first_name='Casey',last_name='Example'))=={'status':'needs_owner'}
         assert p.writes==1
     client.portal.call(exercise)
+
+
+@pytest.mark.parametrize('question,reply',[
+    ('Hi again—Casey, right?','Yes.'),
+    ('Is it Casey?','Yeah, that\'s right.'),
+    ('Hi again, Casey, right?','Correct.'),
+])
+def test_returning_caller_can_confirm_first_name_then_supply_only_surname(question,reply):
+    rows=turns(('assistant',question),('callee',reply),
+        ('assistant','Thanks, Casey. Could you remind me of your last name?'),('callee','Example.'))
+    assert caller_identified(rows,'Casey','Example',for_lookup=True)
+    assert not caller_identified(rows[:-1],'Casey','Example',for_lookup=True)
+
+
+@pytest.mark.parametrize('reply',['No.','Actually, Jordan.','Yes, my friend Casey.',"I won't give my name."])
+def test_tentative_name_is_not_proof_when_caller_does_not_confirm(reply):
+    assert not caller_identified(turns(('assistant','Hi again—Casey, right?'),('callee',reply),
+        ('assistant','Could you remind me of your last name?'),('callee','Example.')),'Casey','Example',for_lookup=True)
+
+
+def test_historical_or_third_party_name_cannot_be_confirmed_as_current_self_claim():
+    assert not caller_identified(turns(('assistant','Your friend Casey, right?'),('callee','Yes.'),
+        ('assistant','Your last name?'),('callee','Example.')),'Casey','Example',for_lookup=True)
+    assert not caller_identified(turns(('assistant','Earlier history says Casey Example.'),('callee','Yes.')),
+        'Casey','Example',for_lookup=True)
+
+
+def test_combined_tentative_first_name_and_surname_question_accepts_fresh_surname():
+    assert caller_identified(turns(('assistant','Casey, right? Can you give me your last name as well?'),
+        ('callee','Example.')),'Casey','Example',for_lookup=True)

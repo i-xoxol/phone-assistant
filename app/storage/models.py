@@ -47,6 +47,7 @@ class CallUpdateRequest(BaseModel):
     content: str = Field(min_length=1, max_length=400)
     mode: Literal['context', 'say', 'instructions'] = 'context'
     response_required: bool = False
+    spoken_text: str | None = Field(default=None,min_length=1,max_length=400)
     update_id: UUID | None = None
 
     @field_validator('content')
@@ -57,6 +58,14 @@ class CallUpdateRequest(BaseModel):
         # limit, including the policy prefix, without another tokenizer package.
         if not value or len(value.encode('utf-8')) > 400:
             raise ValueError('Send a short update of 1–400 UTF-8 bytes')
+        return value
+
+    @field_validator('spoken_text')
+    @classmethod
+    def concise_speech(cls,value):
+        if value is None:return None
+        value=value.strip()
+        if not value or len(value.encode('utf-8'))>400:raise ValueError('Spoken text must fit 400 UTF-8 bytes')
         return value
 
 

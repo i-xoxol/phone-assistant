@@ -218,7 +218,14 @@ class MediaBridge:
                     from app.calling.inbound import INCOMING_CALL_CONTINUITY
                     content=INCOMING_CALL_CONTINUITY+'\n'+content
                 try:
-                    if row.get('response_required') and channel=='instructions' and hasattr(self.connection,'append_instruction'):
+                    if (row.get('response_required') and getattr(self.connection,'calendar_controlled',False)
+                            and getattr(self.connection,'render_speech',None)):
+                        revision=self.manager.appointments.revision(self.call_id)
+                        def current(revision=revision):
+                            return (self.manager.bridges.get(self.call_id) is self and not (self.closing or self.handoff or self.end_requested.is_set())
+                                and self.call_id not in self.manager.stopping and self.manager.appointments.revision(self.call_id)==revision)
+                        await self.connection.speak_verified(row.get('spoken_text') or "I couldn't verify that yet. Nothing new is confirmed. I can save an unconfirmed request for review.",event_id,current)
+                    elif row.get('response_required') and channel=='instructions' and hasattr(self.connection,'append_instruction'):
                         await asyncio.wait_for(self.connection.append_instruction(content,event_id,respond=True),5)
                     else:
                         await asyncio.wait_for(getattr(self.connection.session,channel).append(
