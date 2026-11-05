@@ -96,7 +96,8 @@ def startup_greeting_content(settings,record):
         return (('Привіт' if familiar else 'Вітаю')+', це '+spoken+'. Чим можу допомогти?' if language=='uk' else
                 ('Hi' if familiar else 'Hello')+', '+spoken+' here. How can I help?')
     profile = record.get('personality') or {}
-    office = not profile or profile.get('name') in ('Default', 'Office') or 'office' in profile.get('role', '').casefold() or 'reception' in profile.get('role', '').casefold()
+    role = profile.get('role', '').casefold()
+    office = not profile or 'office' in role or 'reception' in role or (not role and profile.get('name') in ('Default', 'Office'))
     if language=='uk':
         opening=('Привіт'+(', '+nickname if nickname else '')+'!' if familiar else f'Вітаю! Це офіс {name}.' if office else 'Вітаю!')
         middle=''
@@ -416,8 +417,9 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             +office+". I'm "+settings.assistant_name+", "+name+"'s assistant. How can I help?\" "
             'Use conversational phrasing and intonation; the example is not a script to recite mechanically. ')
     if record.get('personality'):
-        style=('CONVERSATION STYLE: '+('Familiar: address the recognized contact naturally. ' if familiar else
-            'Courteous to an unfamiliar caller without assuming friendship. ')+
+        style=('CONVERSATION STYLE: '+('Familiar: keep the whole conversation warm, relaxed and informal by default, '
+            'unless the selected personality explicitly requests a different tone. Address the recognized contact naturally. ' if familiar else
+            'Formal relationship: be courteous to an unfamiliar caller without assuming friendship. ')+
             'The selected personality supplies the work role and tone. Do not impose an office persona from shared reference facts. '
             'A relationship label such as Mama is about the owner, not proof of a human relationship of the automated voice. ')
         greeting=incoming_presentation_greeting(settings, record, familiar=familiar, nickname=spoken_name)

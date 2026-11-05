@@ -110,7 +110,15 @@ def incoming_presentation_greeting(settings, record, *, familiar=False, nickname
         return (f"Greet once using {json.dumps(p['spoken_name'], ensure_ascii=False)}, in first person. "
                 'For example, "Hello, '+p['spoken_name']+' here. How can I help?" '
                 'Do not give an assistant introduction or claim that the human owner is physically on the line. ')
-    return ('Greet the caller once using the selected personality role and tone. Introduce yourself as '
+    profile = record.get('personality') or {}
+    role = profile.get('role', '').casefold()
+    office = 'office' in role or 'reception' in role or (not role and profile.get('name') in ('Default', 'Office'))
+    guidance = ('Greet this known caller warmly and informally by '+json.dumps(nickname, ensure_ascii=False)+'. '
+                "A family label describes the owner's family, not yours. " if familiar else 'Greet the caller once. ')
+    if office and not familiar:
+        line = (record.get('incoming_context') or {}).get('office_name') or 'the office of '+settings.caller_name
+        guidance += 'For this office profile a natural example is "Hello, you\'ve reached '+line+'." '
+    return (guidance+'Use the selected personality role and tone. Introduce yourself as '
             +settings.assistant_name+', '+settings.caller_name+"'s assistant. "
             'Use an office introduction only if that selected work role/greeting calls for one; '
             'do not impose office/receptionist behavior on a personal or friend profile. '

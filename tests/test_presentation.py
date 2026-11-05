@@ -21,9 +21,9 @@ from tests.test_phone_controls import owner_headers, contact
 
 
 def saved(m, mode='owner_first_person', **changes):
-    return m.personalities.save(PersonalityUpdate(**dict(name='Fictional representative',
-        presentation_mode=mode, spoken_name='Alex', role='Personal correspondence',
-        instructions='Speak concisely and warmly.', **changes)))
+    return m.personalities.save(PersonalityUpdate(**{'name':'Fictional representative',
+        'presentation_mode':mode, 'spoken_name':'Alex', 'role':'Personal correspondence',
+        'instructions':'Speak concisely and warmly.', **changes}))
 
 
 def record_for(m, direction, profile):
@@ -184,3 +184,18 @@ def test_outbound_uses_outbound_guidance_and_not_incoming_role_intro(service):
     text = session_config(m.settings, record)['instructions']
     assert 'Welcome to the office.' not in text
     assert 'Ask about my appointment.' in text
+
+
+@pytest.mark.parametrize('label', ['Default','Friend'])
+def test_selected_personal_role_has_no_competing_global_office_persona(service, label):
+    _, m, _ = service
+    m.context.set_profile(ProfileUpdate(role='GLOBAL_OFFICE_ROLE_SENTINEL',context='Public workshop fact.'))
+    record = record_for(m, 'inbound', saved(m, 'assistant', name=label))
+    config=session_config(m.settings,record)
+    assert 'GLOBAL_OFFICE_ROLE_SENTINEL' not in config['instructions']
+    assert 'Public workshop fact.' in config['instructions']
+    assert 'personal correspondence' in config['instructions'].lower()
+    assert 'office of' not in config['input'][0]['content'][0]['text']
+    assert 'office' not in startup_greeting_content(m.settings,record).lower()
+    alias=m.context.snapshot()['profile']
+    assert alias['role_policy'].startswith('Deprecated')

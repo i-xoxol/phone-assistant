@@ -23,7 +23,7 @@ def utcnow():
 
 class ProfileUpdate(BaseModel):
     model_config=ConfigDict(extra='forbid')
-    role: str | None=Field(default=None,max_length=200)
+    role: str | None=Field(default=None,max_length=1000)
     context: str=Field(max_length=2000)
 
 
@@ -167,6 +167,13 @@ class ConciergeContext:
             if for_voice:
                 profile.pop('role', None)
                 profile['purpose'] = 'Shared reference information only; behavior and presentation come from the selected personality.'
+            elif getattr(self, 'personalities', None):
+                alias=conn.execute('SELECT p.personality_id,p.role FROM personality_context_migration m '
+                    'JOIN telephone_personalities p ON p.personality_id=m.personality_id WHERE m.id=1').fetchone()
+                if alias:
+                    profile['role']=alias['role']
+                    profile['role_personality_id']=alias['personality_id']
+                    profile['role_policy']='Deprecated compatibility alias, not a shared voice role.'
             row=conn.execute('SELECT observed_at,expires_at,time_zone,source FROM concierge_availability WHERE id=1').fetchone()
             availability=dict(row) if row else None
             if availability:
