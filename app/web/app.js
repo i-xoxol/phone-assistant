@@ -274,7 +274,7 @@ function renderRequests(data) {
     'Verified live supervisor subscription is active. Replies still require actual client processing.':
     'No active live supervisor subscription. Fresh saved context can answer routine questions; other requests become messages. Automatic Rocky supervision is not connected.';
   const context=data.concierge;
-  $('contextState').textContent=(context?.role?context.role+' · ':'')+(context?.availability_fresh?
+  $('contextState').textContent='Shared reference data · '+(context?.availability_fresh?
     context.availability_windows+' cached free windows · expires '+new Date(context.availability_expires_at).toLocaleTimeString():
     'No fresh cached availability. A supervisor is needed for time options.');
   $('requests').replaceChildren();

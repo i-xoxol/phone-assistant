@@ -66,7 +66,7 @@
 <details id="ownerContextPanel" class="inbox"><summary>Shared context · Facts, activities and expected calls</summary>
 <p class="caption-note">Reference information shared with the voice and Rocky. Set role and behavior in each personality above. Save only information approved for callers. Calendar availability is refreshed by the bridge and old slots are withheld automatically.</p>
 <form id="ownerContextForm">
-<label class="editor-field" for="ownerBackground">Current activities and caller-safe instructions<textarea id="ownerBackground" maxlength="2000" rows="7"></textarea></label>
+<label class="editor-field" for="ownerBackground">Current activities and caller-safe reference information<textarea id="ownerBackground" maxlength="2000" rows="7"></textarea></label>
 <div class="message-actions"><button class="quiet">Save owner context</button><button id="reloadOwnerContext" type="button" class="quiet">Reload saved context</button></div></form><p id="ownerContextState" class="caption-note" role="status"></p>
 <h2>Anticipated calls and approved facts</h2><div class="message-actions"><button id="newExpected" class="quiet">Add expected call</button><button id="newFact" class="quiet">Add approved fact</button></div>
 <form id="contextNoteForm" class="editor-card" hidden><h3 id="contextNoteHeading"></h3><div class="settings-grid">
@@ -80,7 +80,7 @@
 <div class="message-actions"><button class="quiet">Save note</button><button id="cancelContextNote" type="button" class="quiet">Cancel</button></div><p id="contextNoteState" class="caption-note" role="status"></p></form>
 <div id="contextNotes"></div><details><summary>Current context snapshot</summary><pre id="ownerContextSnapshot" class="instruction-preview"></pre></details></details>
 <details id="instructionsPanel" class="inbox"><summary>Inspect assembled instructions and context</summary>
-<p class="caption-note">Read the actual application prompt builders without placing a call. Edit personality and owner context above. Fixed identity, authorization and tool policies are shown here; calendar data remains managed by its source.</p>
+<p class="caption-note">Read the actual application prompt builders without placing a call. Edit personality, presentation and shared context above. Honesty, authorization and tool policies are shown here; calendar data remains managed by its source.</p>
 <div class="settings-grid"><label for="previewContact">New-call caller<select id="previewContact"></select></label><label for="previewPersonality">Preview personality<select id="previewPersonality"></select></label></div>
 <div class="message-actions"><button id="previewNewCall" class="quiet">Preview new incoming call</button><button id="previewSelectedCall" class="quiet">Inspect selected call</button></div>
 <p id="instructionsState" class="caption-note" role="status"></p><div id="instructionsOutput"></div></details>
