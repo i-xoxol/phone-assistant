@@ -37,6 +37,7 @@ class CallManager:
         self.knowledge = CallKnowledge(database)
         from app.calling.personalities import Personalities
         self.personalities = Personalities(self)
+        self.context.personalities = self.personalities
         from app.calling.contact_testing import ContactTesting
         self.test_contacts = ContactTesting(self)
         from app.calling.forwarding import IncomingRouting
@@ -64,7 +65,14 @@ class CallManager:
             self.appointments = AppointmentGateway(self)
 
     def result(self, call_id):
+        from app.calling.presentation import resolve_presentation
+        record = self.db.get(call_id)
+        record['personality'] = self.personalities.for_call(call_id)
+        if record.get('direction') == 'inbound':
+            record['incoming_context'] = self.incoming_context(record)
+        presentation = resolve_presentation(self.settings, record)
         return {**self.db.get(call_id),'lookup_requests':self.lookup.list_for_call(call_id),
+                'presentation':presentation,
                 'personality':self.personalities.for_call(call_id),
                 'test_mode':self.test_contacts.for_call(call_id),
                 'voice_backend':self.voice_backends.for_call(call_id),
@@ -82,10 +90,15 @@ class CallManager:
         if record['voice_backend'] and record['voice_backend']['provider']=='openai':
             record['voice_name']=record['voice_backend']['voice']
         record['audio_recording']=self.recordings.snapshot(call_id)
+        from app.calling.presentation import resolve_presentation
         if record.get('direction')=='inbound':
             record['incoming_context']=self.incoming_context(record)
             if record['inbound_mode']=='messages' and not self.hours.state()['office_open']:
                 record['closed_announcement']=self.hours.closed_announcement()
+        else:
+            record['shared_context']=self.context.snapshot(caller_number=record['phone_number'],question=record['objective'],for_voice=True)
+            record['recipient_language']=self.knowledge.language_for(record['phone_number'], call_id)
+        record['presentation']=resolve_presentation(self.settings, record)
         return record
 
     def incoming_context(self,record,question=''):

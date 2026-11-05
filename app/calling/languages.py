@@ -21,13 +21,19 @@ GREETINGS={
 }
 
 
-def localized_greeting(language,assistant,owner,*,is_owner=False,nickname=''):
+def localized_greeting(language,assistant,owner,*,is_owner=False,nickname='',representative_name=''):
     phrases=GREETINGS.get(language.split('-')[0])
     if not phrases:
         if is_owner: return 'Hi, '+(nickname or owner)+"! What's up?"
+        if representative_name: return 'Hello, '+representative_name+' here. How can I help?'
         return f"Hello, I'm {assistant}, "+owner+"'s assistant. How can I help?"
     hello,intro,_,about_owner,question=phrases
     if is_owner: return hello+', '+(nickname or owner)+'. '+question
+    if representative_name:
+        introduction={'es':'Soy {name}.','fr':'C’est {name}.','de':'Hier ist {name}.','pl':'Mówi {name}.',
+            'ru':'Это {name}.','pt':'Aqui é {name}.','it':'Sono {name}.','ar':'معك {name}.',
+            'zh':'我是{name}。','ja':'{name}です。','ko':'{name}입니다.','hi':'मैं {name} हूँ।'}[language.split('-')[0]]
+        return hello+(', '+nickname if nickname else '')+'. '+introduction.format(name=representative_name)+' '+question
     role=about_owner.format(owner=owner)
     return hello+(', '+nickname if nickname else '')+'. '+intro.format(assistant=assistant,role=role)+' '+question
 

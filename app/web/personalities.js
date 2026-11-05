@@ -6,18 +6,26 @@ let ownerContextRevision=null;
 const openCallerCards=new Set(),personalityAssignmentDrafts=new Map();
 const personalityDrafts=new Map();
 const testContactDrafts=new Map();
+const personalityFields={name:'personalityName',instructions:'personalityInstructions',context:'personalityContext',
+  greeting:'personalityGreeting',role:'personalityRole',presentation_mode:'personalityPresentation',
+  spoken_name:'personalitySpokenName',outbound_greeting:'personalityOutboundGreeting'};
+function personalityBody() {return Object.fromEntries(Object.entries(personalityFields).map(([key,id])=>[key,$(id).value]));}
+function presentationFields() {
+  $('personalitySpokenName').disabled=$('personalityPresentation').value!=='owner_first_person';
+  $('personalitySpokenName').placeholder=personalityCatalog?.owner_name || 'Your configured name';
+}
 function profileOptions() {return (personalityCatalog?.personalities || []).map(p=>({id:p.personality_id,label:p.name}));}
 function currentProfile() {return personalityCatalog?.personalities.find(p=>p.personality_id===editingPersonality);}
 function rememberPersonalityDraft() {
   if(!personalityDirty) return;
-  personalityDrafts.set(editingPersonality || '', {name:$('personalityName').value,instructions:$('personalityInstructions').value,
-    context:$('personalityContext').value,greeting:$('personalityGreeting').value,revision:editingRevision});
+  personalityDrafts.set(editingPersonality || '', {...personalityBody(),revision:editingRevision});
 }
 function editPersonality(id) {
   rememberPersonalityDraft();editingPersonality=id || null;personalityDirty=false;
   const draft=personalityDrafts.get(id || ''), row=draft || currentProfile() || {};
   editingRevision=row.revision || null;
-  for(const [key,field] of [['name','personalityName'],['instructions','personalityInstructions'],['context','personalityContext'],['greeting','personalityGreeting']]) $(field).value=row[key] || '';
+  for(const [key,field] of Object.entries(personalityFields)) $(field).value=row[key] || (key==='presentation_mode'?'assistant':'');
+  presentationFields();
   $('personalityPicker').value=id || '';$('duplicatePersonality').disabled=!id;
   personalityDirty=!!draft;
   $('personalityState').textContent=draft?'Unsaved draft retained.':id?'Saved revision '+row.revision+' · changes apply to new calls.':'New profile · save before assigning it.';
@@ -46,13 +54,12 @@ $('reloadPersonality').onclick=async()=>{
   try {await refreshPeople();$('personalityState').textContent='Loaded saved profile. Previous unsaved draft discarded.';}
   catch(e) {$('personalityState').textContent=e.message;}
 };
-for(const id of ['personalityName','personalityInstructions','personalityContext','personalityGreeting']) $(id).oninput=()=>{
-  personalityDirty=true;$('personalityState').textContent='Unsaved edits · active calls are unaffected.';
+for(const id of Object.values(personalityFields)) $(id).oninput=()=>{
+  presentationFields();personalityDirty=true;$('personalityState').textContent='Unsaved edits · active calls are unaffected.';
 };
 $('personalityForm').onsubmit=async event=>{
   event.preventDefault();$('savePersonality').disabled=true;
-  const body={name:$('personalityName').value,instructions:$('personalityInstructions').value,context:$('personalityContext').value,
-    greeting:$('personalityGreeting').value,revision:editingRevision};
+  const body={...personalityBody(),revision:editingRevision};
   try {
     const r=await api('/live/personalities'+(editingPersonality?'/'+editingPersonality:''),{...writeOptions(body),method:editingPersonality?'PUT':'POST'});
     personalityDrafts.delete(editingPersonality || '');personalityDirty=false;editingPersonality=r.personality_id;
@@ -150,7 +157,7 @@ $('contactForm').onsubmit=async event=>{
 };
 async function loadOwnerContext() {
   const data=await api('/live/owner-context');
-  if(!ownerContextDirty) {$('ownerRole').value=data.profile.role;$('ownerBackground').value=data.profile.context;ownerContextRevision=data.profile.updated_at;}
+  if(!ownerContextDirty) {$('ownerBackground').value=data.profile.context;ownerContextRevision=data.profile.updated_at;}
   $('ownerContextSnapshot').textContent=JSON.stringify(data,null,2);
   const container=$('contextNotes');container.replaceChildren();
   for(const [kind,rows] of [['expected',data.expected_calls],['fact',data.knowledge.facts]]) for(const row of rows) {
@@ -166,10 +173,10 @@ async function loadOwnerContext() {
 }
 $('ownerContextPanel').addEventListener('toggle',()=>{if($('ownerContextPanel').open) loadOwnerContext().catch(e=>{$('ownerContextState').textContent=e.message;});});
 $('reloadOwnerContext').onclick=async()=>{ownerContextDirty=false;try {await loadOwnerContext();$('ownerContextState').textContent='Loaded current saved context.';} catch(e) {$('ownerContextState').textContent=e.message;}};
-for(const id of ['ownerRole','ownerBackground']) $(id).oninput=()=>{ownerContextDirty=true;$('ownerContextState').textContent='Unsaved context edits.';};
+for(const id of ['ownerBackground']) $(id).oninput=()=>{ownerContextDirty=true;$('ownerContextState').textContent='Unsaved context edits.';};
 $('ownerContextForm').onsubmit=async event=>{
   event.preventDefault();const button=event.submitter;button.disabled=true;
-  try {await api('/live/owner-context',writeOptions({role:$('ownerRole').value,context:$('ownerBackground').value,expected_updated_at:ownerContextRevision}));ownerContextDirty=false;await loadOwnerContext();$('ownerContextState').textContent='Saved. Active incoming calls are notified to refresh context.';}
+  try {await api('/live/owner-context',writeOptions({context:$('ownerBackground').value,expected_updated_at:ownerContextRevision}));ownerContextDirty=false;await loadOwnerContext();$('ownerContextState').textContent='Saved. Active incoming calls are notified to refresh facts; their presentation is unchanged.';}
   catch(e) {$('ownerContextState').textContent='Not saved: '+e.message;} finally {button.disabled=false;}
 };
 function localDateTime(value) {const d=new Date(value);return new Date(d-d.getTimezoneOffset()*60000).toISOString().slice(0,16);}
@@ -204,7 +211,8 @@ async function showInstructions(forSelected) {
     const result=await api('/live/instructions-preview',{...writeOptions(body),method:'POST'});
     $('instructionsState').textContent=result.basis+' '+result.policy;
     const output=$('instructionsOutput');output.replaceChildren();
-    for(const [label,value] of [['Personality and answering',{personality:result.personality,answering:result.answering,test_mode:result.test_mode}],
+    for(const [label,value] of [['Personality, presentation and answering',{personality:result.personality,presentation:result.presentation,answering:result.answering,test_mode:result.test_mode}],
+      ['Effective greeting',result.greeting],
       ['Voice instructions',result.voice_instructions],['Tool planner instructions',result.planner_instructions],
       ['One-time startup input',result.startup_input],['Tool definitions',result.tool_definitions],['Caller context',result.context],['Shared owner context',result.owner_context]]) {
       const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent=label;

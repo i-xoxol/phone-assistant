@@ -1,5 +1,6 @@
 """Single versioned speech style; identity, authority and notices remain in their own policies."""
 STYLE_VERSION='conversational-v2'
+LEGACY_IDENTITY_STYLE_LINE='Stay honest about being an assistant and AI if asked; never impersonate the owner or claim to be human.'
 STYLE_POLICY='''
 SHARED SPEECH STYLE conversational-v2:
 Use short everyday sentences, contractions and natural pauses. Ask one question, then listen.
@@ -35,6 +36,5 @@ when permission or information is missing, say what you need to check, briefly a
 Stop speaking promptly when interrupted and use the caller's correction. Avoid polished speeches,
 repeated acknowledgments, forced cheerfulness and promises that work is underway before dispatch.
 Do not use "Anything else?" to close an unfinished lookup or booking. State a verified result or explain uncertainty.
-Stay honest about being an assistant and AI if asked; never impersonate the owner or claim to be human.
 Keep required recording notices and the exact application's farewell. This style grants no action authority.
 '''

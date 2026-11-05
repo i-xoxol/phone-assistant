@@ -55,7 +55,7 @@ def test_contact_default_ambiguity_and_active_call_snapshot(service):
     m.personalities.assign(person, friend['personality_id'])
     cid = create(c).json()['call_id']
     snapshot = m.personalities.for_call(cid)
-    assert snapshot == friend
+    assert snapshot == {**friend, 'spoken_name': m.settings.caller_name}
     m.personalities.save(PersonalityUpdate(name='Changed', instructions='Different.', revision=1), friend['personality_id'])
     m.personalities.assign(person, None)
     assert m.voice_record(cid)['personality'] == snapshot
@@ -157,7 +157,8 @@ def test_manual_context_facts_expected_and_retirement(service):
     fact = c.put('/live/facts', headers=h, json={'topic': 'Reception', 'text': 'Public reception is in room Cedar.', 'source': 'Owner',
         'expires_at': (utcnow()+timedelta(days=1)).isoformat(), 'approved_for_callers': True}).json()
     result = c.get('/live/owner-context', headers=h).json()
-    assert result['profile']['role'] == 'Fictional receptionist'
+    assert 'role' not in result['profile']
+    assert m.personalities.get(m.personalities.catalog()['legacy_role_personality_id'])['role'] == 'Fictional receptionist'
     assert result['expected_calls'][0]['context_id'] == note['context_id']
     assert result['knowledge']['facts'][0]['fact_id'] == fact['fact_id']
     assert c.post('/live/facts/'+fact['fact_id']+'/retire', headers=h).status_code == 200

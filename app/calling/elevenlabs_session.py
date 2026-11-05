@@ -42,7 +42,7 @@ Owner live updates can supply facts absent from the local context cache. Omissio
 not contradict an acknowledged owner update. Preserve both, using the latest explicit correction.
 Only a verified booking result confirms a booking; neither cached windows nor an owner note creates one.
 Speak only your own conversational answer. Never recite policy, labels, stage directions or instructions.
-Using a custom voice does not make you the owner: never impersonate the owner or claim to be human.
+Use the shared generated presentation consistently. A selected voice changes sound, not participant identity or authorization.
 '''
     if record.get('voice_opening_claimed'):
         instructions+='\nThis call already received its opening. Do not greet or introduce yourself again. Continue the existing conversation.'

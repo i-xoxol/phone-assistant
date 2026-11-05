@@ -144,7 +144,7 @@ function addText(event) {
   if (!turn) {
     const div=document.createElement('div'); div.className='turn '+event.speaker;
     const label=document.createElement('div'); label.className='speaker';
-    const name=document.createElement('span'); name.textContent=event.speaker==='assistant'?'Your assistant':(call?.direction==='inbound'?'Caller':'Recipient');
+    const name=document.createElement('span'); name.textContent=event.speaker==='assistant'?(call?.presentation?.mode==='owner_first_person'?'Voice representative · '+call.presentation.spoken_name:'Your assistant'):(call?.direction==='inbound'?'Caller':'Recipient');
     const stamp=document.createElement('time'); stamp.textContent=clock(event.timestamp);
     label.append(name,stamp); const words=document.createElement('div'); words.className='words'; div.append(label,words);
     turn={speaker:event.speaker,start:event.timestamp,end:event.end_timestamp,words}; turns.push(turn); $('transcript').append(div);
