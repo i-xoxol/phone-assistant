@@ -115,6 +115,17 @@ def test_manual_noncalendar_caller_still_gets_a_normal_response():
  asyncio.run(run())
 
 
+def test_split_caller_sentence_does_not_start_a_stale_generic_response():
+ async def run():
+  c=connection();c.manual_mode=True;c.calendar_managed=True
+  c.manual_items['name']=(7000,8000)
+  c.observe_input_audio(7000,b'\x80'*8000);c.observe_input_audio(8000,b'\xff'*6000)
+  c.observe_input_audio(8750,b'\x80'*8000)
+  await translated(c,{'type':'conversation.item.input_audio_transcription.completed','item_id':'name','transcript':'My name is Casey Example.'})
+  assert not c.response_requested and not any(e['type']=='response.create' for e in c.socket.sent)
+ asyncio.run(run())
+
+
 def test_mini_calendar_tools_are_server_owned_while_max_retains_direct_tools(service,tmp_path):
  client,m,p,g,cid,args=first_call(service,tmp_path)
  record=m.voice_record(cid)

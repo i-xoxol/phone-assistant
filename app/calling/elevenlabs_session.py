@@ -405,7 +405,13 @@ class RealtimeConnection:
             if text or kind.endswith('.completed'):
                 yield self.transcript(data,'input',text,item_id)
             if kind.endswith('.completed') and self.manual_mode and not self.calendar_controlled:
-                await self.request_response()
+                end=self.manual_items.get(item_id,(None,None))[1]
+                latest=self.input_timeline.stream_time(self.input_timeline.utterances[-1]['end']) if self.input_timeline.utterances else None
+                # A brief pause can split "my name is ... / check my appointment"
+                # into two commits. Do not start a stale generic response while
+                # that newer caller speech is active or waiting for its caption.
+                if not self.manual_active and (end is None or latest is None or latest<=end):
+                    await self.request_response()
         elif kind in ('response.output_audio_transcript.delta', 'response.output_audio_transcript.done'):
             item_id = data['item_id']
             previous = self.output_text.get(item_id, '')
