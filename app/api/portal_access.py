@@ -14,6 +14,10 @@ class PortalAccess:
     secure: bool
     private: bool = False
 
+    @property
+    def cookie_path(self):
+        return '/live' if self.private else '/'
+
 
 def portal_access(request):
     settings = request.app.state.settings

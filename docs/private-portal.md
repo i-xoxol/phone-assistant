@@ -30,7 +30,7 @@ address in your password manager if you use it regularly. A bookmark to
 
 The HTTP private portal relies on the existing encrypted overlay rather than
 browser HTTPS, so the browser still labels the address as HTTP/“Not secure.” It
-uses a separate host-only, HttpOnly, SameSite Strict cookie, without Secure for
+uses a separate host-only, HttpOnly, SameSite Strict cookie scoped to `/live`, without Secure for
 that HTTP origin. A private HTTPS origin uses Secure. Public HTTPS retains its
 original Secure cookie. Tokens are bound to their exact origin in SQLite and
 cannot be replayed between the private/public surfaces by changing cookie names.

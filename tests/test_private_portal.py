@@ -49,6 +49,7 @@ def test_private_password_login_works_over_http_without_changing_public_cookie(p
     cookie = result.headers['set-cookie']
     assert PRIVATE_COOKIE in cookie and 'HttpOnly' in cookie and 'SameSite=strict' in cookie
     assert 'Secure' not in cookie and 'Domain=' not in cookie
+    assert 'Path=/live' in cookie
     assert private.get('/live').status_code == 200
     assert private.get('/live/bootstrap').status_code == 200
     assert 'create_code' not in page.text

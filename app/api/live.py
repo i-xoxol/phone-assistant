@@ -81,7 +81,7 @@ def session_cookie(response, token, request):
     except ValueError:
         raise HTTPException(401, 'Sign in again') from None
     response.set_cookie(access.cookie, token, max_age=SESSION_SECONDS, secure=access.secure,
-                        httponly=True, samesite='strict', path='/')
+                        httponly=True, samesite='strict', path=access.cookie_path)
     return response
 
 
@@ -317,7 +317,7 @@ def logout(request: Request):
     access = portal_access(request)
     request.app.state.web_auth.logout(request.cookies.get(access.cookie, ''))
     response = Response(status_code=204, headers=HEADERS)
-    response.delete_cookie(access.cookie, path='/', secure=access.secure, httponly=True, samesite='strict')
+    response.delete_cookie(access.cookie, path=access.cookie_path, secure=access.secure, httponly=True, samesite='strict')
     return response
 
 
