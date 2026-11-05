@@ -227,16 +227,35 @@ class Database:
     def create(self, request: CallRequest) -> str:
         call_id = str(uuid4())
         with self.connect() as db:
-            db.execute('''INSERT INTO calls (call_id, created_at, phone_number, recipient,
-                objective, context, max_duration_minutes, status) VALUES (?,?,?,?,?,?,?,?)''',
-                (call_id, now(), request.phone_number, request.recipient, request.objective,
-                 request.context, request.max_duration_minutes, 'queued'))
-            db.execute('UPDATE calls SET ivr_mode=? WHERE call_id=?', (int(request.ivr_mode), call_id))
-            db.executemany('INSERT INTO constraints VALUES (?,?,?)',
-                          [(call_id, i, text) for i, text in enumerate(request.constraints)])
-            self._event(db, call_id, 'call.created', {'status': 'queued', 'recipient': request.recipient})
+            self._insert_outbound(db,request,call_id)
         self.on_event()
         return call_id
+
+    def claim_outbound(self, request, origin, request_hash):
+        call_id = str(uuid4())
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if request.request_id:
+                row=db.execute('SELECT call_id,request_hash FROM call_origination WHERE request_id=?',(str(request.request_id),)).fetchone()
+                if row:
+                    if row['request_hash']!=request_hash:
+                        raise ValueError('Request ID was already used for a different call brief')
+                    return row['call_id'],False
+            self._insert_outbound(db,request,call_id)
+            db.execute('INSERT INTO call_origination VALUES (?,?,?,?,?)',
+                (call_id,str(request.request_id) if request.request_id else None,request_hash,origin['caller_id'],origin['from_number']))
+        self.on_event()
+        return call_id,True
+
+    def _insert_outbound(self, db, request, call_id):
+        db.execute('''INSERT INTO calls (call_id, created_at, phone_number, recipient,
+            objective, context, max_duration_minutes, status) VALUES (?,?,?,?,?,?,?,?)''',
+            (call_id, now(), request.phone_number, request.recipient, request.objective,
+             request.context, request.max_duration_minutes, 'queued'))
+        db.execute('UPDATE calls SET ivr_mode=? WHERE call_id=?', (int(request.ivr_mode), call_id))
+        db.executemany('INSERT INTO constraints VALUES (?,?,?)',
+                      [(call_id, i, text) for i, text in enumerate(request.constraints)])
+        self._event(db, call_id, 'call.created', {'status': 'queued', 'recipient': request.recipient})
 
     def get(self, call_id: str) -> dict:
         with self.connect() as db:

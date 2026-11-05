@@ -12,17 +12,18 @@ const csrf = document.querySelector('meta[name="csrf-token"]').content;
 function connection(text, healthy=false) { $('connectionText').textContent=text; $('connection').className='connection '+(healthy?'live':'warn'); }
 async function api(path, options={}) {
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),path.endsWith('/generate')?40000:20000);
+  const timer=setTimeout(()=>controller.abort(),path.endsWith('/generate') || path==='/live/outbound/calls'?40000:20000);
   let response;
   try { response=await fetch(path, {credentials:'same-origin', cache:'no-store', ...options, signal:controller.signal}); }
   finally {clearTimeout(timer);}
-  if (response.status === 401) { location.replace('/live/login'); throw new Error('Browser pairing expired'); }
-  if (!response.ok) { const data=await response.json().catch(()=>({})); throw new Error(Array.isArray(data.detail)?data.detail.map(e=>e.msg).join('; '):(data.detail || 'Request failed. Try again.')); }
+  if (response.status === 401) { const error=new Error('Browser pairing expired');error.status=401;location.replace('/live/login');throw error; }
+  if (!response.ok) { const data=await response.json().catch(()=>({})); const error=new Error(Array.isArray(data.detail)?data.detail.map(e=>e.msg).join('; '):(data.detail || 'Request failed. Try again.'));error.status=response.status;throw error; }
   return response.status === 204 ? null : response.json();
 }
 function clock(seconds) { return Math.floor(seconds/60)+':'+String(Math.floor(seconds%60)).padStart(2,'0'); }
 function renderCallerBook(rows=[]) {
   callerRows=rows;
+  if(typeof refreshOutboundContacts==='function') refreshOutboundContacts();
   refreshContactPickers();
   const target=$('callerBook'); target.replaceChildren();
   if (!rows.length) {const note=document.createElement('p');note.textContent='No saved caller preferences yet.';target.append(note);return;}
@@ -79,7 +80,8 @@ function showRecordings() {
   $('forwardingState').textContent=call?.direction==='inbound'?
     (call.forwarding?.forwarded_from_owner_mobile?'Missed call · Forwarded from your mobile · Caller ID: '+(call.phone_number || 'unavailable'):
       call.forwarding?.detected?'Forwarded call · Caller ID: '+(call.phone_number || 'unavailable'):
-      'Incoming call · Carrier forwarding details not supplied. Caller ID: '+(call.phone_number || 'unavailable')):'';
+      'Incoming call · Carrier forwarding details not supplied. Caller ID: '+(call.phone_number || 'unavailable')):
+      call?.origination?'Outbound caller ID: '+call.origination.from_number:'';
   $('stopRecording').hidden=!data?.policy?.recording_requested_at || !!data.policy.stop_requested_at || !call || terminal.has(call.status);
   const key=JSON.stringify([call?.call_id,data]);
   if(key===recordingRenderKey) return;

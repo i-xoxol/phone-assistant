@@ -37,7 +37,9 @@ when the owner joins a conversation.
 Optional voice backend: keep GPT-Live or choose ElevenLabs Realtime with your
 own library voice. See [setup, selection and testing](docs/voice-backends.md).
 
-The private control page also supports [caller profiles, editable personalities,
+The private control page can [place outbound calls with context, reusable brief defaults,
+and an office or verified mobile caller ID](docs/outbound-calls.md).
+It also supports [caller profiles, editable personalities,
 shared context and an assembled-instructions viewer](docs/personalities.md).
 
 Calendar caption fixes, natural return-call recall and the extended prompt viewer
