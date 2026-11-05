@@ -324,6 +324,14 @@ class CallManager:
             self.db.update(call_id, error_message=f'Twilio creation failed or unconfirmed ({type(exc).__name__}); check Twilio before retrying.')
             self.transition(call_id, 'failed')
             log_event('twilio_create_failed', call_id=call_id, error_type=type(exc).__name__)
+        # A portal observer can press Hang up while Twilio's create request is
+        # still in flight. Honor that request as soon as its SID becomes known.
+        if call_id in self.stopping and self.db.get(call_id)['twilio_call_sid']:
+            try:
+                await self.hangup_call(call_id)
+            except Exception as exc:
+                self.db.update(call_id,error_message='Hangup during call creation is unconfirmed; check Twilio before continuing.')
+                log_event('creation_hangup_unconfirmed',call_id=call_id,error_type=type(exc).__name__)
         return self.status(call_id)
 
     def transition(self, call_id: str, status: str, **kwargs):

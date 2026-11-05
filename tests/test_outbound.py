@@ -174,3 +174,20 @@ def test_private_overlay_can_place_call_with_existing_session_and_csrf(portal):
     assert private.get('/live/outbound/settings').status_code==200
     assert private.post('/live/outbound/calls',headers=h,json=brief()).status_code==201
     assert private.post('/live/outbound/calls',headers={**h,'Origin':'https://example.test'},json=brief()).status_code==403
+
+
+def test_hangup_during_carrier_creation_is_honored_when_sid_arrives(service):
+    _,m,g=service;body=CallRequest(**brief());original=g.place
+    async def run():
+        started=asyncio.Event();release=asyncio.Event()
+        async def delayed(*args,**kwargs):
+            started.set();await release.wait();return await original(*args,**kwargs)
+        g.place=delayed
+        creating=asyncio.create_task(m.place_call(body))
+        await started.wait()
+        cid=m.outbound.previous(body)
+        await m.hangup_call(cid)
+        release.set()
+        return await creating
+    result=asyncio.run(run())
+    assert result['status']=='cancelled' and len(g.calls)==1
