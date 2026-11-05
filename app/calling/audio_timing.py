@@ -59,16 +59,19 @@ class InputAudioTimeline:
         wire format. Calibrate only when one rate ratio matches an observed
         onset; retain normal millisecond timing when there is no raw speech.
         """
-        pending=next((s for s in self.utterances if not s['claimed']),None)
+        pending=[s for s in self.utterances if not s['claimed']]
         if start is None or end is None:return None,None
         scale=self.native_scale
         if pending and scale is None:
-            # A caller can already be speaking on reconnect (onset near zero).
-            # A closed endpoint then disambiguates otherwise identical onsets.
-            options=sorted((abs(start*r-pending['start'])+
-                (abs(end*r-pending['end'])*.25 if pending['closed'] else 0),r) for r in (1,2,3))
-            if abs(start*options[0][1]-pending['start'])<=250 and (options[1][0]-options[0][0]>=100 or options[0][1]==1):
-                scale=options[0][1]
+            # Local amplitude detection can see a cough/noise before native VAD.
+            # Match the measured native onset to any captured span, not forever
+            # to that first noise span. Require a unique rate and a closed end.
+            options=[]
+            for rate in (1,2,3):
+                spans=[s for s in pending if s['closed'] and abs(start*rate-s['start'])<=250 and s['end']<=end*rate]
+                if spans:options.append((min(abs(start*rate-s['start'])+abs(end*rate-s['end'])*.25 for s in spans),rate))
+            options.sort()
+            if options and (len(options)==1 or options[1][0]-options[0][0]>=100):scale=options[0][1]
             else:return None,None
         elif scale is None:scale=1
         mapped_start=self.stream_time(start*scale);mapped_end=self.covered_time(end*scale)

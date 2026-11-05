@@ -142,11 +142,12 @@ def test_calendar_spoken_instruction_triggers_response_without_fabricating_ack()
         assert (await c.queue.get()).type=='session.update_unconfirmed'
         e=eleven_connection()
         await e.append_instruction('Offer the verified fictional appointment.','call_update_calendar',respond=True)
-        assert any(v['type']=='response.create' for v in e.socket.sent)
+        assert not any(v['type']=='response.create' for v in e.socket.sent)
         assert e.pending_instructions
         event=e.socket.sent[0]
         ack=await translated(e,{'type':'session.updated','session':event['session']})
         assert ack[0]['type']=='session.instructions.appended'
+        assert any(v['type']=='response.create' for v in e.socket.sent)
     asyncio.run(run())
 
 

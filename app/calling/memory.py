@@ -56,8 +56,7 @@ class CallMemory:
                 item=dict(row)
                 item['objective']=phone_safe(item['objective'])
                 # Join Live fragments into turns before redacting context-sensitive replies.
-                events=list(db.execute('''SELECT speaker,text FROM transcript_events WHERE call_id=?
-                    ORDER BY start_ms,id LIMIT 3000''',(row['call_id'],)))
+                events=[{'speaker':r['speaker'],'text':r['text']} for r in self.m.db.transcript_rows(db,row['call_id'],limit=3000)]
                 turns=[]
                 for event in events:
                     if turns and turns[-1]['speaker']==event['speaker']: turns[-1]['text']+=event['text']

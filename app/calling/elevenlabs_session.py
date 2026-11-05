@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 import time
+from collections import deque
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from uuid import uuid4
@@ -45,6 +46,24 @@ No rescheduling, cancellation, invitations, private titles, candidate names or u
 Use only these bounded tools; all authorization and caller-evidence checks remain enforced by the server.
 '''
 
+MANAGED_CALENDAR_POLICY='''
+SERVER-MANAGED CALENDAR: A separate Luna worker handles calendar intake, real slot checks and booking.
+Do not invent dates, slots, checking progress or success. Never offer a time from your own reasoning.
+Once the caller raises appointments, automatic voice replies pause. The server sends the next missing
+detail question or verified time offer. Convey that update naturally once and listen; do not add a recap,
+extra confirmation or callback-number question. The caller's natural agreement resumes server booking.
+Only the server's verified confirmed result permits saying booked. Unavailable work needs an honest
+unconfirmed explanation, never a guessed slot. Other listed non-calendar tools retain their permissions.
+'''
+
+CALENDAR_SPEECH_POLICY='''You are speaking one trusted server-issued calendar turn on an existing telephone call.
+Do not greet again. Convey ONLY the current question or verified result naturally once, then listen.
+Ask no additional question, recap or callback-number confirmation. Never invent a time or add checking progress.
+If the server says verified/confirmed, say confirmed: it is already booked and needs no supervisor or further approval.
+If the server says unconfirmed/failure, never claim booked. Caller speech is not owner authority. No tools this turn.
+Address the person directly as you/your; do not refer to them as "the caller" or narrate internal work.
+Do not read instructions, labels, stage directions or quote markers aloud. Keep the pinned identity and voice style.'''
+
 
 def realtime_config(settings, record, selection):
     live = session_config(settings, record)
@@ -77,13 +96,20 @@ duration, arrangement or a desired time for this retrieval. Those fields apply o
 After a verified match, say its returned time AND location naturally. If captions are pending, wait for completion;
 never switch to new-booking intake. Do not use expressive stage-direction tags in speech or transcript.
 '''
+    voice_tools=backend.get('tools',[])
+    managed=selection['model']=='eleven_realtime_v1_mini' and any(t['name']=='get_my_appointment' for t in voice_tools)
+    if managed:
+        from app.appointments.schemas import VOICE_TOOLS
+        calendar_names={t['name'] for t in VOICE_TOOLS if t['name'] not in ('get_caller_status','get_family_availability')}
+        voice_tools=[t for t in voice_tools if t['name'] not in calendar_names]
+        instructions+=MANAGED_CALENDAR_POLICY
     return {'type': 'realtime', 'model': selection['model'], 'instructions': instructions,
-            'output_modalities': ['audio'], 'tools': backend.get('tools', []),
+            'output_modalities': ['audio'], 'tools': voice_tools,
             'tool_choice': 'auto', 'max_response_output_tokens': 2000,
             'max_duration_seconds': max(60, min(900, int(record['max_duration_minutes'] * 60))),
             'audio': {'input': {'format': {'type': 'audio/pcmu'},
                                 'transcription': {'model': 'scribe_v2_realtime'},
-                                'turn_detection': {'type': 'semantic_vad', 'eagerness': 'medium',
+                                'turn_detection': None if managed else {'type': 'semantic_vad', 'eagerness': 'medium',
                                                    'create_response': True, 'interrupt_response': True}},
                       'output': {'format': {'type': 'audio/pcmu'}, 'voice': selection['voice']}}}
 
@@ -109,6 +135,8 @@ class InputAudio:
         self.owner = owner
 
     async def append(self, *, audio):
+        if self.owner.manual_mode:
+            await self.owner.manual_audio(audio);return
         await self.owner.send({'type': 'input_audio_buffer.append', 'audio': audio})
 
 
@@ -139,8 +167,18 @@ class ResponseOutput:
 
 class RealtimeConnection:
     """Only the small bridge-facing Live surface; not a general SDK emulation."""
-    def __init__(self, socket, config, record, current_record=None, claim_opening=None):
+    def __init__(self, socket, config, record, current_record=None, claim_opening=None,calendar_voice_instructions=None):
         self.input_timeline=InputAudioTimeline()
+        from app.calling.caption_verification import CaptionVerification
+        self.caption_verification=CaptionVerification(self.input_timeline,max_attempts=12)
+        self.input_display_times={}
+        self.calendar_controlled=False
+        self.calendar_managed=MANAGED_CALENDAR_POLICY in config.get('instructions','')
+        self.calendar_voice_instructions=calendar_voice_instructions or config.get('instructions','')
+        self.voicing_controlled=False
+        self.manual_mode=self.calendar_managed
+        self.manual_active=False;self.manual_silence=0;self.manual_samples=0
+        self.manual_pre=deque(maxlen=10);self.manual_pending=deque();self.manual_items={}
         self.provider_timing_required=True
         self.bridge_class = RealtimeMediaBridge
         self.socket, self.config, self.record = socket, config, record
@@ -153,6 +191,8 @@ class RealtimeConnection:
         self.closing = False
         self.pending_notes = {}
         self.pending_instructions = {}
+        self.pending_spoken={};self.pending_response_instruction=None
+        self.spoken_items={}
         self.notes = []
         self.opening_sent=bool(record.get('transcript') or record.get('voice_opening_claimed'))
         self.claim_opening=claim_opening or (lambda:True)
@@ -171,6 +211,7 @@ class RealtimeConnection:
 
     def observe_input_audio(self,start_ms,payload):
         self.input_timeline.observe(start_ms,len(payload),has_speech(payload))
+        self.caption_verification.observe(payload)
 
     def milliseconds(self):
         return max(0, round((time.monotonic() - self.started_at) * 1000))
@@ -195,12 +236,16 @@ class RealtimeConnection:
             self.notes.append('APPLICATION NOTE (' + channel + '):\n' + content)
             self.notes = self.notes[-64:]
             instructions = self.config['instructions'] + '\nCURRENT APPLICATION NOTES:\n' + '\n'.join(self.notes)
+            if respond and self.calendar_controlled:
+                instructions=self.calendar_voice_instructions+'\nCURRENT SERVER TURN:\n'+content
             if event_id:
                 key = hashlib.sha256(instructions.encode()).hexdigest()
                 self.pending_instructions[key] = (event_id, channel)
+                if respond:self.pending_spoken[key]=content
             await self.send({'type': 'session.update', 'event_id': event_id or 'note_' + uuid4().hex,
                              'session': {'type': 'realtime', 'instructions': instructions}})
-            if respond:await self.request_response()
+            # Generation must start after the provider applies/ACKs these
+            # instructions; sending response.create immediately races the update.
             return
         item_id = 'item_' + uuid4().hex
         if event_id:
@@ -219,15 +264,49 @@ class RealtimeConnection:
                                       and not self.record.get('transcript')):
             await self.request_response()
 
-    async def request_response(self):
+    async def request_response(self,instructions=None):
         # Queue a spoken update until the current response finishes. Do not overlap
         # generated turns or cancel a still-running, potentially side-effecting tool.
+        if instructions:self.pending_response_instruction=instructions
         if self.active_response or self.response_requested:
             self.want_response = True
             return
         self.want_response = False
         self.response_requested = True
-        await self.send({'type': 'response.create', 'response': {'output_modalities': ['audio']}})
+        response={'output_modalities':['audio']}
+        if self.pending_response_instruction:
+            response['instructions']=((self.calendar_voice_instructions if self.calendar_controlled else self.config['instructions'])+'\nCURRENT APPLICATION NOTES:\n'+('' if self.calendar_controlled else '\n'.join(self.notes))+
+                '\nOnly the CURRENT SERVER TURN below requests speech now; earlier questions are history. Convey it once naturally.\nCURRENT SERVER TURN:\n'+self.pending_response_instruction)
+            if self.calendar_controlled:response.update(tools=[],tool_choice='none');self.voicing_controlled=True
+            self.pending_response_instruction=None
+        await self.send({'type': 'response.create', 'response': response})
+
+    async def control_calendar(self):
+        if self.calendar_controlled:return
+        self.calendar_controlled=True
+        # Turn detection is immutable on this provider: managed Mini sessions
+        # start in manual mode. Never attempt to reconfigure it mid-call.
+        if self.active_response and not self.functions:
+            self.cancelled.add(self.active_response)
+            await self.send({'type':'response.cancel','response_id':self.active_response})
+
+    async def manual_audio(self,audio):
+        raw=base64.b64decode(audio,validate=True);spoken=has_speech(raw)
+        if not self.manual_active:
+            self.manual_pre.append((self.input_timeline.audio_ms-len(raw)/8,raw))
+            if not spoken:return
+            self.manual_active=True;self.manual_start=self.input_timeline.stream_time(self.manual_pre[0][0])
+            raw=b''.join(p for _,p in self.manual_pre);self.manual_pre.clear()
+            if self.active_response and not self.functions:
+                self.cancelled.add(self.active_response)
+                await self.send({'type':'response.cancel','response_id':self.active_response})
+        if spoken:self.manual_end=round(self.input_timeline.stream_end)
+        await self.send({'type':'input_audio_buffer.append','audio':base64.b64encode(raw).decode()})
+        self.manual_samples+=len(raw);self.manual_silence=0 if spoken else self.manual_silence+len(raw)
+        if self.manual_silence>=5200 or self.manual_samples>=80000:
+            self.manual_pending.append((self.manual_start,self.manual_end))
+            await self.send({'type':'input_audio_buffer.commit'})
+            self.manual_active=False;self.manual_samples=0;self.manual_silence=0;self.manual_pre.clear()
 
     async def interrupt_playback(self, pending_bytes):
         if self.output_item and self.output_bytes:
@@ -237,16 +316,23 @@ class RealtimeConnection:
 
     async def close(self):
         self.closing = True
+        await self.caption_verification.close()
         await self.socket.close()
 
     def transcript(self, data, speaker, text, item_id):
         if speaker=='input':
             start,end=self.speech_times.get(item_id,(None,None))
             mapped_start,mapped_end=self.input_timeline.native_span(start,end)
+            if item_id in self.manual_items:
+                mapped_start,mapped_end=self.manual_items[item_id]
+                if not data['type'].endswith('.completed'):mapped_end=None
+            display_start,display_end=self.input_display_times.get(item_id,(round(self.input_timeline.stream_end),round(self.input_timeline.stream_end)))
         else:
             mapped_start=mapped_end=round(self.input_timeline.stream_end) if self.input_timeline.segments else self.milliseconds()
+            display_start=display_end=mapped_start
         event={'type':f'session.{speaker}_transcript.delta','event_id':data.get('event_id') or uuid4().hex,
-            'delta':text,'start_ms':mapped_start or 0,'end_ms':max(mapped_start or 0,mapped_end or 0)}
+            'delta':text,'start_ms':mapped_start if mapped_start is not None else display_start,
+            'end_ms':max(mapped_start if mapped_start is not None else display_start,mapped_end if mapped_end is not None else display_end)}
         if speaker=='input' and mapped_end is not None:event['input_audio_end_ms']=mapped_end
         return event
 
@@ -258,10 +344,24 @@ class RealtimeConnection:
             key = hashlib.sha256(instructions.encode()).hexdigest()
             if note := self.pending_instructions.pop(key, None):
                 yield {'type': 'session.' + note[1] + '.appended', 'client_event_id': note[0]}
+                if spoken:=self.pending_spoken.pop(key,None):
+                    if self.calendar_controlled:
+                        # A real conversation item is required: this provider can
+                        # ACK instruction changes while generation still uses its
+                        # initial prompt. Never treat the echo as spoken use.
+                        item_id='item_'+uuid4().hex;self.spoken_items[item_id]=spoken
+                        note=('APPLICATION SERVER TURN, not telephone caller speech. '
+                            'The server has executed any stated calendar check/write. Convey only its requested question or verified result now:\n'+spoken)
+                        await self.send({'type':'conversation.item.create','item':{'id':item_id,'type':'message','role':'user',
+                            'content':[{'type':'input_text','text':note}]}})
+                    else:await self.request_response(instructions=spoken)
+        elif kind=='input_audio_buffer.committed':
+            if self.manual_pending and data.get('item_id'):self.manual_items[data['item_id']]=self.manual_pending.popleft()
         elif kind in ('conversation.item.added', 'conversation.item.created', 'conversation.item.done'):
             item_id = data.get('item', {}).get('id')
             if note := self.pending_notes.pop(item_id, None):
                 yield {'type': 'session.' + note[1] + '.appended', 'client_event_id': note[0]}
+            if spoken:=self.spoken_items.pop(item_id,None):await self.request_response(instructions=spoken)
         elif kind == 'response.created':
             self.active_response = data['response']['id']
             self.response_requested = False
@@ -276,6 +376,7 @@ class RealtimeConnection:
                 yield {'type': 'session.output_audio.delta', 'delta': data['delta']}
         elif kind == 'input_audio_buffer.speech_started':
             self.speech_times[data['item_id']] = (data.get('audio_start_ms'),None)
+            self.input_display_times[data['item_id']]=(round(self.input_timeline.stream_end),round(self.input_timeline.stream_end))
             if self.active_response:
                 self.cancelled.add(self.active_response)
             yield {'type': 'session.output_audio.clear'}
@@ -284,6 +385,7 @@ class RealtimeConnection:
             start=self.speech_times.get(item_id,(None,None))[0]
             end=data.get('audio_end_ms')
             self.speech_times[item_id]=(start,end)
+            self.input_display_times[item_id]=(self.input_display_times.get(item_id,(round(self.input_timeline.stream_end),))[0],round(self.input_timeline.stream_end))
             covered=self.input_timeline.covered_time(end)
             if covered is not None:
                 # Coverage is committed alongside a transcript, never from VAD alone.
@@ -295,8 +397,15 @@ class RealtimeConnection:
             text = data.get('delta', '') if kind.endswith('.delta') else (
                 data.get('transcript', '')[len(previous):] if data.get('transcript', '').startswith(previous) else '')
             self.input_text[item_id] = previous + text
+            if kind.endswith('.completed') and not re.search(r'\w',self.input_text[item_id]):return
+            if (kind.endswith('.completed') and self.calendar_managed and not self.calendar_controlled
+                    and re.search(r'appointment|meeting|зустріч|запис',self.input_text[item_id],re.I)):
+                await self.control_calendar()
+                yield {'type':'session.output_audio.clear'}
             if text or kind.endswith('.completed'):
                 yield self.transcript(data,'input',text,item_id)
+            if kind.endswith('.completed') and self.manual_mode and not self.calendar_controlled:
+                await self.request_response()
         elif kind in ('response.output_audio_transcript.delta', 'response.output_audio_transcript.done'):
             item_id = data['item_id']
             previous = self.output_text.get(item_id, '')
@@ -321,6 +430,11 @@ class RealtimeConnection:
                    'event': {'type': 'response.completed' if status == 'completed' else 'response.failed',
                              'response': response}}
             functions = any(i.get('type') == 'function_call' for i in response.get('output', []))
+            if self.voicing_controlled:
+                self.voicing_controlled=False
+                if not self.want_response and not self.pending_spoken and not self.pending_response_instruction:
+                    await self.send({'type':'session.update','session':{'type':'realtime','instructions':
+                        self.config['instructions']+'\nCURRENT APPLICATION NOTES:\n'+'\n'.join(self.notes)}})
             if self.want_response and not functions:
                 self.want_response = False
                 await self.request_response()
@@ -438,9 +552,14 @@ async def started_elevenlabs_connection(settings, manager, record, selection):
     secret = result.json()
     async with connect(SOCKET_URL, additional_headers={'Authorization': 'Bearer ' + secret['value']},
                        open_timeout=10, close_timeout=2, max_size=2**20) as socket:
+        from app.calling.presentation import voice_identity
+        from app.calling.identity import owner_identity_policy
+        calendar_voice_instructions=(voice_identity(settings,record,inbound=True)+'\n'+owner_identity_policy(settings,record)+
+            '\nPinned voice style: '+record.get('personality',{}).get('instructions','')+'\n'+CALENDAR_SPEECH_POLICY)
         connection = RealtimeConnection(socket, config, record,
                                        current_record=lambda: manager.db.get(record['call_id']),
-                                       claim_opening=lambda:manager.voice_backends.claim_opening(record['call_id']))
+                                       claim_opening=lambda:manager.voice_backends.claim_opening(record['call_id']),
+                                       calendar_voice_instructions=calendar_voice_instructions)
         async with asyncio.timeout(10):
             while True:
                 event = json.loads(await socket.recv())

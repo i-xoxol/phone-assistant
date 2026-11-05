@@ -262,10 +262,28 @@ class Database:
                 'SELECT text FROM constraints WHERE call_id=? ORDER BY position', (call_id,))]
             result['transcript'] = [
                 {'source_event_id': r['event_id'], 'speaker': r['speaker'], 'timestamp': r['start_ms'] / 1000,
-                 'end_timestamp': r['end_ms'] / 1000, 'text': r['text']}
-                for r in db.execute('''SELECT * FROM transcript_events WHERE call_id=?
-                    ORDER BY start_ms, id''', (call_id,))]
+                 'end_timestamp': r['end_ms'] / 1000, 'text': r['text'],
+                 **({'timing_estimated':True} if r.get('timing_estimated') else {})}
+                for r in self.transcript_rows(db,call_id)]
             return result
+
+    @staticmethod
+    def transcript_rows(db,call_id,limit=None):
+        rows=[dict(r) for r in db.execute('SELECT * FROM transcript_events WHERE call_id=? ORDER BY start_ms,id'+
+            (' LIMIT ?' if limit else ''),(call_id,limit) if limit else (call_id,))]
+        caller=[r for r in rows if r['speaker']=='callee']
+        if len(caller)>=2 and all(r['start_ms']==r['end_ms']==0 for r in caller) and any(r['start_ms']>0 for r in rows):
+            native=db.execute("SELECT 1 FROM call_voice_backends WHERE call_id=? AND provider='elevenlabs'",(call_id,)).fetchone()
+            if native:
+                # Read-only recovery for previously stored unmapped native captions.
+                # Receipt order is known; original sample timing remains unknown.
+                rows.sort(key=lambda r:r['id']);previous=0
+                for row in rows:
+                    if row['speaker']=='callee':
+                        row['start_ms']=row['end_ms']=previous+1 if previous else 0
+                        row['timing_estimated']=True
+                    previous=max(previous,row['end_ms'])
+        return rows
 
     def by_twilio_sid(self, sid: str) -> dict | None:
         with self.connect() as db:

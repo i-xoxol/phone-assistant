@@ -25,9 +25,10 @@ async def transcribe(settings,raw):
 
 
 class CaptionVerification:
-    def __init__(self,timeline):
+    def __init__(self,timeline,*,max_attempts=4):
         self.timeline=timeline;self.frames=deque();self.task=None;self.attempts=0;self.checked=None;self.proof=None
         self.transcribe=transcribe
+        self.max_attempts=max_attempts
 
     def observe(self,raw):
         self.frames.append((self.timeline.audio_ms-len(raw)/8,raw))
@@ -63,7 +64,7 @@ class CaptionVerification:
                 if self.proof is None:return
                 text=self.proof
             else:
-                if self.attempts>=4:return
+                if self.attempts>=self.max_attempts:return
                 self.checked=key;self.proof=None;self.attempts+=1
                 raw=b''.join(frame for at,frame in self.frames if start-200<=at<end+200)
                 if len(raw)<800 or len(raw)>120000:return

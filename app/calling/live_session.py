@@ -306,6 +306,9 @@ class MediaBridge:
                     raw=base64.b64decode(message['media']['payload'],validate=True)
                     if observe:=getattr(self.connection,'observe_input_audio',None):
                         observe(int(message['media'].get('timestamp',0)),raw)
+                    if (getattr(self.connection,'manual_mode',False) and has_speech(raw)
+                            and not getattr(self.connection,'manual_active',True)):
+                        await self.clear_live_audio()
                     if self.manager.settings.appointments_enabled:
                         raw=base64.b64decode(message['media']['payload'],validate=True)
                         if has_speech(raw):

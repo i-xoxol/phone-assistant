@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Route Mini new-booking turns through Luna and the verified proposal/consent workflow; bind manual ASR commits to captured audio, suppress speculative replies, and wait for instruction ACKs before speech. Recover earlier zero-time native transcript ordering without rewriting stored records.
+
 - Align native captions with telephone audio for calendar checks, explicitly request spoken booking offers/results, add natural same-number return-call recall with richer Luna evidence, and expose application-owned prompt templates in authenticated extended settings.
 
 - Optional ElevenLabs Realtime Mini/Max telephone voice adapter, separately configured library voice, pinned per-call selection, owner portal/MCP controls and shared tool authorization; OpenAI remains the default.

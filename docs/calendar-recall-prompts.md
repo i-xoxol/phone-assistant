@@ -5,6 +5,30 @@ identities, transcripts, recordings, voice identifiers or credentials are publis
 
 ## Calendar diagnosis
 
+A subsequent new-booking test exposed another Mini failure: it described a slot
+without executing any calendar operation and restarted confirmation repeatedly.
+Its unmapped caller captions received zero display timestamps, sorting caller
+speech ahead of assistant turns. No event had been created by that call.
+
+Mini concierge sessions with appointments enabled now start with manual audio
+commits. Each committed ASR item is bound to its captured telephone span. Luna
+collects one missing detail at a time and chooses the existing slot/lookup tools.
+Mini speaks server-issued questions, verified offers and confirmed results,
+without independently choosing a time. The shared workflow still owns proposal
+identity, fresh availability, current assent and single writes. Manual speech
+interrupts playback. Message-only calls and other backends retain their controls.
+
+The provider rejects changes to turn detection after conversation start, so this
+mode is selected at session creation. Calendar speech waits for the matching
+instruction ACK, uses a concise current-turn voice policy and then restores the
+ordinary call policy. This avoids stale intake instructions and a false claim
+that a confirmed result still needs a supervisor. Silence-only ASR is ignored.
+The current server turn is also inserted as an application-labelled conversation
+item, with its own acceptance barrier before generation: provider instruction
+echoes alone did not establish spoken use in the real replay.
+Legacy zero-time native captions are displayed in receipt order with estimated
+timing metadata; original database rows remain intact. Memory uses the same order.
+
 Calendar lookup was waiting for current caller captions. Twilio speech activity
 uses its stream clock; native adapters had used connection wall time or provider
 timestamps with a different origin/rate. The safety gate therefore kept returning
@@ -36,15 +60,18 @@ Native booking intent continues to require actual offer/assent evidence. Current
 audio, refusal, changed proposals, idempotency, fresh calendar checks and
 uncertain-write reconciliation remain server enforced.
 
-ElevenLabs also gets an existing-appointment routing reminder. Mini uses a shorter
-calendar policy to reduce confusion with new-booking intake. When Mini still
-omits a lookup, a bounded Luna intent check can extract the current caller's
-request/name and dispatch the same read-only gateway. It requires a live concierge
-call, settled current captions and no active new-booking proposal; changed audio,
-unproven names and existing voice dispatch suppress stale or duplicate work.
-It never creates or changes an event. This uses the existing low-latency Luna API
-client separately from subscription-backed recall; failure leaves ordinary voice
-handling available. There are at most twelve intent checks per call.
+Mini's bounded Luna turn handler covers existing-meeting lookup and new-booking
+intake through the same protected voice-tool facade. It requires a live concierge
+call and settled current captions. Changed audio, unproven names and existing
+dispatch suppress stale or duplicate work. Ordinary conversation can resume with
+the original call policy and tools. This uses the existing low-latency Luna API
+client separately from subscription-backed recall. Failure gets one honest
+unconfirmed explanation. There are at most twenty intent checks per call, with an
+eight-second request deadline. The intent helper never invokes a calendar write;
+new bookings still require the existing verified proposal and caller assent.
+Manually committed Mini captions normally need no independent ASR. Unmappable
+automatic ElevenLabs captions have a twelve-check fallback budget; Gemini retains
+its four-check budget.
 
 Real-provider fictional-calendar checks passed for Gemini, ElevenLabs Max and
 ElevenLabs Mini (including Luna assistance). A real Luna Fast recall selector also
@@ -105,3 +132,11 @@ subscriptions and calendar credentials. Migrations add the defaulted
 `call_updates.response_required` column and a recall-context table. Rollback
 restores source, retaining additive schema and all newer business records.
 Actual telephone testing remains a separate owner-ready check.
+
+`python -m scripts.check_mini_booking --env-file /private/service.env --audio-dir /private/fictional-clips`
+replays fictional request/name/details/assent WAV clips through real Mini, ASR and
+Luna. It requires one verified future offer, no write before assent, exactly one
+fictional-calendar write and an audible confirmed result. Its calendar is entirely
+local and its telephone gateway cannot dial. The required mono PCM16 24 kHz files
+are `booking-request.wav`, `booking-name.wav`, `booking-details.wav` and
+`booking-yes.wav`; private recordings must not be published as test fixtures.
