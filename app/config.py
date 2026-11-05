@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
+from ipaddress import ip_address
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,6 +17,8 @@ class Settings(BaseSettings):
     twilio_auth_token: SecretStr = SecretStr('')
     twilio_phone_number: str = ''
     public_base_url: str = ''
+    private_portal_origin: str = ''
+    private_portal_trusted_peers: list[str] = Field(default_factory=list)
     local_api_token: SecretStr = SecretStr('')
     openai_live_model: str = 'gpt-live-1'
     openai_voice: str = 'marin'
@@ -114,6 +117,43 @@ class Settings(BaseSettings):
         if self.openai_backend_model == 'gpt-6-luna':
             options['reasoning'] = {'effort': 'low'}
         return options
+
+    @field_validator('private_portal_origin')
+    @classmethod
+    def private_origin(cls, value):
+        if not value:
+            return ''
+        try:
+            parts = urlsplit(value)
+            address = ip_address(parts.hostname or '')
+            valid = (parts.scheme in ('http', 'https') and address.is_private and not address.is_unspecified
+                     and not address.is_multicast and not parts.username and not parts.password
+                     and parts.path in ('', '/') and not parts.query and not parts.fragment)
+            _ = parts.port
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ValueError('PRIVATE_PORTAL_ORIGIN must be one exact private-IP HTTP(S) origin')
+        return value.rstrip('/')
+
+    @field_validator('private_portal_trusted_peers')
+    @classmethod
+    def private_peers(cls, values):
+        for value in values:
+            try:
+                address = ip_address(value)
+                valid = address.is_private and not address.is_unspecified and not address.is_multicast
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError('Private portal peers must be exact private IP addresses, not subnets or hostnames')
+        return list(dict.fromkeys(values))
+
+    @model_validator(mode='after')
+    def private_portal_boundary(self):
+        if bool(self.private_portal_origin) != bool(self.private_portal_trusted_peers):
+            raise ValueError('Configure both PRIVATE_PORTAL_ORIGIN and its exact trusted peer addresses')
+        return self
 
     @field_validator('webhook_url')
     @classmethod

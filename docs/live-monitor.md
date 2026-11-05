@@ -51,6 +51,10 @@ the same login. Private browsing, clearing cookies, switching browsers, or an
 expired session requires signing in with your saved password or a new pairing
 code. **Sign out** revokes that browser session.
 
+For a separately scoped login through an existing encrypted private overlay,
+see [private portal setup](private-portal.md). Do not change the public callback
+origin merely to use the portal through Twingate.
+
 ### Forgotten password
 
 From your private terminal on the service host, run:
