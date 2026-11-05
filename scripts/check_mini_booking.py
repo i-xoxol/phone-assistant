@@ -10,12 +10,12 @@ from app.calling.call_manager import CallManager
 from app.calling.voice_backends import bridge_connection
 from app.calling.streaming_audio import StreamingAudio
 from app.appointments.gateway import AppointmentGateway
-from app.appointments.contracts import Interval
+from app.appointments.contracts import Interval,CalendarEvent,EventIdentity
 from app.appointments.registry import appointment
 from scripts.check_calendar_adapter import NoTelephone,Transport
 from tests.appointment_fixtures import FakeProvider
 
-async def check(env_file,audio_dir):
+async def check(env_file,audio_dir,busy_first_slot=False):
  source=Settings(_env_file=env_file);clips={}
  for key in ('request','name','details','yes'):
   with wave.open(io.BytesIO((audio_dir/('booking-'+key+'.wav')).read_bytes()),'rb') as w:
@@ -32,6 +32,9 @@ async def check(env_file,audio_dir):
   day=now.date()+timedelta(days=(7-now.weekday())%7 or 7)
   start=datetime.combine(day,datetime.min.time(),tzinfo=ZoneInfo('America/New_York'))+timedelta(hours=10)
   fake.office=replace(fake.office,interval=Interval(start,start+timedelta(hours=2),'America/New_York'))
+  if busy_first_slot:
+   fake.events['occupied']=CalendarEvent(EventIdentity(fake.identity,'occupied'),'v1',
+    Interval(start,start+timedelta(hours=1),'America/New_York'))
   g=AppointmentGateway(m,fake,clock=clock);m.appointments=g;s.appointments_enabled=True;g.name_resolver=None
   cid=m.db.create_inbound('CA_FICTIONAL_BOOKING','+12025550101',3,10,'concierge',True)
   m.db.update(cid,twilio_call_sid='CA_FICTIONAL_BOOKING');m.transition(cid,'in_progress')
@@ -67,7 +70,13 @@ async def check(env_file,audio_dir):
        if runner.done():runner.result();raise RuntimeError('Bridge ended before booking')
        await asyncio.sleep(.05)
     async def idle():
-     await until(lambda:not con.active_response and not con.response_requested and not b.output_busy and not b.queued_bytes)
+     # The fake telephone ACKs marks immediately. Still let the caller's audio
+     # clock pass the spoken offer, rather than agreeing before hearing it.
+     def ready():
+      end=max((t['end_timestamp']*1000 for t in m.db.get(cid)['transcript'] if t['speaker']=='assistant'),default=0)
+      return (not con.active_response and not con.response_requested and not con.speech_tasks
+       and not b.output_busy and not b.queued_bytes and con.input_timeline.stream_end>end+400)
+     await until(ready)
     try:
      await until(lambda:transport.audio_bytes>0);greeting_ms=round((time.monotonic()-began)*1000);await idle()
      before=len(text());await pending.put(clips['request']);await until(lambda:len(m.db.get(cid)['call_updates'])>=1)
@@ -80,12 +89,14 @@ async def check(env_file,audio_dir):
      assert fake.writes==0
      await until(lambda:'monday' in text());await idle()
      value=appointment(g.voice_workflow.bound(cid)[0]);assert value.interval.start>clock()
+     assert value.interval.start==start+timedelta(hours=int(busy_first_slot))
      await pending.put(clips['yes']);await until(lambda:fake.writes==1,45)
      await until(lambda:'confirmed' in text() or 'booked' in text());await idle()
      result=await g.voice_workflow.status(cid);assert result['state']=='confirmed' and fake.writes==1
      assert not re.search(r'(?:callback|phone|calling from).{0,30}number',text())
      return {'provider':'elevenlabs_mini','real_audio_asr_luna_and_voice':True,'greeting_ms':greeting_ms,
       'server_controlled_calendar':True,'verified_future_slot_spoken':True,'natural_assent_observed':True,
+      'occupied_first_slot_skipped':busy_first_slot,
       'fictional_calendar_writes':fake.writes,'confirmed_result_spoken':True,'real_calendar_accessed':False,
       'telephone_dialed':False,'real_calendar_writes':0}
     finally:
@@ -96,8 +107,8 @@ async def check(env_file,audio_dir):
      m.detach_bridge(cid,b);await g.close();await m.memory.stop()
 
 if __name__=='__main__':
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--env-file',type=Path,required=True);p.add_argument('--audio-dir',type=Path,required=True);a=p.parse_args()
- try:print(json.dumps(asyncio.run(check(a.env_file,a.audio_dir))))
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--env-file',type=Path,required=True);p.add_argument('--audio-dir',type=Path,required=True);p.add_argument('--busy-first-slot',action='store_true');a=p.parse_args()
+ try:print(json.dumps(asyncio.run(check(a.env_file,a.audio_dir,a.busy_first_slot))))
  except Exception as e:
   import traceback
   print(json.dumps({'error_type':type(e).__name__,'locations':[(Path(f.filename).name,f.name,f.lineno) for f in traceback.extract_tb(e.__traceback__)[-5:]],'telephone_dialed':False}));raise SystemExit(1)

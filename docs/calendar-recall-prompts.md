@@ -19,13 +19,10 @@ identity, fresh availability, current assent and single writes. Manual speech
 interrupts playback. Message-only calls and other backends retain their controls.
 
 The provider rejects changes to turn detection after conversation start, so this
-mode is selected at session creation. Calendar speech waits for the matching
-instruction ACK, uses a concise current-turn voice policy and then restores the
-ordinary call policy. This avoids stale intake instructions and a false claim
-that a confirmed result still needs a supervisor. Silence-only ASR is ignored.
-The current server turn is also inserted as an application-labelled conversation
-item, with its own acceptance barrier before generation: provider instruction
-echoes alone did not establish spoken use in the real replay.
+mode is selected at session creation. Earlier instruction-ACK and conversation-
+item barriers improved isolated checks but did not constrain every real call.
+The verified speech boundary described below supersedes them for managed Mini
+calendar output. Silence-only ASR is ignored.
 Legacy zero-time native captions are displayed in receipt order with estimated
 timing metadata; original database rows remain intact. Memory uses the same order.
 
@@ -54,8 +51,10 @@ caller coverage. Reconnect offsets are applied once by the shared bridge.
 
 Booking offers, clarification and verified completion updates explicitly request
 a spoken response on native adapters. Context-only updates remain context.
-ElevenLabs requires an actual instruction ACK; Gemini has no corresponding ACK
-and remains marked unconfirmed. Neither socket writes nor ACKs prove playback.
+Ordinary ElevenLabs instruction updates require an actual instruction ACK;
+managed Mini calendar utterances instead acknowledge completed text-checked
+generation. Gemini has no corresponding ACK and remains marked unconfirmed.
+Neither socket writes nor ACKs prove playback.
 Native booking intent continues to require actual offer/assent evidence. Current
 audio, refusal, changed proposals, idempotency, fresh calendar checks and
 uncertain-write reconciliation remain server enforced.
@@ -63,8 +62,9 @@ uncertain-write reconciliation remain server enforced.
 Mini's bounded Luna turn handler covers existing-meeting lookup and new-booking
 intake through the same protected voice-tool facade. It requires a live concierge
 call and settled current captions. Changed audio, unproven names and existing
-dispatch suppress stale or duplicate work. Ordinary conversation can resume with
-the original call policy and tools. This uses the existing low-latency Luna API
+dispatch suppress stale or duplicate work. Ordinary conversation before calendar
+handling retains the original call policy and tools; calendar output uses the
+verified boundary below. This uses the existing low-latency Luna API
 client separately from subscription-backed recall. Failure gets one honest
 unconfirmed explanation. There are at most twenty intent checks per call, with an
 eight-second request deadline. The intent helper never invokes a calendar write;
@@ -129,7 +129,8 @@ Rollout changes reviewed source after a zero-active-call check, with source,
 configuration and consistent SQLite backups. It preserves saved providers,
 personalities, test contacts, recording/coaching preferences, sessions, OAuth,
 subscriptions and calendar credentials. Migrations add the defaulted
-`call_updates.response_required` column and a recall-context table. Rollback
+`call_updates.response_required` and nullable `spoken_text` columns, plus a
+recall-context table. Rollback
 restores source, retaining additive schema and all newer business records.
 Actual telephone testing remains a separate owner-ready check.
 
@@ -140,3 +141,45 @@ fictional-calendar write and an audible confirmed result. Its calendar is entire
 local and its telephone gateway cannot dial. The required mono PCM16 24 kHz files
 are `booking-request.wav`, `booking-name.wav`, `booking-details.wav` and
 `booking-yes.wav`; private recordings must not be published as test fixtures.
+
+## Verified Mini calendar speech
+
+A later owner test showed that accepting instructions and even a current
+application conversation item did not reliably constrain Mini's actual speech.
+It announced an unchecked time as booked while the operation journal contained
+no draft, availability check or create. There was therefore no booking to verify.
+Instruction acknowledgments alone are insufficient for this provider path.
+
+During managed Mini calendar/return-call turns, native speculative speech is now
+withheld. The server supplies the missing-detail question or the actual shared
+calendar result as bounded `spoken_text`. A short isolated session using the
+**same pinned ElevenLabs model and voice** renders that quotation. Its complete
+output transcript must match the supplied words, allowing number/ordinal and
+punctuation differences, before any audio reaches telephone playback. Changed
+words, additional confirmation claims, missing audio or failed generation cannot
+be played. A text mismatch permits one retry; other failures close the bridge
+rather than leaving a paid silent call running. This uses existing Realtime
+permission, with no new TTS scope, key, vendor or voice selection.
+
+A newer caller revision invalidates a pending render. Playback remains
+interruptible. The transcript uses the actual generated words and the telephone
+clock at enqueue; completion is evidence of generation, never proof that a
+participant heard the complete response. Explicit owner spoken updates retain
+their existing authorized path. After calendar handling, a general offer of
+further help cannot add a new confirmation claim. Gemini's calendar adapter and
+shared availability/consent/write protections are unchanged.
+
+Return-call guidance keeps a provided first name and asks only for the missing
+surname when lookup needs one. An earlier confirmed intake can supply a tentative
+first-name hint even when historical ASR was phonetic. The assistant may check
+that hint gently; a current caller affirmation followed by a fresh surname can
+establish the lookup name. A refusal, correction or third-party name cannot.
+History alone never provides current lookup identity or booking consent.
+
+The migration adds nullable `call_updates.spoken_text`; existing rows, clients and
+settings retain their previous behavior. The new renderer prompt is included in
+the authenticated all-prompts inventory. The occupied-slot provider replay uses
+`check_mini_booking --busy-first-slot`: the first office hour is fictional busy
+state, the next free slot must be offered, and exactly one fictional write may
+occur after current assent. The harness waits for the offered audio's duration
+before sending agreement. It never accesses the real calendar or dials.

@@ -258,7 +258,7 @@ class CallManager:
         if not existing and (call_id in self.stopping or
                 (bridge and bridge.end_requested.is_set() and not bridge.handoff)):
             raise ValueError('Call is ending; an update cannot reverse hangup')
-        row = self.db.queue_update(call_id, update_id, request.content,request.mode,request.response_required)
+        row = self.db.queue_update(call_id,update_id,request.content,request.mode,request.response_required,request.spoken_text)
         if bridge and not bridge.closing and not bridge.handoff:
             bridge.updates_ready.set()
             await bridge.send_pending_updates()

@@ -16,7 +16,6 @@ from uuid import uuid4
 
 import httpx
 from websockets.asyncio.client import connect
-from websockets.exceptions import ConnectionClosed
 
 from app.calling.live_session import BridgeFailure, MediaBridge,has_speech
 from app.calling.prompts import session_config
@@ -167,13 +166,15 @@ class ResponseOutput:
 
 class RealtimeConnection:
     """Only the small bridge-facing Live surface; not a general SDK emulation."""
-    def __init__(self, socket, config, record, current_record=None, claim_opening=None,calendar_voice_instructions=None):
+    def __init__(self, socket, config, record, current_record=None, claim_opening=None,calendar_voice_instructions=None,render_speech=None):
         self.input_timeline=InputAudioTimeline()
         from app.calling.caption_verification import CaptionVerification
         self.caption_verification=CaptionVerification(self.input_timeline,max_attempts=12)
         self.input_display_times={}
         self.calendar_controlled=False
         self.calendar_managed=MANAGED_CALENDAR_POLICY in config.get('instructions','')
+        self.render_speech=render_speech;self.local_events=asyncio.Queue();self.speech_tasks={}
+        self.allowed_native_responses=set();self.owner_response_requested=False
         self.calendar_voice_instructions=calendar_voice_instructions or config.get('instructions','')
         self.voicing_controlled=False
         self.manual_mode=self.calendar_managed
@@ -225,6 +226,7 @@ class RealtimeConnection:
         await self.append_note('instructions',content,event_id,respond=respond)
 
     async def append_note(self, channel, content, event_id,*,respond=False):
+        if channel=='commentary':self.owner_response_requested=True
         if event_id in ('initial_greeting','startup_greeting_fallback'):
             if self.opening_sent or not self.claim_opening(): return
             self.opening_sent=True
@@ -316,8 +318,38 @@ class RealtimeConnection:
 
     async def close(self):
         self.closing = True
+        tasks=list(self.speech_tasks.values())
+        for task in tasks:task.cancel()
+        await asyncio.gather(*tasks,return_exceptions=True)
         await self.caption_verification.close()
         await self.socket.close()
+
+    async def speak_verified(self,text,event_id,guard):
+        if event_id in self.speech_tasks:return
+        async def run():
+            try:
+                for attempt in range(2):
+                    try:audio=await self.render_speech(text);break
+                    except BridgeFailure as exc:
+                        if attempt or exc.reason!='verified_speech_text_mismatch':raise
+                if self.closing or not guard():
+                    await self.local_events.put(Event({'type':'session.update_unconfirmed','client_event_id':event_id}));return
+                # This is the provider's completed, text-checked generated speech,
+                # not a claim that the telephone participant heard playback.
+                await self.local_events.put(Event({'type':'session.instructions.appended','client_event_id':event_id}))
+                start=round(self.input_timeline.stream_end)
+                self.output_item=None;self.output_bytes=0
+                await self.local_events.put(Event({'type':'session.output_audio.delta','delta':base64.b64encode(audio).decode()}))
+                await self.local_events.put(Event({'type':'session.output_transcript.delta','event_id':event_id+'_speech',
+                    'delta':text,'start_ms':start,'end_ms':start+len(audio)//8,'speech_source':'verified_render'}))
+                await self.send({'type':'conversation.item.create','item':{'type':'message','role':'user','content':[{
+                    'type':'input_text','text':'APPLICATION HISTORY, not caller speech. The assistant just conveyed this server-issued text; do not repeat it: '+text}]}})
+            except asyncio.CancelledError:raise
+            except Exception:
+                await self.local_events.put(Event({'type':'error','client_event_id':event_id,'error':{'code':'verified_speech_failed'}}))
+                await self.local_events.put(BridgeFailure('verified_calendar_speech_failed'))
+        task=asyncio.create_task(run());self.speech_tasks[event_id]=task
+        task.add_done_callback(lambda _:self.speech_tasks.pop(event_id,None))
 
     def transcript(self, data, speaker, text, item_id):
         if speaker=='input':
@@ -364,6 +396,8 @@ class RealtimeConnection:
             if spoken:=self.spoken_items.pop(item_id,None):await self.request_response(instructions=spoken)
         elif kind == 'response.created':
             self.active_response = data['response']['id']
+            if self.owner_response_requested:
+                self.allowed_native_responses.add(self.active_response);self.owner_response_requested=False
             self.response_requested = False
             yield {'type': 'response.event', 'delegation_id': self.active_response, 'event': data}
         elif kind == 'response.output_item.added':
@@ -371,7 +405,8 @@ class RealtimeConnection:
                 self.output_item = data['item']['id']
                 self.output_bytes = 0
         elif kind == 'response.output_audio.delta':
-            if data.get('response_id') not in self.cancelled:
+            if (data.get('response_id') not in self.cancelled and
+                    (not self.calendar_controlled or data.get('response_id') in self.allowed_native_responses)):
                 self.output_bytes += len(base64.b64decode(data['delta'], validate=True))
                 yield {'type': 'session.output_audio.delta', 'delta': data['delta']}
         elif kind == 'input_audio_buffer.speech_started':
@@ -398,8 +433,10 @@ class RealtimeConnection:
                 data.get('transcript', '')[len(previous):] if data.get('transcript', '').startswith(previous) else '')
             self.input_text[item_id] = previous + text
             if kind.endswith('.completed') and not re.search(r'\w',self.input_text[item_id]):return
+            from app.calling.memory import return_scope
             if (kind.endswith('.completed') and self.calendar_managed and not self.calendar_controlled
-                    and re.search(r'appointment|meeting|зустріч|запис',self.input_text[item_id],re.I)):
+                    and (re.search(r'appointment|meeting|зустріч|запис',self.input_text[item_id],re.I)
+                         or return_scope(self.input_text[item_id].casefold().replace('’',"'")))):
                 await self.control_calendar()
                 yield {'type':'session.output_audio.clear'}
             if text or kind.endswith('.completed'):
@@ -413,6 +450,7 @@ class RealtimeConnection:
                 if not self.manual_active and (end is None or latest is None or latest<=end):
                     await self.request_response()
         elif kind in ('response.output_audio_transcript.delta', 'response.output_audio_transcript.done'):
+            if self.calendar_controlled and (data.get('response_id') or self.active_response) not in self.allowed_native_responses:return
             item_id = data['item_id']
             previous = self.output_text.get(item_id, '')
             text = data.get('delta', '') if kind.endswith('.delta') else (
@@ -459,17 +497,22 @@ class RealtimeConnection:
             raise BridgeFailure('elevenlabs_session_error')
 
     async def events(self):
+        async def read():
+            try:
+                async for raw in self.socket:
+                    async for data in self.translate(json.loads(raw)):await self.local_events.put(Event(data))
+                await self.local_events.put(Event({'type':'session.closed'}) if self.closing else BridgeFailure('elevenlabs_transport_closed'))
+            except Exception as exc:
+                if not self.closing:await self.local_events.put(exc)
+        reader=asyncio.create_task(read())
         try:
-            async for raw in self.socket:
-                async for data in self.translate(json.loads(raw)):
-                    yield Event(data)
-        except ConnectionClosed:
-            if not self.closing:
-                raise
-        if self.closing:
-            yield Event({'type': 'session.closed'})
-        else:
-            raise BridgeFailure('elevenlabs_transport_closed')
+            while True:
+                event=await self.local_events.get()
+                if isinstance(event,Exception):raise event
+                yield event
+                if event.type=='session.closed':return
+        finally:
+            reader.cancel();await asyncio.gather(reader,return_exceptions=True)
 
     def __aiter__(self):
         return self.events()
@@ -562,10 +605,13 @@ async def started_elevenlabs_connection(settings, manager, record, selection):
         from app.calling.identity import owner_identity_policy
         calendar_voice_instructions=(voice_identity(settings,record,inbound=True)+'\n'+owner_identity_policy(settings,record)+
             '\nPinned voice style: '+record.get('personality',{}).get('instructions','')+'\n'+CALENDAR_SPEECH_POLICY)
+        from functools import partial
+        from app.calling.verified_speech import render
         connection = RealtimeConnection(socket, config, record,
                                        current_record=lambda: manager.db.get(record['call_id']),
                                        claim_opening=lambda:manager.voice_backends.claim_opening(record['call_id']),
-                                       calendar_voice_instructions=calendar_voice_instructions)
+                                       calendar_voice_instructions=calendar_voice_instructions,
+                                       render_speech=partial(render,settings,selection))
         async with asyncio.timeout(10):
             while True:
                 event = json.loads(await socket.recv())

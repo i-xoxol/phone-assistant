@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Verify Mini calendar speech before playback using the pinned model and voice; block invented booking claims, skip occupied slots through the shared workflow, and retain a returning caller’s first name while asking only for the missing surname.
+
 - Route Mini new-booking turns through Luna and the verified proposal/consent workflow; bind manual ASR commits to captured audio, suppress speculative replies, and wait for instruction ACKs before speech. Recover earlier zero-time native transcript ordering without rewriting stored records.
 
 - Align native captions with telephone audio for calendar checks, explicitly request spoken booking offers/results, add natural same-number return-call recall with richer Luna evidence, and expose application-owned prompt templates in authenticated extended settings.

@@ -243,7 +243,7 @@ class AppointmentGateway:
             db.execute('INSERT INTO appointment_readbacks VALUES(?,?,?,?,?) ON CONFLICT(draft_id,draft_revision) '+conflict,
                 (draft['draft_id'],draft['revision'],str(uid),self.clock().isoformat(),cursor))
         if self.booking_agent.native(draft['call_id']):self.booking_agent.issued(draft,uid)
-        await self.m.send_call_update(draft['call_id'],CallUpdateRequest(mode='instructions',response_required=True,content=instruction,update_id=uid))
+        await self.m.send_call_update(draft['call_id'],CallUpdateRequest(mode='instructions',response_required=True,content=instruction,spoken_text=text,update_id=uid))
         return True
 
     async def retry_consent(self,call_id,args):
@@ -379,7 +379,7 @@ class AppointmentGateway:
         try:
             with self.store.measure('result_injection'):await self.m.send_call_update(call_id,CallUpdateRequest(mode='instructions',response_required=True,
                 content=('Google verified this booking. Tell the caller once naturally; no further approval is needed:\n' if self.booking_agent.native(call_id)
-                    else 'Verified booking. Read exactly to the caller:\n')+text,update_id=uid))
+                    else 'Verified booking. Read exactly to the caller:\n')+text,spoken_text=text,update_id=uid))
         except Exception:
             with self.store.connect() as db:db.execute("UPDATE appointment_delivery SET error_code='call_ended_or_delivery_unconfirmed' WHERE operation_id=?",(result['operation_id'],))
 

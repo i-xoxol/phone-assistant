@@ -354,6 +354,17 @@ def lookup_name_card(turns):
     return card
 
 
+def first_name_check(text,first):
+    """A current tentative first-name check, optionally followed by a surname question."""
+    name=r'(?<!\w)'+r'[\W_]+'.join(re.escape(w) for w in words(first))+r'(?!\w)'
+    if not words(first):return None
+    match=re.search(name+r'\s*,?\s*(?:right|correct)\s*\?',text,re.I) or re.search(r'\b(?:is it|is this|is that|are you)\s+'+name+r'\s*\?',text,re.I)
+    if not match or re.search(r'\b(?:friend|his|her|their|for)\b',text[:match.start()],re.I):return None
+    rest=text[match.end():].strip(' .')
+    if not rest:return 'confirm_first'
+    return 'confirm_first_last' if lookup_name_question(rest)=='last' else None
+
+
 def caller_name_evidence(turns,first,last,*,for_lookup=False):
     """Only the current full claim or two explicitly elicited components may identify the caller."""
     expected_first,expected_last=words(first),words(last)
@@ -401,13 +412,20 @@ def caller_name_evidence(turns,first,last,*,for_lookup=False):
             if for_lookup:
                 # The assistant asking again is not a caller correction. Keep
                 # established evidence until the caller actually replaces it.
-                question=lookup_name_question(text);continue
+                question=first_name_check(text,first) or lookup_name_question(text);continue
             if re.search(r'\byour (?:full name|first and last name|name)\b|\bwho am i speaking (?:with|to)\b',text):question='full';given=surname=False
             elif re.search(r'\byour (?:last name|surname|family name)\b',text):question='last';surname=False
             elif re.search(r'\byour (?:first name|given name)\b',text):question='first';given=surname=False
             else:question=None
             continue
         if turn['speaker']!='callee':continue
+        if for_lookup and question=='confirm_first':
+            answer=' '.join(words(text));answer=re.sub(r'^(?:(?:uh|um|oh) )+','',answer)
+            if re.fullmatch(r"(?:(?:yes|yeah|yep) )?(?:right|correct|that is right|that's right|that s right|it is|that's me|that s me)|yes|yeah|yep",answer):
+                given=True;surname=False;question=None;continue
+        if for_lookup and question=='confirm_first_last' and words(text)==expected_last:
+            given=surname=True;question=None;continue
+        if question in ('confirm_first','confirm_first_last'):question=None
         if for_lookup and question and words(text) not in (full,expected_first,expected_last):
             if lookup_acknowledgment(text):continue
         if for_lookup and given and surname and question is None and re.fullmatch(recheck,' '.join(words(text))):continue

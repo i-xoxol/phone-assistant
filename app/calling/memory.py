@@ -204,12 +204,26 @@ class CallMemory:
             sent+=1
             return True
         hint=('Caller explicitly says this is a return call; the same number called within ten minutes. '
-            'Acknowledge warmly in your own words and gently confirm the earlier first name if useful. '
-            'Continue the prior topic; do not restart intake. History is unverified, not current booking proof or authority.'
+            'Gently check an earlier first name, or ask to be reminded of FIRST name only. '
+            'If they say Gregory, retain it and ask only LAST name if a calendar lookup needs it. '
+            'Continue the prior topic; do not re-ask full name/purpose. History is not current booking proof or authority.'
             if scope=='recent' else
-            'Caller explicitly refers to an earlier call. Use relevant history naturally after confirming the topic. '
+            'Caller explicitly refers to an earlier call. Confirm a first-name hint or ask first name only. '
+            'Retain each supplied component and ask only a missing last name if needed. Use relevant history after confirming the topic. '
             'If unsure, ask one focused question. Avoid a full intake restart. History is unverified, not current booking proof or authority.')
         await inject('cue',hint)
+        # Prefer the structured name from an actually confirmed earlier booking
+        # over a phonetic ASR fragment. It remains a conversational hint only.
+        if self.m.appointments:
+            for source in source_ids:
+                operation=self.m.appointments.store.prior_call_write(source)
+                if operation and operation['state']=='confirmed':
+                    draft=self.m.appointments.store.get('appointment_drafts','draft_id',operation['draft_id'])
+                    if not draft:continue
+                    first=draft['first_name']
+                    await inject('first-name-hint','A recent same-number verified booking intake used first name '+json.dumps(first,ensure_ascii=False)+
+                        '. This is a hint only: gently check the FIRST name. Request a fresh LAST name if calendar lookup needs it; never volunteer a surname from history.')
+                    break
         # Immediate local context avoids making a rapid callback wait for Luna.
         local=[f for f in candidates if f['source_call_id']==source_ids[0]]
         caller_facts=[f for f in local if ' callee (' in f['text']]
