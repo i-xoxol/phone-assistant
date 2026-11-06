@@ -82,7 +82,8 @@ def greeting_instruction(settings: Settings, record=None) -> str:
 def session_config(settings: Settings, record: dict) -> dict:
     from app.calling.personalities import apply_personality
     from app.calling.contact_testing import apply_test_mode
-    return apply_test_mode(apply_personality(base_session_config(settings, record), record), record)
+    from app.calling.contact_guidance import apply_contact_guidance
+    return apply_contact_guidance(apply_test_mode(apply_personality(base_session_config(settings, record), record), record), record)
 
 
 def disclosure_config(config,record):

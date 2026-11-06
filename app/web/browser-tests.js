@@ -1,5 +1,30 @@
 'use strict';
 let browserTest=null,browserStarting=false,browserAttempt=0;
+let browserRecentLoading=false;
+
+async function loadBrowserRecentNumbers() {
+  if(browserRecentLoading) return;
+  browserRecentLoading=true;$('browserRefreshRecent').disabled=true;$('browserRecentState').textContent='Loading recent numbers…';
+  try {
+    const data=await api('/live/browser-tests/recent-numbers'),select=$('browserRecentForwarded');
+    select.replaceChildren();const blank=document.createElement('option');blank.value='';blank.textContent='Enter a number manually';select.append(blank);
+    for(const [title,rows] of [['Recorded forwarding sources',data.forwarding_sources],['Other recent caller or recipient numbers',data.call_numbers]]) {
+      if(!rows.length) continue;const group=document.createElement('optgroup');group.label=title;
+      for(const row of rows) {
+        const option=document.createElement('option');option.value=row.number;
+        option.textContent=(row.contact_name?row.contact_name+' · ':'')+row.number+' · '+new Date(row.last_seen).toLocaleDateString(undefined,{month:'short',day:'numeric'});
+        group.append(option);
+      }
+      select.append(group);
+    }
+    select.value=$('browserForwarded').value; if(select.selectedIndex<0) select.value='';
+    $('browserRecentState').textContent=data.forwarding_sources.length+data.call_numbers.length?'Real call history only. Choosing a source keeps caller ID unchanged.':'No recent numbers yet. Enter any forwarding number above.';
+  } catch(error) {$('browserRecentState').textContent='Could not load recent numbers. Manual entry still works. '+error.message;}
+  finally {browserRecentLoading=false;$('browserRefreshRecent').disabled=false;}
+}
+$('browserRecentForwarded').onchange=()=>{if($('browserRecentForwarded').value) $('browserForwarded').value=$('browserRecentForwarded').value;};
+$('browserForwarded').oninput=()=>{$('browserRecentForwarded').value=$('browserForwarded').value;if($('browserRecentForwarded').selectedIndex<0) $('browserRecentForwarded').value='';};
+$('browserRefreshRecent').onclick=loadBrowserRecentNumbers;
 
 function renderBrowserChoices() {
   controlOptions($('browserContact'),(typeof callerRows==='undefined'?[]:callerRows).filter(r=>r.phone_number)
@@ -24,10 +49,11 @@ function browserScenarioChanged() {
   $('browserOutboundFields').hidden=!outgoing;$('browserForwardedField').hidden=!forwarded;
   $('browserForwarded').required=forwarded;$('browserNumber').required=outgoing;$('browserObjective').required=outgoing;
   $('browserNumberLabel').textContent=outgoing?'Recipient number the assistant thinks it called':'Caller ID the assistant sees';
+  if(forwarded) loadBrowserRecentNumbers();
 }
 $('browserScenario').onchange=browserScenarioChanged;
 $('browserContact').onchange=()=>{$('browserNumber').value=$('browserContact').value;};
-$('browserNumber').oninput=()=>{$('browserContact').value=$('browserNumber').value;};
+$('browserNumber').oninput=()=>{$('browserContact').value=$('browserNumber').value;if($('browserContact').selectedIndex<0) $('browserContact').value='';};
 $('browserProvider').onchange=()=>{$('browserModel').value='';$('browserVoice').value='';renderBrowserModels();};
 $('browserModel').onchange=()=>{$('browserVoice').value='';renderBrowserModels();};
 $('browserTestPanel').addEventListener('toggle',()=>{if($('browserTestPanel').open) renderBrowserChoices();});

@@ -191,6 +191,10 @@ class Personalities:
             profile.update(presentation_mode='assistant', spoken_name=self.manager.settings.caller_name,
                            role=migration['original_role'] if call and call['direction']=='inbound' and call['inbound_mode']=='concierge' else '',
                            outbound_greeting='')
+        if profile.get('presentation_mode') == 'assistant' and not profile.get('identity_version'):
+            # Legacy assistant names were ignored by speech, and often contained
+            # the generated owner-name fallback. Never reinterpret that as a custom name.
+            profile['spoken_name'] = self.manager.settings.assistant_name
         return profile
 
     def effective(self, record, override=None):
@@ -202,18 +206,26 @@ class Personalities:
                 profile['greeting' if record.get('direction')=='inbound' else 'outbound_greeting']=actions['greeting']
             if actions.get('instructions'):
                 profile['instructions']+='\nOwner routing-rule guidance within existing permissions:\n'+actions['instructions']
-        profile['spoken_name'] = profile['spoken_name'] or self.manager.settings.caller_name
+        fallback = (self.manager.settings.caller_name if profile['presentation_mode'] == 'owner_first_person'
+                    else self.manager.settings.assistant_name)
+        profile['spoken_name'] = profile['spoken_name'].strip() or fallback
+        profile['identity_version'] = 2
         return profile
 
     def pin(self, record, override=None):
         if saved := self.for_call(record['call_id']):
+            if guidance := getattr(self.manager, 'contact_guidance', None):
+                guidance.pin(record, saved)
             return saved
         profile=self.effective(record,override)
         with self.db.connect() as c:
             c.execute('INSERT OR IGNORE INTO call_personalities VALUES (?,?,?,?,?)',
                       (record['call_id'], profile['personality_id'], profile['revision'],
                        json.dumps(profile, ensure_ascii=False), utcnow().isoformat()))
-        return self.for_call(record['call_id'])
+        saved = self.for_call(record['call_id'])
+        if guidance := getattr(self.manager, 'contact_guidance', None):
+            guidance.pin(record, saved)
+        return saved
 
 
 def apply_personality(config, record):

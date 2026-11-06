@@ -4,10 +4,15 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket
 from fastapi.responses import Response
 
-from app.api.live import ASSETS, HEADERS, write_owner
+from app.api.live import ASSETS, HEADERS, owner, write_owner
 from app.calling.browser_tests import BrowserCall, handle_browser
 
 router = APIRouter()
+
+
+@router.get('/live/browser-tests/recent-numbers', dependencies=[Depends(owner)])
+def recent_numbers(request: Request):
+    return request.app.state.manager.browser_tests.recent_numbers()
 
 
 @router.get('/live/browser-tests.js')

@@ -71,6 +71,15 @@ def greeting_contact(settings,record):
 
 
 def startup_greeting_content(settings,record):
+    if (not record.get('transcript') and not record.get('closed_announcement')
+            and not record.get('voice_opening_claimed') and not resolve_presentation(settings, record)['owner_on_line']):
+        opening = (record.get('contact_guidance') or {}).get('greeting')
+        if opening:
+            return opening
+    return default_startup_greeting_content(settings, record)
+
+
+def default_startup_greeting_content(settings,record):
     """Phone-safe words for a single silent-start fallback, never generated TTS."""
     if record.get('transcript') or record.get('closed_announcement'): return None
     context=record.get('incoming_context',{});caller=context.get('caller',{})
@@ -82,7 +91,7 @@ def startup_greeting_content(settings,record):
     if nickname.casefold() in ('mama','mom','mother','мама'): nickname=''
     owner=bool(contact and record['phone_number']==settings.owner_transfer_number)
     missed=bool(context.get('forwarding',{}).get('missed_call_context') and not owner)
-    name=settings.caller_name;assistant=settings.assistant_name
+    name=settings.caller_name;assistant=resolve_presentation(settings, record)['assistant_name']
     _,object_pronoun,possessive=owner_words(settings)
     if language not in ('en','uk'):
         return localized_greeting(language,assistant,name,is_owner=owner,nickname=nickname if familiar or owner else '',
@@ -422,7 +431,7 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             'For new callers introduce the line as '+office+'. '
             'Do not use familiar nicknames or presume friendship. Keep questions clear and courteous.')
         greeting=('Greet the caller naturally and briefly. For example: "Hello, you\'ve reached '
-            +office+". I'm "+settings.assistant_name+", "+name+"'s assistant. How can I help?\" "
+            +office+". I'm "+resolve_presentation(settings, record)['assistant_name']+", "+name+"'s assistant. How can I help?\" "
             'Use conversational phrasing and intonation; the example is not a script to recite mechanically. ')
     if record.get('personality'):
         style=('CONVERSATION STYLE: '+('Familiar: keep the whole conversation warm, relaxed and informal by default, '
@@ -448,7 +457,7 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
     if routing.get('missed_call_context') and not owner_caller and not as_owner(settings, record):
         greeting+=(f'This is a missed mobile call: {name} could not take the call. '
             f'Work this into the same short greeting, for example "Sorry you couldn\'t reach {name}. '
-            f"I'm {settings.assistant_name}, {possessive} assistant. How can I help?\" "
+            f"I'm {resolve_presentation(settings, record)['assistant_name']}, {possessive} assistant. How can I help?\" "
             'Do not deliver a normal greeting and then a second introduction. Offer message-taking naturally if useful. '
             'Keep the configured familiar/formal style. ')
     greeting+=('Owner-approved profile instructions about greeting and conversational tone take precedence '

@@ -17,8 +17,9 @@ def resolve_presentation(settings, record):
     mode = profile.get('presentation_mode', 'assistant')
     if mode not in ('assistant', 'owner_first_person'):
         mode = 'assistant'
-    return {'mode': mode, 'spoken_name': (profile.get('spoken_name') or settings.caller_name).strip(),
-            'owner_name': settings.caller_name, 'assistant_name': settings.assistant_name,
+    spoken = (profile.get('spoken_name') or '').strip() or (settings.caller_name if mode == 'owner_first_person' else settings.assistant_name)
+    return {'mode': mode, 'spoken_name': spoken,
+            'owner_name': settings.caller_name, 'assistant_name': spoken if mode == 'assistant' else settings.assistant_name,
             'role': profile.get('role') or 'Personal call assistance for '+settings.caller_name,
             'direction': record.get('direction', 'outbound'), 'owner_on_line': recognized_owner(settings, record),
             'personality_id': profile.get('personality_id'), 'personality_revision': profile.get('revision'),
@@ -36,10 +37,10 @@ def voice_identity(settings, record, *, inbound=False):
     name = settings.caller_name
     if p['mode'] == 'assistant':
         if inbound:
-            return (f"You are {settings.assistant_name}, {name}'s personal assistant answering incoming calls.\n"
+            return (f"You are {p['assistant_name']}, {name}'s personal assistant answering incoming calls.\n"
                     f"Introduce yourself as {name}'s assistant, without an upfront digital/AI label; never claim to be human.\n"
                     'Never impersonate the owner. If asked whether you are AI, answer honestly.')
-        return (f'You are a polite AI personal assistant calling on behalf of {name}.\n'
+        return (f"You are {p['assistant_name']}, a polite AI personal assistant calling on behalf of {name}.\n"
                 f"Introduce yourself simply as {name}'s personal assistant, without a 'digital' or 'AI' label.\n"
                 f"If speaking directly to {name}, say 'your personal assistant'. Otherwise say\n"
                 f"'{name}'s personal assistant'. Never impersonate {name} or claim to be human.\n"
@@ -90,7 +91,7 @@ def outbound_opening(settings, record):
     if p['mode'] == 'owner_first_person':
         identity = f"Use {json.dumps(p['spoken_name'], ensure_ascii=False)} and first-person wording; do not introduce an assistant. "
     else:
-        identity = (f"Introduce yourself simply as {settings.caller_name}'s personal assistant, or 'your personal assistant' "
+        identity = (f"Introduce yourself simply as {p['assistant_name']}, {settings.caller_name}'s personal assistant, or 'your personal assistant' "
                     f'if speaking to {settings.caller_name}. ')
     text = ('Greet the recipient now in the language requested in the call brief, or '
             +(language or 'English')+' if no language was requested. '+identity+
@@ -101,6 +102,9 @@ def outbound_opening(settings, record):
     guidance = (record.get('personality') or {}).get('outbound_greeting', '')
     if guidance:
         text += '\nOwner outbound greeting guidance: '+guidance
+    contact_opening = (record.get('contact_guidance') or {}).get('greeting')
+    if contact_opening:
+        text += '\nOwner contact-specific opening replaces generic examples: ' + contact_opening
     return text
 
 
@@ -119,7 +123,7 @@ def incoming_presentation_greeting(settings, record, *, familiar=False, nickname
         line = (record.get('incoming_context') or {}).get('office_name') or 'the office of '+settings.caller_name
         guidance += 'For this office profile a natural example is "Hello, you\'ve reached '+line+'." '
     return (guidance+'Use the selected personality role and tone. Introduce yourself as '
-            +settings.assistant_name+', '+settings.caller_name+"'s assistant. "
+            +p['assistant_name']+', '+settings.caller_name+"'s assistant. "
             'Use an office introduction only if that selected work role/greeting calls for one; '
             'do not impose office/receptionist behavior on a personal or friend profile. '
             +('Address the recognized contact naturally by '+json.dumps(nickname, ensure_ascii=False)+'. ' if familiar and nickname else

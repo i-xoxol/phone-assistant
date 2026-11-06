@@ -52,7 +52,9 @@ function renderCallerBook(rows=[]) {
     const editContact=document.createElement('button');editContact.className='quiet';editContact.textContent=row.contact_id?'Edit contact':'Save as contact';
     editContact.onclick=()=>openContact(row);
     const summary=document.createElement('summary');summary.append(title,number);
-    entry.append(summary,edit,editContact);addContactTesting(entry,row);addContactPersonality(entry,row);addContactAnswering(entry,row);target.append(entry);
+    entry.append(summary,edit,editContact);addContactPersonality(entry,row);
+    if(typeof addContactGuidance==='function') addContactGuidance(entry,row);
+    addContactTesting(entry,row);addContactAnswering(entry,row);target.append(entry);
   });
 }
 function showCall() {
