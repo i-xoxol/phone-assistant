@@ -321,8 +321,8 @@ class Database:
                 if old['direction'] != 'inbound':
                     raise ValueError('Call direction mismatch')
                 return old['call_id']
-            active = db.execute("SELECT count(*) FROM calls WHERE direction='inbound' AND status NOT IN ('completed','failed','busy','no_answer','cancelled')").fetchone()[0]
-            recent = db.execute("SELECT count(*) FROM calls WHERE direction='inbound' AND julianday(created_at)>julianday('now','-1 hour')").fetchone()[0]
+            active = db.execute("SELECT count(*) FROM calls WHERE direction='inbound' AND twilio_call_sid IS NOT NULL AND status NOT IN ('completed','failed','busy','no_answer','cancelled')").fetchone()[0]
+            recent = db.execute("SELECT count(*) FROM calls WHERE direction='inbound' AND twilio_call_sid IS NOT NULL AND julianday(created_at)>julianday('now','-1 hour')").fetchone()[0]
             if active or recent >= hourly_limit:
                 raise ValueError('Incoming admission limit reached')
             cid = str(uuid4())

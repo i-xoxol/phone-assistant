@@ -23,6 +23,7 @@ async function api(path, options={}) {
 function clock(seconds) { return Math.floor(seconds/60)+':'+String(Math.floor(seconds%60)).padStart(2,'0'); }
 function renderCallerBook(rows=[]) {
   callerRows=rows;
+  if(typeof renderBrowserChoices==='function') renderBrowserChoices();
   if(typeof refreshOutboundContacts==='function') refreshOutboundContacts();
   refreshContactPickers();
   const target=$('callerBook'); target.replaceChildren();
@@ -60,7 +61,8 @@ function showCall() {
   $('status').textContent=call ? call.status.replaceAll('_',' ') : '—';
   $('status').className='badge'+(call && !terminal.has(call.status)?' active':'');
   $('objective').textContent=call?.objective || 'Select a call to view its conversation.';
-  $('testModeState').textContent=call?.test_mode?.enabled?'Test contact · additional testing instructions are active for this call.':'';
+  $('testModeState').textContent=call?.browser_test?'Browser test · '+call.browser_test.scenario+' · no telephone call or recording.':
+    call?.test_mode?.enabled?'Test contact · additional testing instructions are active for this call.':'';
   $('hangup').disabled=!call || terminal.has(call.status) || pending;
   $('hangup').textContent=pending?'Ending call…':'Hang up call';
   $('reachOwner').disabled=!ownerContactEnabled || !call || call.status!=='in_progress' || !!call.owner_transfer || pending;

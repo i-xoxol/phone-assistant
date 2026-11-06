@@ -2,7 +2,7 @@
 let appPage='calls',rulesData=null,rulesDirty=false,rulesJsonDirty=false,ruleDraft=null;
 let controlCallId=null,liveBusy=false,liveUpdateId=null,approvalKey='';
 const controlPages={calls:['callSummary','transferState','liveControlPanel','conversationPanel','audioPanel','inbox','supervisorPanel','ownerJoin'],
-  call:['outboundPanel'],contacts:['callerBookPanel'],rules:['rulesPanel'],
+  call:['browserTestPanel','outboundPanel'],contacts:['callerBookPanel'],rules:['rulesPanel'],
   settings:['personalitiesPanel','answeringPanel','recordingSettingsPanel','ownerContextPanel','instructionsPanel','accountPanel']};
 for(const [name,ids] of Object.entries(controlPages)) {
   const panel=document.createElement('section');panel.id='page-'+name;panel.className='page-view';panel.setAttribute('role','tabpanel');
@@ -18,6 +18,7 @@ function showPage(name) {
   $('pageTitle').textContent={calls:'Calls',call:'New call',contacts:'Contacts',rules:'Rules',settings:'Settings'}[name];
   const url=new URL(location.href);url.hash=name;history.replaceState(null,'',url);
   if(name==='call') {$('outboundPanel').open=true;renderCallChoices();}
+  if(name==='call' && typeof renderBrowserChoices==='function') renderBrowserChoices();
   if(name==='contacts') $('callerBookPanel').open=true;
   if(name==='rules' && !rulesData) loadRules().catch(e=>{$('ruleState').textContent=e.message;});
   window.scrollTo({top:0,behavior:'instant'});

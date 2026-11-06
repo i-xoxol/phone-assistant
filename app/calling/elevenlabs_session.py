@@ -583,7 +583,7 @@ class RealtimeMediaBridge(MediaBridge):
 @asynccontextmanager
 async def started_elevenlabs_connection(settings, manager, record, selection):
     # No paid session during pre-answer ringing. The Twilio cap is a prerequisite.
-    if record.get('direction') == 'inbound':
+    if record.get('direction') == 'inbound' and not record.get('browser_test'):
         try:
             await asyncio.wait_for(manager.gateway.prepare_inbound(
                 record['twilio_call_sid'], record['max_duration_minutes']), 5)
