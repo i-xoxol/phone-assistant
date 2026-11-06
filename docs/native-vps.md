@@ -168,3 +168,5 @@ its **latest** consistent state back to the retained source before switching
 routing. Preserve current calls, appointments, OAuth grants and preferences.
 Reconcile uncertain external writes. Do not overwrite new data with the old
 pre-migration snapshot, or restart both instances against the same traffic.
+
+For a complete anonymized example of the running Bluehost deployment, including browser audio, backup and rollout, see [vps-example.md](vps-example.md).

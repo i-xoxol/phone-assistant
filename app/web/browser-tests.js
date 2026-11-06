@@ -129,6 +129,7 @@ $('browserTestForm').onsubmit=async event=>{
   if(!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || !window.AudioWorkletNode) {
     $('browserTestState').textContent='Microphone testing needs HTTPS or localhost and a browser with AudioWorklet support.';return;
   }
+  if(typeof liveAudio!=='undefined' && liveAudio) await stopLiveAudio('Browser listening stopped before starting the test.');
   const body=browserBody(),attempt=++browserAttempt;
   browserStarting=true;$('browserStart').disabled=true;
   const test={audio:new AudioContext(),playing:new Set(),timers:new Set(),nextAudio:0,muted:false,closed:false,samples:0};

@@ -58,6 +58,7 @@ function renderCallerBook(rows=[]) {
   });
 }
 function showCall() {
+  if(typeof renderLiveAudio==='function') renderLiveAudio();
   showRecordings();
   $('saveCaller').disabled=!call?.phone_number || !!call?.forwarding?.caller_identity_ambiguous;
   $('status').textContent=call ? call.status.replaceAll('_',' ') : '—';

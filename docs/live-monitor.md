@@ -134,3 +134,5 @@ single-owner monitor, not per-call sharing. Only pair devices you control. No
 provider API key, static REST token, or permanent access token is embedded in
 the monitor URL. Runtime cookies and codes are never included in the public
 repository or its illustrative preview.
+
+Live listening and full browser microphone participation are described in [browser live audio](browser-live-audio.md).
