@@ -152,7 +152,8 @@ def prompt_preview(manager, body):
     from app.calling.presentation import resolve_presentation, outbound_opening
     if body.call_id:
         record = manager.db.get(str(body.call_id))
-        record['personality'] = manager.personalities.for_call(record['call_id']) or manager.personalities.resolve(record)
+        record['routing_rule'] = manager.rules.for_call(record['call_id']) or manager.rules.selection(record)
+        record['personality'] = manager.personalities.for_call(record['call_id']) or manager.personalities.effective(record)
         record['test_mode'] = manager.test_contacts.for_call(record['call_id']) or {'enabled': False, 'contact_id': None, 'instructions': ''}
         record['voice_backend'] = manager.voice_backends.for_call(record['call_id']) or manager.voice_backends.for_record(record)
         record['voice_opening_claimed'] = manager.voice_backends.opening_claimed(record['call_id'])
@@ -172,7 +173,8 @@ def prompt_preview(manager, body):
                   'inbound_booking_allowed': manager.settings.inbound_booking_allowed,
                   'max_duration_minutes': manager.settings.inbound_max_duration_minutes,
                   'transcript': [], 'call_updates': [], 'constraints': [], 'objective': '', 'context': '', 'recipient': ''}
-        record['personality'] = manager.personalities.resolve(record)
+        record['routing_rule'] = manager.rules.selection(record)
+        record['personality'] = manager.personalities.effective(record)
         record['test_mode'] = manager.test_contacts.resolve(record)
         record['voice_backend'] = manager.voice_backends.for_record(record)
         record['audio_recording'] = {'pinned_settings': manager.recordings.preferences.get(), 'policy': {}}
@@ -185,6 +187,10 @@ def prompt_preview(manager, body):
         record['incoming_context'] = manager.incoming_context(record)
         if record['inbound_mode'] == 'messages' and not manager.hours.state()['office_open']:
             record['closed_announcement'] = manager.hours.closed_announcement()
+    else:
+        record['disclosure_context']={'access':manager.disclosures.access(record),
+            'facts':manager.knowledge.search('',caller_number=record['phone_number'],call_id=record['call_id'])['facts'],
+            'restricted_fact_topics':manager.disclosures.topics(record)}
     config = session_config(manager.settings, record)
     presentation = resolve_presentation(manager.settings, record)
     native = None
@@ -196,7 +202,7 @@ def prompt_preview(manager, body):
         from app.calling.gemini_session import gemini_config
         native = gemini_config(manager.settings, record, record['voice_backend'])['system_instruction']
     backend = config.get('delegation', {}).get('responses', {})
-    return {'basis': basis, 'personality': record['personality'], 'presentation': presentation,
+    return {'basis': basis, 'routing_rule':record['routing_rule'], 'personality': record['personality'], 'presentation': presentation,
             'greeting': config.get('input', []) if record.get('direction') == 'inbound' else outbound_opening(manager.settings, record),
             'test_mode': record['test_mode'], 'answering': record['voice_backend'],
             'voice_instructions': native or config['instructions'], 'planner_instructions': backend.get('instructions', ''),

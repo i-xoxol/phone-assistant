@@ -140,3 +140,12 @@ This release does not include private deployment configuration or real call data
 - Preserve REST/MCP names and add owner settings tools without changing lookup, coaching or subscription authorization.
 
 See [the controls guide](docs/answering-controls.md) for setup, validation and rollback boundaries.
+# Rules and mobile control
+
+- Focused Calls, New call, Contacts, Rules and Settings pages with phone navigation
+  and persistent active-call hangup.
+- Reviewed deterministic routing by contact, forwarding source, direction and
+  optional owner-assigned score; explicit per-call personality/provider choices.
+- General/friends/family facts and exact, versioned one-call disclosure approvals,
+  available to the portal and authenticated MCP supervisors.
+- Source-only nonroot Docker packaging and a single-server cloud migration guide.

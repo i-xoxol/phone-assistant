@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIRS = {'app', 'scripts', 'tests', 'deploy', 'plugin', 'docs', 'examples', '.github'}
 ROOT_FILES = {'README.md', 'LICENSE', 'SECURITY.md', 'CONTRIBUTING.md', 'CHANGELOG.md',
+              'Dockerfile', '.dockerignore', 'compose.yaml',
               '.gitignore', '.gitattributes', '.editorconfig', '.env.example', 'requirements.txt', 'requirements-dev.txt', 'run.py'}
 FORBIDDEN_PARTS = {'data', '.venv', '__pycache__', '.pytest_cache', 'node_modules', '.git',
                    '.codex-remote-attachments', 'backups'}

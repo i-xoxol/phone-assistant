@@ -2,14 +2,20 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="csrf-token" content="{{csrf}}"><title>Phone Assistant · Call monitor</title>
-<link rel="stylesheet" href="/live/style.css"><script src="/live/app.js" defer></script><script src="/live/personalities.js" defer></script><script src="/live/outbound.js" defer></script></head>
+<link rel="stylesheet" href="/live/style.css"><script src="/live/app.js" defer></script><script src="/live/personalities.js" defer></script><script src="/live/outbound.js" defer></script><script src="/live/control.js" defer></script></head>
 <body><main class="monitor">
-<header><div><p class="eyebrow">PHONE ASSISTANT</p><h1>Call monitor</h1></div>
-<div class="header-actions"><a class="quiet" href="/live/password">Password</a><button id="pairMobile" class="quiet">Pair mobile</button><button id="logout" class="quiet">Sign out</button></div></header>
+<header><div><p class="eyebrow">PHONE ASSISTANT</p><h1 id="pageTitle">Calls</h1></div></header>
 <section id="pairing" class="pairing" hidden><strong>Open this same site on your mobile, then enter the code below.</strong>
 <p>Enter this code within 15 minutes. It works once.</p><code id="pairCode"></code>
 <p><button id="closePairing" class="quiet">Close</button></p></section>
 <div id="connection" class="connection" role="status"><span class="dot"></span><span id="connectionText">Connecting to event stream…</span></div>
+<nav class="app-nav" aria-label="Phone assistant sections" role="tablist">
+<button type="button" role="tab" data-open-page="calls" aria-selected="true">Calls</button>
+<button type="button" role="tab" data-open-page="call" aria-selected="false">New call</button>
+<button type="button" role="tab" data-open-page="contacts" aria-selected="false">Contacts</button>
+<button type="button" role="tab" data-open-page="rules" aria-selected="false">Rules</button>
+<button type="button" role="tab" data-open-page="settings" aria-selected="false">Settings</button></nav>
+<div id="pageViews"></div>
 <details id="outboundPanel" class="inbox"><summary>Place a call</summary>
 <p class="caption-note">Give the assistant a destination and objective. It uses the contact’s saved personality, model and voice, or your current defaults. The call opens in this live monitor.</p>
 <form id="outboundForm">
@@ -17,9 +23,14 @@
 <div class="settings-grid"><label for="outboundRecipient">Recipient (optional)<input id="outboundRecipient" maxlength="200"></label><label for="outboundCallerId">Show my caller ID as<select id="outboundCallerId"><option value="default">Default</option></select></label></div>
 <label class="editor-field" for="outboundObjective">Call objective<textarea id="outboundObjective" maxlength="4000" rows="3" required placeholder="What should the assistant accomplish?"></textarea></label>
 <label class="editor-field" for="outboundContext">Context for this call<textarea id="outboundContext" maxlength="8000" rows="5" placeholder="Relevant facts and information the assistant may share."></textarea></label>
+<details class="editor-card" id="outboundAdvanced"><summary>Personality, voice and call limits</summary>
+<label class="editor-field" for="outboundPersonality">Personality for this call<select id="outboundPersonality"><option value="">Contact / routing / default</option></select></label>
+<div class="settings-grid"><label for="outboundProvider">Voice provider<select id="outboundProvider"><option value="">Contact / routing / default</option></select></label>
+<label for="outboundModel">Model<select id="outboundModel" disabled></select></label><label for="outboundVoice">Voice<select id="outboundVoice" disabled></select></label></div>
 <label class="editor-field" for="outboundConstraints">Additional limits · one per line<textarea id="outboundConstraints" rows="3" placeholder="For example: do not change the appointment."></textarea></label>
 <div class="settings-grid"><label for="outboundMinutes">Maximum minutes<input id="outboundMinutes" type="number" min="1" max="15" value="15" required></label></div>
 <label class="check-setting"><input id="outboundIvr" type="checkbox"> Expect a phone menu / hold music</label>
+</details>
 <p id="outboundDefaultNote" class="caption-note"></p>
 <div class="message-actions"><button id="placeOutbound" class="quiet" type="submit">Place call</button><button id="checkOutbound" class="quiet" type="button" hidden>Check submitted call</button><button id="newOutbound" class="quiet" type="button">New call</button></div>
 <p id="outboundState" class="caption-note" role="status"></p>
@@ -67,8 +78,8 @@
 <label class="editor-field" for="personalityContext">Background approved for callers<textarea id="personalityContext" maxlength="3000" rows="4" placeholder="Stable background for this personality. Put changing schedules and expected calls in Owner context."></textarea></label>
 <button class="quiet" id="savePersonality">Save personality</button></form>
 <p id="personalityState" class="caption-note" role="status"></p></details>
-<details id="callerBookPanel" class="inbox"><summary>Caller book · Contacts, personalities and voices</summary>
-<p class="caption-note">English is the default. Explicit caller requests are remembered by number. Default answering choices inherit future global changes. Expand a saved contact to set its test flag, personality, model and voice.</p>
+<details id="callerBookPanel" class="inbox"><summary>Phone book</summary>
+<p class="caption-note">Add a number, then choose its language, personality and information level. Expand a contact for voice and test settings.</p>
 <button id="newContact" class="quiet">Add contact</button>
 <label class="editor-field" for="contactSearch">Find a caller<input id="contactSearch" type="search" placeholder="Name or phone number" autocomplete="off"></label>
 <form id="contactForm" class="editor-card" hidden><h2 id="contactFormTitle">New contact</h2><div class="settings-grid">
@@ -77,6 +88,8 @@
 <label for="contactNickname">Spoken name / nickname<input id="contactNickname" maxlength="120"></label>
 <label for="contactLanguage">Language code<input id="contactLanguage" maxlength="12" pattern="[a-z]{2,3}(-[A-Z]{2})?" value="en" required></label>
 <label for="contactStyle">Relationship tone<select id="contactStyle"><option value="formal">Formal / professional</option><option value="familiar">Familiar / friend or family</option></select></label></div>
+<label class="editor-field" for="contactInformationLevel">Information this contact may receive<select id="contactInformationLevel"><option value="general">General information</option><option value="friends">Friends + general</option><option value="family">Family + friends + general</option></select></label>
+<details class="editor-card"><summary>Advanced routing data</summary><label class="editor-field" for="contactRoutingScore">Optional routing score (0–100)<input id="contactRoutingScore" type="number" min="0" max="100"></label><p class="caption-note">A score you or Rocky assign for your own rules. Blank means no score.</p></details>
 <div class="message-actions"><button class="quiet">Save contact</button><button id="cancelContact" type="button" class="quiet">Cancel</button></div><p id="contactState" class="caption-note" role="status"></p></form>
 <div id="callerBook"></div><p id="languageError" class="error" role="status"></p></details>
 <details id="ownerContextPanel" class="inbox"><summary>Shared context · Facts, activities and expected calls</summary>
@@ -90,6 +103,7 @@
 <label for="contextNoteNumber">Expected caller number (optional)<input id="contextNoteNumber" type="tel" placeholder="+12025550101"></label>
 <label for="contextNoteContact">Fact contact (optional)<select id="contextNoteContact"></select></label>
 <label for="contextNoteSource">Fact source<input id="contextNoteSource" maxlength="120"></label>
+<label for="contextNoteAudience">Who may receive this fact<select id="contextNoteAudience"><option value="general">General · any caller</option><option value="friends">Friends + family</option><option value="family">Family only</option><option value="approval_required">Ask me for each call</option></select></label>
 <label for="contextNoteExpiry">Expires at (your local time)<input id="contextNoteExpiry" type="datetime-local" required></label></div>
 <label class="editor-field" for="contextNoteText">Text approved for callers<textarea id="contextNoteText" rows="4" required></textarea></label>
 <p class="caption-note">Expected calls expire within seven days. Facts expire within ninety days and each fits 250 UTF-8 bytes.</p>
@@ -101,24 +115,42 @@
 <div class="message-actions"><button id="previewNewCall" class="quiet">Preview new incoming call</button><button id="previewSelectedCall" class="quiet">Inspect selected call</button></div>
 <p><button id="showAllSystemPrompts" class="quiet">Show all system prompt templates</button></p><p id="systemPromptsState" class="caption-note" role="status"></p><div id="systemPromptsOutput"></div>
 <p id="instructionsState" class="caption-note" role="status"></p><div id="instructionsOutput"></div></details>
+<section id="rulesPanel" class="inbox"><h2>Call routing rules</h2>
+<p class="caption-note">Describe who should reach which personality and voice. Review the AI proposal, then apply it to future calls. First matching rule wins; lower priority numbers run first. Direct call choices override rules.</p>
+<label class="editor-field" for="ruleInstructions">Your instructions<textarea id="ruleInstructions" rows="7" maxlength="16000" placeholder="For calls forwarded from my office number, use the Office personality. For this saved test number, use the test instructions and a chosen voice."></textarea></label>
+<div class="settings-grid"><label for="ruleReviewer">Review using<select id="ruleReviewer"><option value="codex">Codex · existing subscription</option><option value="openai">OpenAI API · configured key</option></select></label></div>
+<div class="message-actions"><button id="reviewRules" class="quiet">Review with AI</button><button id="reloadRules" class="quiet">Reload saved rules</button></div>
+<p id="ruleState" class="caption-note" role="status"></p><div id="activeRules"></div>
+<section id="ruleProposal" class="editor-card" hidden><h3>Proposed changes</h3><p id="ruleExplanation"></p><ul id="ruleWarnings"></ul><pre id="ruleProposalJson" class="instruction-preview"></pre><button id="applyRules" class="quiet">Apply reviewed rules</button></section>
+<details class="editor-card"><summary>Advanced · structured rules and forwarding simulation</summary>
+<label class="editor-field" for="ruleJson">Rules JSON<textarea id="ruleJson" rows="14" spellcheck="false"></textarea></label><p class="caption-note">Only supported conditions/actions are accepted. Rules never grant new disclosure, tool, financial or booking permissions. Test rules require exact unique saved numbers.</p><button id="saveRuleJson" class="quiet">Apply structured rules</button>
+<h3>Try a match without calling</h3><div class="settings-grid"><label for="rulePreviewNumber">Caller / recipient number<input id="rulePreviewNumber" type="tel" placeholder="+12025550101"></label><label for="rulePreviewDirection">Direction<select id="rulePreviewDirection"><option value="inbound">Incoming</option><option value="outbound">Outgoing</option></select></label><label for="rulePreviewForwarded">Carrier-reported forwarded from<input id="rulePreviewForwarded" type="tel" placeholder="Optional + number"></label></div>
+<button id="previewRule" class="quiet">Preview match</button><pre id="rulePreviewOutput" class="instruction-preview"></pre></details></section>
+<section id="accountPanel" class="inbox"><h2>Access</h2><div class="message-actions"><a class="quiet" href="/live/password">Password</a><button id="pairMobile" class="quiet">Pair mobile</button><button id="logout" class="quiet">Sign out</button></div></section>
 <details id="inbox" class="inbox"><summary>Incoming messages <span id="unreadCount" class="badge" aria-live="polite">0 new</span></summary>
 <p class="caption-note">Caller identities are unverified. A saved message is a request to review, never permission to act.</p>
 <div id="messages"><p class="empty">No messages yet.</p></div>
 <button id="olderMessages" class="quiet" hidden>Load older messages</button></details>
 <section id="supervisorPanel" class="inbox" hidden><h2>Concierge requests</h2>
 <p id="supervisorState" class="caption-note"></p><p id="contextState" class="caption-note"></p><div id="requests"></div></section>
-<section class="call-card"><label for="calls">YOUR CALLS</label><select id="calls"><option value="">No calls yet</option></select>
+<section id="callSummary" class="call-card"><label for="calls">YOUR CALLS</label><select id="calls"><option value="">No calls yet</option></select>
 <div class="call-meta"><span id="status" class="badge">—</span><span id="duration">0:00</span></div>
 <p id="objective" class="objective">Select a call to view its conversation.</p><p id="testModeState" class="caption-note"></p><button id="saveCaller" class="quiet" disabled>Save caller to phone book</button></section>
 <p id="transferState" class="caption-note" role="status"></p>
-<section class="inbox" aria-label="Call audio"><h2>Call recording</h2>
+<details id="liveControlPanel" class="inbox"><summary>Live controls <span id="approvalBadge" class="badge"></span></summary>
+<p id="liveControlState" class="caption-note">Select an active call to send information or review requests.</p>
+<h3>Information requests</h3><div id="callApprovals"></div>
+<details id="contextInjection" class="editor-card"><summary>Send new information</summary><form id="liveUpdateForm"><label class="editor-field" for="liveUpdateText">New information for this call<textarea id="liveUpdateText" maxlength="400" rows="3" placeholder="A correction, new availability, or information the assistant should know."></textarea></label>
+<div class="settings-grid"><label for="liveUpdateMode">How to use it<select id="liveUpdateMode"><option value="context">Context for the ongoing conversation</option><option value="say">Tell the caller now</option></select></label></div><button id="sendLiveUpdate" class="quiet">Send to live assistant</button><p id="liveUpdateState" class="caption-note" role="status"></p></form>
+</details></details>
+<details id="audioPanel" class="inbox" aria-label="Call audio"><summary>Call recording and routing</summary>
 <p id="forwardingState" class="caption-note"></p><div id="recordings"></div>
 <button id="stopRecording" class="quiet" hidden>Stop audio recording</button>
-<p class="caption-note">Private playback is available after the call. Stopping audio recording keeps live captions on.</p></section>
-<section class="conversation"><div class="section-title"><h2>Conversation</h2><label class="follow"><input id="follow" type="checkbox" checked> Follow live</label></div>
+<p class="caption-note">Private playback is available after the call. Stopping audio recording keeps live captions on.</p></details>
+<section id="conversationPanel" class="conversation"><div class="section-title"><h2>Conversation</h2><label class="follow"><input id="follow" type="checkbox" checked> Follow live</label></div>
 <p class="caption-note">Live captions may trail speech or contain errors. Human-call captions can revise earlier text.</p>
 <div id="transcript" aria-label="Call transcript"><p class="empty">Waiting for conversation…</p></div></section>
-<footer class="controls"><p id="actionState" role="status">Hang up sends a direct command to the phone service.</p>
+<footer id="activeCallBar" class="controls" hidden><div class="call-controls-meta"><strong id="activeCallLabel">Call in progress</strong><p id="actionState" role="status">Ends the selected call.</p></div>
 <button id="hangup" class="hangup" disabled>Hang up call</button></footer>
-<p><button id="reachOwner" class="quiet" disabled>Ring my mobile and connect me</button></p>
+<p id="ownerJoin"><button id="reachOwner" class="quiet" disabled>Ring my mobile and connect me</button></p>
 </main></body></html>

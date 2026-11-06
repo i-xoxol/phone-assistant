@@ -55,6 +55,9 @@ class CallMemory:
             for row in rows:
                 item=dict(row)
                 item['objective']=phone_safe(item['objective'])
+                if getattr(self.m,'disclosures',None) and self.m.disclosures.history_private(row['call_id'],exclude):
+                    item.update(objective='Prior call included restricted information; ask the caller to recap.',conversation=[],saved_message=None)
+                    result.append(item);continue
                 # Join Live fragments into turns before redacting context-sensitive replies.
                 events=[{'speaker':r['speaker'],'text':r['text']} for r in self.m.db.transcript_rows(db,row['call_id'],limit=3000)]
                 turns=[]

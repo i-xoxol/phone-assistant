@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     openai_backend_model: str = 'gpt-6-luna'
     openai_backend_fast: bool = False
     subscription_lookup_fast: bool = False
+    rules_review_model: str = ''
+    rules_review_timeout_seconds: int = Field(default=60,ge=10,le=120)
     webhook_url: str = ''
     webhook_secret: SecretStr = SecretStr('')
     inbound_enabled: bool = False

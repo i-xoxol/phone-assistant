@@ -45,6 +45,11 @@ shared context and an assembled-instructions viewer](docs/personalities.md).
 Calendar caption fixes, natural return-call recall and the extended prompt viewer
 are described in [calendar, recall and all prompts](docs/calendar-recall-prompts.md).
 
+The [mobile control guide](docs/control-and-rules.md) covers contacts, routing-rule
+review, per-call choices, information audiences, live updates and approvals for
+Rocky or another MCP supervisor. [Docker and cloud migration](docs/cloud-deployment.md)
+provides a portable single-server package without including private deployment data.
+
 | Short-form overview · 1:18 | Cinematic overview · 5:12 |
 |:---:|:---:|
 | [<img src="docs/assets/short-overview.jpg" alt="Conceptual NotebookLM video artwork: a phone inside layered paper rings" height="220">](https://github.com/user-attachments/assets/b265fb63-b578-4d29-a3cf-3bcc7131b640) | [<img src="docs/assets/cinematic-overview.jpg" alt="Conceptual NotebookLM video artwork: a paper figure carrying boxes beside a phone" width="360">](https://github.com/user-attachments/assets/eb4b858d-e842-43eb-a755-cca2225c4fae) |

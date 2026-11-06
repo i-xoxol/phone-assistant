@@ -1,11 +1,12 @@
 'use strict';
 let outboundSettings=null, outboundDirty=false, outboundBusy=false;
 let outboundRequest=sessionStorage.getItem('phone-outbound-pending') || null;
-const outboundFields=['outboundNumber','outboundRecipient','outboundCallerId','outboundObjective','outboundContext','outboundConstraints','outboundMinutes','outboundIvr','outboundContact'];
+const outboundFields=['outboundNumber','outboundRecipient','outboundCallerId','outboundObjective','outboundContext','outboundConstraints','outboundMinutes','outboundIvr','outboundContact','outboundPersonality','outboundProvider','outboundModel','outboundVoice'];
 function outboundControls() {
   for(const id of [...outboundFields,'placeOutbound','useOutboundDefaults','saveOutboundDefaults']) $(id).disabled=outboundBusy || !!outboundRequest || !outboundSettings;
   $('checkOutbound').hidden=!outboundRequest;$('checkOutbound').disabled=outboundBusy;
   $('newOutbound').disabled=outboundBusy || !!outboundRequest || !outboundSettings;
+  if(typeof renderCallModels==='function') renderCallModels();
 }
 function outboundRequestId() {
   if(typeof crypto.randomUUID==='function') return crypto.randomUUID();
@@ -58,13 +59,16 @@ function outboundBody() {
     objective:$('outboundObjective').value.trim(),context:$('outboundContext').value,
     constraints:$('outboundConstraints').value.split('\n').map(s=>s.trim()).filter(Boolean),
     max_duration_minutes:Number($('outboundMinutes').value),ivr_mode:$('outboundIvr').checked,
-    caller_id:$('outboundCallerId').value || 'default'};
+    caller_id:$('outboundCallerId').value || 'default',personality_id:$('outboundPersonality').value || null,
+    voice_provider:$('outboundProvider').value || null,voice_model:$('outboundProvider').value?$('outboundModel').value:null,
+    voice:$('outboundProvider').value?$('outboundVoice').value:null};
 }
 function forgetOutboundRequest() {outboundRequest=null;sessionStorage.removeItem('phone-outbound-pending');}
 async function showOutboundResult(result) {
   selected=result.call_id;
   const snapshot=await api('/live/bootstrap?call_id='+encodeURIComponent(selected));
   calls=snapshot.calls;showList();await loadCall(selected);
+  if(typeof showPage==='function') showPage('calls');
   const failed=result.status==='failed';
   $('outboundState').textContent=failed?'Call creation failed or is unconfirmed. Inspect this call and Twilio before placing another call.':
     'Call '+result.status.replaceAll('_',' ')+'. The live transcript and Hang up control are below.';
@@ -96,7 +100,7 @@ $('newOutbound').onclick=()=>{
 $('useOutboundDefaults').onclick=()=>{useOutboundDefaults();$('outboundDefaultsState').textContent='Saved defaults loaded into this draft.';};
 $('saveOutboundDefaults').onclick=async()=>{
   outboundBusy=true;outboundControls();
-  const {phone_number,recipient,...body}=outboundBody();
+  const {phone_number,recipient,personality_id,voice_provider,voice_model,voice,...body}=outboundBody();
   if(body.caller_id==='default') body.caller_id=outboundSettings.defaults.caller_id;
   try {renderOutboundSettings(await api('/live/outbound/settings',writeOptions({...body,revision:outboundSettings.defaults.revision})));
     $('outboundDefaultsState').textContent='Defaults saved. No call placed.';}
