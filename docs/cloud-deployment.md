@@ -4,6 +4,12 @@ The current Lenovo service remains a native systemd service. The Docker files
 are an additional deployment option, not an automatic migration or a cloud
 account setup. No AWS/Azure resources or paid subscriptions are created.
 
+The application also supports a native systemd deployment behind Nginx. See
+[the native VPS runbook](native-vps.md) for staged migration, calendar and
+subscription dependencies, private backups, and a rollout that preserves the
+existing public URL. Docker is optional; both approaches require one worker
+and persistent SQLite storage.
+
 Use one persistent Linux VM/container host with HTTPS and WebSocket support,
 one process, one replica and a persistent disk. SQLite is appropriate for this
 deployment; multiple replicas sharing a database file are not supported.
