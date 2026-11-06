@@ -28,7 +28,7 @@ def system_prompt_catalog():
     paths=sorted((ROOT/'app').rglob('*.py'))+[ROOT/'scripts/prepare_recording_notices.py',ROOT/'scripts/prepare_owner_prompts.py']
     for path in paths:
         if path.name=='prompt_catalog.py' or not path.is_file():continue
-        source=path.read_text();tree=ast.parse(source)
+        source=path.read_text(encoding='utf-8');tree=ast.parse(source)
         for node in ast.walk(tree):
             value=None;label=''
             if isinstance(node,(ast.Assign,ast.AnnAssign,ast.AugAssign)):

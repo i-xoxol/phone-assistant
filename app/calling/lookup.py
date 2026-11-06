@@ -71,8 +71,15 @@ async def bounded_selection(prompt,result_type,timeout,*,fast=False):
     with tempfile.TemporaryDirectory(prefix='phone-lookup-') as folder:
         schema=Path(folder)/'schema.json'
         shape=result_type.model_json_schema()
-        shape['required']=list(shape['properties'])
-        for item in shape['properties'].values(): item.pop('default',None)
+        def strict(item):
+            if isinstance(item,dict):
+                item.pop('default',None)
+                if 'properties' in item:
+                    item['required']=list(item['properties']);item['additionalProperties']=False
+                for value in item.values():strict(value)
+            elif isinstance(item,list):
+                for value in item:strict(value)
+        strict(shape)
         schema.write_text(json.dumps(shape),encoding='utf-8')
         proc=await asyncio.create_subprocess_exec(*cli_arguments(binary,folder,schema,fast=fast),
             cwd=folder,env=env,stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,
@@ -165,7 +172,7 @@ class LookupService:
             hourly=conn.execute('SELECT count(*) FROM concierge_lookups WHERE created_at>?',((utcnow()-timedelta(hours=1)).isoformat(),)).fetchone()[0]
             if self.tasks or count>=6 or hourly>=20:
                 return {'status':'unavailable','instruction':'Lookup capacity reached. Request supervisor help or take a message.'}
-            candidates=(m.knowledge.search(question,caller_number=record['phone_number'])['facts']
+            candidates=(m.knowledge.search(question,caller_number=record['phone_number'],call_id=call_id)['facts']
                 if record['inbound_mode']=='concierge' else [])
             candidates+=m.memory.candidates(record)
             if not candidates:
@@ -195,7 +202,7 @@ class LookupService:
             if any(fid not in by_id for fid in result.selected_ids):
                 raise ValueError('Unknown evidence')
             chosen=[by_id[fid] for fid in dict.fromkeys(result.selected_ids)]
-            selected=(m.knowledge.still_current([f for f in chosen if f.get('kind')!='call_history'])+
+            selected=(m.knowledge.still_current([f for f in chosen if f.get('kind')!='call_history'],call_id=call_id)+
                 m.memory.still_current(m.db.get(call_id),[f for f in chosen if f.get('kind')=='call_history']))
             if len(selected)!=len(set(result.selected_ids)):
                 status='stale'

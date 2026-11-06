@@ -12,7 +12,7 @@ const csrf = document.querySelector('meta[name="csrf-token"]').content;
 function connection(text, healthy=false) { $('connectionText').textContent=text; $('connection').className='connection '+(healthy?'live':'warn'); }
 async function api(path, options={}) {
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),path.endsWith('/generate') || path==='/live/outbound/calls'?40000:20000);
+  const timer=setTimeout(()=>controller.abort(),path==='/live/rules/review'?125000:path.endsWith('/generate') || path==='/live/outbound/calls'?40000:20000);
   let response;
   try { response=await fetch(path, {credentials:'same-origin', cache:'no-store', ...options, signal:controller.signal}); }
   finally {clearTimeout(timer);}
@@ -33,7 +33,7 @@ function renderCallerBook(rows=[]) {
     const key=row.contact_id || row.phone_number;entry.open=openCallerCards.has(key);
     entry.ontoggle=()=>{if(entry.open) openCallerCards.add(key);else openCallerCards.delete(key);};
     const title=document.createElement('strong');title.textContent=row.name || 'Incoming caller';
-    const number=document.createElement('p');number.className='caption-note';number.textContent=row.phone_number || 'No phone number';
+    const number=document.createElement('p');number.className='caption-note';number.textContent=(row.phone_number || 'No phone number')+' · '+(row.information_level || 'general');
     const label=document.createElement('label');label.htmlFor='caller-language-'+index;label.textContent='Language code';
     const input=document.createElement('input');input.id=label.htmlFor;input.value=row.language || 'en';
     input.maxLength=12;input.pattern='[a-z]{2,3}(-[A-Z]{2})?';input.required=true;input.autocomplete='off';input.spellcheck=false;
@@ -74,6 +74,7 @@ function showCall() {
     if (!terminal.has(call.status) && call.started_at) duration=Math.max(0,(Date.now()-Date.parse(call.started_at))/1000);
     $('duration').textContent=clock(duration);
   }
+  if(typeof updateActiveBar==='function') updateActiveBar();
 }
 function showRecordings() {
   const data=call?.audio_recording;
@@ -134,7 +135,7 @@ function addText(event) {
       humanCaptions.set(event.source_event_id,item);$('transcript').append(div);
     }
     item.textContent=event.text;
-    if ($('follow').checked) window.scrollTo({top:document.body.scrollHeight,behavior:'instant'});
+    if ($('follow').checked && (typeof shouldFollowLive!=='function' || shouldFollowLive())) $('transcript').lastElementChild?.scrollIntoView({block:'end',behavior:'instant'});
     return;
   }
   if (event.source_event_id && seen.has(event.source_event_id)) return;
@@ -152,12 +153,13 @@ function addText(event) {
     turn={speaker:event.speaker,start:event.timestamp,end:event.end_timestamp,words}; turns.push(turn); $('transcript').append(div);
   }
   turn.words.append(document.createTextNode(event.text)); turn.end=Math.max(turn.end,event.end_timestamp);
-  if ($('follow').checked) window.scrollTo({top:document.body.scrollHeight,behavior:'instant'});
+  if ($('follow').checked && (typeof shouldFollowLive!=='function' || shouldFollowLive())) $('transcript').lastElementChild?.scrollIntoView({block:'end',behavior:'instant'});
 }
 async function loadCall(id) {
   const version=++loadVersion;
   selected=id; call=null; pending=false; seen=new Set(); turns=[]; humanCaptions=new Map(); $('transcript').replaceChildren();
   buffered=[];
+  if(typeof renderLiveControls==='function') renderLiveControls();
   const empty=document.createElement('p'); empty.className='empty'; empty.textContent='Waiting for conversation…'; $('transcript').append(empty);
   showCall();
   if (!id) return;
@@ -190,6 +192,9 @@ async function handleEvent(event) {
     showList();
   }
   if (data.call_id!==selected) return;
+  if(data.type.startsWith('call.approval_') && typeof refreshCallApprovals==='function') {
+    await refreshCallApprovals();if(data.type==='call.approval_requested') $('liveControlPanel').open=true;
+  }
   if(data.type==='call.recording') {
     const snapshot=await api('/live/bootstrap?call_id='+encodeURIComponent(selected));
     if(snapshot.call?.call_id===selected && call) {call.audio_recording=snapshot.call.audio_recording;showCall();}
@@ -317,6 +322,7 @@ function renderVoice(data) {
       populateAnswering(backendCatalog.provider,backendCatalog.model,backendCatalog.voice);
       $('voiceBackendState').textContent='Saved: '+selectionText(backendCatalog)+' · new calls';
     }
+    if(typeof renderCallChoices==='function') renderCallChoices();
   }
   if(data.recording_settings) {
     recordingSaved=data.recording_settings;
@@ -413,7 +419,9 @@ function addContactAnswering(entry,row) {
     try {const r=await api('/live/contacts/'+row.contact_id+'/voice',writeOptions({provider:provider.value || null,model:model.value || null,voice:voice.value || null}));contactDrafts.delete(row.contact_id);state.textContent='Saved effective: '+selectionText(r.effective);renderCallerBook((await api('/live/bootstrap')).caller_book);}
     catch(e) {state.textContent='Not saved: '+e.message;} finally {save.disabled=false;}
   };
-  entry.append(box,save,state);
+  const advanced=document.createElement('details'),heading=document.createElement('summary');
+  heading.textContent='Model and voice · '+selectionText(row.answering.effective);advanced.open=contactDrafts.has(row.contact_id);
+  advanced.append(heading,box,save,state);entry.append(advanced);
 }
 $('reachOwner').onclick=async()=>{
   if (!call) return;

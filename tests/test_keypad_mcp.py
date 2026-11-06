@@ -93,6 +93,10 @@ def test_mcp_creation_and_retrieval(service):
         names -= personality_tools
         assert {'get_call_recordings','get_call_recording_audio','stop_call_recording'}<=names
         names-={'get_call_recordings','get_call_recording_audio','stop_call_recording'}
+        control_tools={'get_call_rules','set_call_rules','review_call_rules','apply_reviewed_call_rules','preview_call_rule',
+            'get_outbound_settings','set_outbound_defaults','get_call_approvals','request_call_disclosure','resolve_call_approval'}
+        assert control_tools<=names
+        names-=control_tools
         assert names == {'place_call','get_call_status','get_call_result','press_digits','hangup_call',
                          'subscribe_call_events','get_call_event_subscriptions','unsubscribe_call_events','send_call_update',
                          'list_messages','get_message','mark_message_read','list_call_requests','respond_to_call_request',

@@ -35,6 +35,9 @@ class CallManager:
         from app.calling.hours import OperatingHours
         self.hours=OperatingHours(database)
         self.knowledge = CallKnowledge(database)
+        from app.calling.disclosures import Disclosures
+        self.disclosures=Disclosures(self)
+        self.knowledge.disclosures=self.disclosures
         from app.calling.personalities import Personalities
         self.personalities = Personalities(self)
         self.context.personalities = self.personalities
@@ -54,6 +57,8 @@ class CallManager:
         self.voices = VoicePreferences(database,settings)
         from app.calling.voice_backends import VoiceBackends
         self.voice_backends = VoiceBackends(database,settings,self)
+        from app.calling.rules import CallRules
+        self.rules=CallRules(self)
         from app.calling.outbound import OutboundCalls
         self.outbound = OutboundCalls(self)
         self.transfer = OwnerTransfer(self)
@@ -79,11 +84,16 @@ class CallManager:
                 'test_mode':self.test_contacts.for_call(call_id),
                 'voice_backend':self.voice_backends.for_call(call_id),
                 'origination':self.outbound.for_call(call_id),
+                'routing_rule':self.rules.for_call(call_id),
+                'disclosure':self.disclosures.access(record),
+                'approvals':self.disclosures.list(call_id)['approvals'],
                 'owner_transfer':self.transfer.for_call(call_id),'owner_coaching':self.observer.history(call_id),
                 'forwarding':self.routing.get(self.db.get(call_id)),'audio_recording':self.recordings.snapshot(call_id)}
 
     def voice_record(self,call_id):
         record=self.db.get(call_id)
+        record['routing_rule']=self.rules.pin(record)
+        self.disclosures.pin(record)
         record['personality']=self.personalities.pin(record)
         record['test_mode']=self.test_contacts.pin(record)
         record['voice_name']=self.voices.pin(record)
@@ -101,6 +111,9 @@ class CallManager:
         else:
             record['shared_context']=self.context.snapshot(caller_number=record['phone_number'],question=record['objective'],for_voice=True)
             record['recipient_language']=self.knowledge.language_for(record['phone_number'], call_id)
+            record['disclosure_context']={'access':self.disclosures.access(record),
+                'facts':self.knowledge.search('',caller_number=record['phone_number'],call_id=call_id,limit=12)['facts'],
+                'restricted_fact_topics':self.disclosures.topics(record)}
         record['presentation']=resolve_presentation(self.settings, record)
         return record
 
@@ -126,7 +139,10 @@ class CallManager:
             context['greeting_preparation'] = self.greetings.snapshot(record)
             if question and record.get('inbound_mode')=='concierge':
                 context['knowledge']=self.knowledge.search(question,
-                    caller_number='' if context['forwarding']['caller_identity_ambiguous'] else context['caller']['number'],limit=6)
+                    caller_number='' if context['forwarding']['caller_identity_ambiguous'] else context['caller']['number'],limit=6,call_id=record['call_id'])
+            context['disclosure']=self.disclosures.access(record)
+            context['restricted_fact_topics']=self.disclosures.topics(record,question)
+            context['approved_facts']=self.knowledge.search(question,caller_number=record['phone_number'],call_id=record['call_id'],limit=8)['facts']
         if self.settings.call_history_enabled:
             context['call_history']=self.memory.overview(record)
         return context
@@ -303,13 +319,20 @@ class CallManager:
             return self.status(previous)
         if missing := self.settings.missing():
             raise ValueError('Missing configuration: ' + ', '.join(missing))
-        self.voice_backends.for_record({'phone_number':request.phone_number,'direction':'outbound'},
+        route=self.rules.evaluate({'phone_number':request.phone_number,'direction':'outbound'})
+        planned={'phone_number':request.phone_number,'direction':'outbound','routing_rule':route}
+        if request.personality_id:self.personalities.get(request.personality_id)
+        self.voice_backends.for_record(planned,
             request.voice_provider,request.voice_model,request.voice)
-        origin = await self.outbound.resolve(request.caller_id)
+        caller_id=(route.get('actions',{}).get('caller_id') or 'default') if request.caller_id=='default' else request.caller_id
+        origin = await self.outbound.resolve(caller_id)
         call_id, created = self.db.claim_outbound(request,origin,self.outbound.fingerprint(request))
         if not created:
             return self.status(call_id)
         record = self.db.get(call_id)
+        record['routing_rule']=self.rules.pin(record,route)
+        self.disclosures.pin(record)
+        self.personalities.pin(record,request.personality_id)
         record['voice_name'] = self.voices.pin(record)
         self.voice_backends.pin(record, request.voice_provider,request.voice_model,request.voice)
         self.recordings.pin(call_id)

@@ -270,6 +270,8 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
             office_hours=office_hours,owner_reach_hours=owner_reach_hours,outside_hours=outside_hours))
 
     knowledge_write=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False)
+    from app.mcp.control import register_control_tools
+    register_control_tools(mcp,manager,read,write)
 
     @mcp.tool(annotations=read)
     def get_call_recordings(call_id:UUID) -> dict:
@@ -359,18 +361,25 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
 
     @mcp.tool(annotations=knowledge_write)
     async def set_call_contact(name:str,phone_number:str='',contact_id:UUID|None=None,preferred_language:str|None=None,
-                         preferred_name:str|None=None,conversation_style:Literal['familiar','formal']|None=None) -> dict:
+                         preferred_name:str|None=None,conversation_style:Literal['familiar','formal']|None=None,
+                         information_level:Literal['general','friends','family']|None=None,routing_score:int|None=None,
+                         clear_routing_score:bool=False) -> dict:
         """Create/update a curated contact. Optional E.164 number follows the owner's saved-number recognition policy.
         preferred_language can be uk for Ukrainian, en for English, or another language code. Omit to preserve; empty clears.
         preferred_name is the spoken name/nickname; empty clears it. conversation_style=familiar uses warm first-name
         conversation for friends/family/the owner; formal uses a professional office greeting (default).
         Omit these preferences to preserve them. A saved business contact is not automatically a friend.
-        Reuse contact_id for updates/retries. This record grants no disclosure rights or access to private tools.
+        information_level selects the owner-approved general/friends/family information audience; omit to preserve.
+        routing_score is optional OWNER-assigned data (0-100) for routing rules, never a caller identity/security score.
+        clear_routing_score removes it. These settings never grant tool/financial authority.
+        Reuse contact_id for updates/retries.
         Store phone-safe facts separately using set_call_fact; do not import a whole address book."""
         data={'name':name,'phone_number':phone_number}
         if preferred_language is not None: data['preferred_language']=preferred_language
         if preferred_name is not None: data['preferred_name']=preferred_name
         if conversation_style is not None: data['conversation_style']=conversation_style
+        if information_level is not None:data['information_level']=information_level
+        if routing_score is not None or clear_routing_score:data['routing_score']=None if clear_routing_score else routing_score
         if contact_id: data['contact_id']=contact_id
         result=manager.knowledge.contact(ContactUpdate(**data))
         if preferred_language is not None and phone_number:
@@ -390,15 +399,19 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
 
     @mcp.tool(annotations=knowledge_write)
     async def set_call_fact(topic:str,text:str,source:str,expires_at:AwareDatetime,
-            approved_for_callers:bool,contact_id:UUID|None=None,fact_id:UUID|None=None) -> dict:
+            approved_for_callers:bool,contact_id:UUID|None=None,fact_id:UUID|None=None,
+            audience:Literal['general','friends','family','approval_required']|None=None) -> dict:
         """Store/update one verified phone-safe fact, max 250 UTF-8 bytes, expiry within ninety days.
-        approved_for_callers must be true: this may be disclosed to ANY unverified caller mentioning the contact/topic.
+        Audience general is approved for all callers; friends/family require the saved caller audience.
+        approval_required withholds the value until exact-fact owner approval for that call.
+        approved_for_callers must be true unless audience=approval_required. Omitted audience preserves existing scope.
         No secrets, private schedules, sensitive identifiers, payment authority or booking confirmations.
         Optional contact_id scopes retrieval, not authentication. Cite how you verified it; never infer missing data.
         Reuse fact_id for updates/retries; retire obsolete facts. Dynamic calendar windows belong in set_inbound_availability."""
         data={'topic':topic,'text':text,'source':source,'expires_at':expires_at,
               'approved_for_callers':approved_for_callers,'contact_id':contact_id}
         if fact_id: data['fact_id']=fact_id
+        if audience is not None:data['audience']=audience
         result=manager.knowledge.fact(FactUpdate(**data))
         manager.observer.realtime.context_changed()
         return result
@@ -508,18 +521,22 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
                          constraints: list[str] | None = None, max_duration_minutes: int = 15,
                          ivr_mode: bool = False, voice_provider:Literal['openai','elevenlabs','gemini']|None=None,
                          voice_model:str|None=None,voice:str|None=None,
-                         caller_id:Literal['default','twilio','mobile']='default',request_id:UUID|None=None) -> dict:
+                         caller_id:Literal['default','twilio','mobile']='default',request_id:UUID|None=None,
+                         personality_id:UUID|None=None) -> dict:
         """Place one real outbound call on the owner's behalf. Requires the owner's explicit request; costs money.
         Use E.164 number. Set ivr_mode for business menus. Returns voice_tools_enabled:
         if true, spoken keypad requests execute inside the live voice backend; do not instruct it to
         wait for ChatGPT or send duplicate digits. caller_id chooses the saved default, office Twilio number,
         or the owner's configured verified mobile. Mobile is reverified before dialing; arbitrary caller IDs are not accepted.
         Supply request_id for idempotency: repeating the same ID/brief returns the original call, never redials.
+        personality_id selects one saved profile for this call, overriding routing/contact/default personality.
+        Read get_call_personalities first. A profile with presentation_mode=owner_first_person uses the owner's
+        configured name and I/my wording while keeping honest answers to direct identity questions and all permissions.
         Returns immediately; do not duplicate/retry blindly."""
         return await manager.place_call(CallRequest(phone_number=phone_number, recipient=recipient,
             objective=objective, context=context, constraints=constraints or [],
             max_duration_minutes=max_duration_minutes, ivr_mode=ivr_mode,voice_provider=voice_provider,voice_model=voice_model,voice=voice,
-            caller_id=caller_id,request_id=request_id))
+            caller_id=caller_id,request_id=request_id,personality_id=personality_id))
 
     @mcp.tool(annotations=read)
     async def get_call_status(call_id: UUID) -> dict:

@@ -167,7 +167,9 @@ class Personalities:
         return {'personality_id': self.assignment(contact_id), 'applies_to': 'new_calls'}
 
     def resolve(self, record):
-        ambiguous = record.get('direction') == 'inbound' and self.manager.routing.get(record)['caller_identity_ambiguous']
+        route=self.manager.rules.selection(record) if getattr(self.manager,'rules',None) else {}
+        if pid:=route.get('actions',{}).get('personality_id'):return self.get(pid)
+        ambiguous = record.get('direction') == 'inbound' and (record.get('_preview_forwarding') or self.manager.routing.get(record))['caller_identity_ambiguous']
         with self.db.connect() as c:
             matches = [] if ambiguous else list(c.execute(
                 'SELECT contact_id FROM concierge_contacts WHERE phone_number=? LIMIT 3', (record.get('phone_number', ''),)))
@@ -191,11 +193,22 @@ class Personalities:
                            outbound_greeting='')
         return profile
 
-    def pin(self, record):
+    def effective(self, record, override=None):
+        profile = self.get(override) if override else self.resolve(record)
+        route=self.manager.rules.selection(record) if getattr(self.manager,'rules',None) else {}
+        actions=route.get('actions',{})
+        if not override:
+            if actions.get('greeting'):
+                profile['greeting' if record.get('direction')=='inbound' else 'outbound_greeting']=actions['greeting']
+            if actions.get('instructions'):
+                profile['instructions']+='\nOwner routing-rule guidance within existing permissions:\n'+actions['instructions']
+        profile['spoken_name'] = profile['spoken_name'] or self.manager.settings.caller_name
+        return profile
+
+    def pin(self, record, override=None):
         if saved := self.for_call(record['call_id']):
             return saved
-        profile = self.resolve(record)
-        profile['spoken_name'] = profile['spoken_name'] or self.manager.settings.caller_name
+        profile=self.effective(record,override)
         with self.db.connect() as c:
             c.execute('INSERT OR IGNORE INTO call_personalities VALUES (?,?,?,?,?)',
                       (record['call_id'], profile['personality_id'], profile['revision'],

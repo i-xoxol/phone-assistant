@@ -33,6 +33,7 @@ function editPersonality(id) {
 function renderPersonalities(data) {
   if(!data) return;
   personalityCatalog=data;
+  if(typeof renderCallChoices==='function') renderCallChoices();
   const edit=editingPersonality || data.default_personality_id;
   options($('defaultPersonality'),profileOptions(),data.default_personality_id);
   options($('personalityPicker'),profileOptions(),edit);
@@ -100,15 +101,19 @@ function addContactPersonality(entry,row) {
     try {await api('/live/contacts/'+row.contact_id+'/personality',writeOptions({personality_id:select.value || null}));personalityAssignmentDrafts.delete(row.contact_id);await refreshPeople();}
     catch(e) {state.textContent='Not saved: '+e.message;} finally {save.disabled=false;}
   };
-  entry.append(label,save,state);
+  const edit=document.createElement('button');edit.className='quiet';edit.textContent='Edit saved personality';
+  edit.onclick=()=>{if(typeof showPage==='function') showPage('settings');$('personalitiesPanel').open=true;editPersonality(row.personality_id || personalityCatalog.default_personality_id);$('personalitiesPanel').scrollIntoView({block:'start'});};
+  entry.append(label,save,state,edit);
 }
 function openContact(row={},sourceCall=null) {
+  if(typeof showPage==='function') showPage('contacts');
   editingContact=row.contact_id || null;contactSourceCall=sourceCall;
   $('callerBookPanel').open=true;$('contactForm').hidden=false;$('contactState').textContent='';
   $('contactFormTitle').textContent=editingContact?'Edit contact':'New contact';
   $('contactName').value=row.name || '';$('contactNumber').value=row.phone_number || '';
   $('contactNickname').value=row.preferred_name || '';$('contactLanguage').value=row.language || 'en';
   $('contactStyle').value=row.conversation_style || 'formal';$('contactForm').scrollIntoView({block:'center'});
+  $('contactInformationLevel').value=row.information_level || 'general';$('contactRoutingScore').value=row.routing_score ?? '';
 }
 function addContactTesting(entry,row) {
   if(!row.contact_id || !row.test_mode) return;
@@ -135,7 +140,9 @@ function addContactTesting(entry,row) {
     try {await api('/live/contacts/'+row.contact_id+'/test-mode',writeOptions({enabled:checkbox.checked,instructions:instructions.value}));testContactDrafts.delete(row.contact_id);await refreshPeople();}
     catch(e) {state.textContent='Not saved: '+e.message;} finally {save.disabled=false;}
   };
-  box.append(legend,label,note,instructionLabel,save,state);entry.append(box);
+  box.append(legend,label,note,instructionLabel,save,state);
+  const advanced=document.createElement('details'),summary=document.createElement('summary');
+  summary.textContent='Test contact · '+(saved.enabled?'on':'off');advanced.append(summary,box);entry.append(advanced);
 }
 $('newContact').onclick=()=>openContact();
 $('contactSearch').oninput=()=>renderCallerBook(callerRows);
@@ -149,7 +156,8 @@ $('saveCaller').onclick=()=>{
 $('contactForm').onsubmit=async event=>{
   event.preventDefault();const button=event.submitter;button.disabled=true;
   const body={name:$('contactName').value,phone_number:$('contactNumber').value,preferred_name:$('contactNickname').value,
-    preferred_language:$('contactLanguage').value,conversation_style:$('contactStyle').value};
+    preferred_language:$('contactLanguage').value,conversation_style:$('contactStyle').value,
+    information_level:$('contactInformationLevel').value,routing_score:$('contactRoutingScore').value===''?null:Number($('contactRoutingScore').value)};
   if(editingContact) body.contact_id=editingContact;
   if(contactSourceCall && body.phone_number===call?.phone_number) body.source_call_id=contactSourceCall;
   try {const saved=await api('/live/contacts',writeOptions(body));openCallerCards.add(saved.contact_id);$('contactForm').hidden=true;await refreshPeople();}
@@ -164,7 +172,7 @@ async function loadOwnerContext() {
     const card=document.createElement('div');card.className='editor-card';
     const title=document.createElement('strong');title.textContent=(kind==='expected'?'Expected call · ':'Fact · ')+(row.title || row.topic);
     const text=document.createElement('p');text.textContent=row.context || row.text;text.className='message-body';
-    const expiry=document.createElement('p');expiry.className='caption-note';expiry.textContent='Expires '+new Date(row.expires_at).toLocaleString()+(row.contact_name?' · '+row.contact_name:'');
+    const expiry=document.createElement('p');expiry.className='caption-note';expiry.textContent='Expires '+new Date(row.expires_at).toLocaleString()+(row.contact_name?' · '+row.contact_name:'')+(kind==='fact'?' · '+(row.audience || 'general'):'');
     const edit=document.createElement('button');edit.className='quiet';edit.textContent='Edit';edit.onclick=()=>openContextNote(kind,row);
     const retire=document.createElement('button');retire.className='quiet';retire.textContent='Retire';
     retire.onclick=async()=>{retire.disabled=true;try {await api('/live/'+(kind==='expected'?'expected-calls/':'facts/')+(row.context_id || row.fact_id)+'/retire',{method:'POST',headers:{'X-CSRF-Token':csrf}});await loadOwnerContext();} catch(e) {$('ownerContextState').textContent=e.message;retire.disabled=false;}};
@@ -186,6 +194,7 @@ function openContextNote(kind,row={}) {
   $('contextNoteTitle').value=row.title || row.topic || '';$('contextNoteText').value=row.context || row.text || '';
   $('contextNoteNumber').value=row.phone_number || '';$('contextNoteContact').value=row.contact_id || '';
   $('contextNoteSource').value=row.source || 'Owner portal';
+  $('contextNoteAudience').value=row.audience || 'general';$('contextNoteAudience').parentElement.hidden=kind!=='fact';
   $('contextNoteExpiry').value=localDateTime(row.expires_at || Date.now()+24*60*60*1000);
   $('contextNoteText').maxLength=kind==='expected'?1200:600;
   $('contextNoteNumber').parentElement.hidden=kind!=='expected';
@@ -198,7 +207,8 @@ $('contextNoteForm').onsubmit=async event=>{
   event.preventDefault();const button=event.submitter;button.disabled=true;
   const expiry=new Date($('contextNoteExpiry').value).toISOString(),kind=contextNote.kind;
   const body=kind==='expected'?{title:$('contextNoteTitle').value,context:$('contextNoteText').value,phone_number:$('contextNoteNumber').value,expires_at:expiry}:
-    {topic:$('contextNoteTitle').value,text:$('contextNoteText').value,source:$('contextNoteSource').value,contact_id:$('contextNoteContact').value || null,expires_at:expiry,approved_for_callers:true};
+    {topic:$('contextNoteTitle').value,text:$('contextNoteText').value,source:$('contextNoteSource').value,contact_id:$('contextNoteContact').value || null,expires_at:expiry,
+      audience:$('contextNoteAudience').value,approved_for_callers:$('contextNoteAudience').value!=='approval_required'};
   if(contextNote.context_id) body.context_id=contextNote.context_id;if(contextNote.fact_id) body.fact_id=contextNote.fact_id;
   try {await api('/live/'+(kind==='expected'?'expected-calls':'facts'),writeOptions(body));$('contextNoteForm').hidden=true;await loadOwnerContext();}
   catch(e) {$('contextNoteState').textContent='Not saved: '+e.message;} finally {button.disabled=false;}
@@ -211,7 +221,7 @@ async function showInstructions(forSelected) {
     const result=await api('/live/instructions-preview',{...writeOptions(body),method:'POST'});
     $('instructionsState').textContent=result.basis+' '+result.policy;
     const output=$('instructionsOutput');output.replaceChildren();
-    for(const [label,value] of [['Personality, presentation and answering',{personality:result.personality,presentation:result.presentation,answering:result.answering,test_mode:result.test_mode}],
+    for(const [label,value] of [['Personality, presentation and answering',{personality:result.personality,presentation:result.presentation,answering:result.answering,test_mode:result.test_mode,routing_rule:result.routing_rule}],
       ['Effective greeting',result.greeting],
       ['Voice instructions',result.voice_instructions],['Tool planner instructions',result.planner_instructions],
       ['Live owner/server updates',result.runtime_updates],['One-time startup input',result.startup_input],['Tool definitions',result.tool_definitions],['Caller context',result.context],['Shared owner context',result.owner_context]]) {

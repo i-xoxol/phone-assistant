@@ -35,6 +35,7 @@ class CallRequest(BaseModel):
     voice_provider: Literal['openai', 'elevenlabs', 'gemini'] | None = None
     caller_id: Literal['default', 'twilio', 'mobile'] = 'default'
     request_id: UUID | None = None
+    personality_id: UUID | None = None
 
 
 class DigitsRequest(BaseModel):

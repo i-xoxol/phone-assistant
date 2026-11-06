@@ -69,6 +69,12 @@ class ContactTesting:
                 return off
             row = c.execute('SELECT * FROM contact_test_modes WHERE contact_id=? AND phone_number=? AND enabled=1',
                             (matches[0]['contact_id'], number)).fetchone()
+        rules=getattr(self.m,'rules',None)
+        action=rules.selection(record).get('actions',{}) if rules else {}
+        if action.get('test_mode') is False:return off
+        if action.get('test_mode') is True:
+            return {'enabled':True,'contact_id':matches[0]['contact_id'],
+                    'instructions':action.get('test_instructions') or (row['instructions'] if row else '') or DEFAULT_TEST_INSTRUCTIONS}
         return {'enabled': True, 'contact_id': row['contact_id'],
                 'instructions': row['instructions'] or DEFAULT_TEST_INSTRUCTIONS} if row else off
 

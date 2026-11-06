@@ -101,6 +101,12 @@ class VoiceTools:
         manager = self.bridge.manager
         name = item['name']
         inbound = manager.db.get(self.bridge.call_id).get('direction') == 'inbound'
+        if name=='request_disclosure_approval':
+            from app.calling.disclosures import DisclosureRequest
+            if (manager.bridges.get(self.bridge.call_id) is not self.bridge or self.bridge.closing
+                    or self.bridge.handoff or self.bridge.call_id in manager.stopping):
+                raise ValueError('Voice session is no longer current')
+            return manager.disclosures.request(self.bridge.call_id,DisclosureRequest.model_validate_json(item['arguments']))
         if name in ('get_appointment_availability','find_first_available_slot','check_appointment_slot','book_appointment','get_booking_status','get_my_appointment','search_appointment_name','get_caller_status','get_family_availability'):
             record=manager.db.get(self.bridge.call_id)
             if (not inbound or record['inbound_mode']!='concierge' or not manager.settings.appointments_enabled or not manager.appointments

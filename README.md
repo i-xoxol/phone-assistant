@@ -45,6 +45,11 @@ shared context and an assembled-instructions viewer](docs/personalities.md).
 Calendar caption fixes, natural return-call recall and the extended prompt viewer
 are described in [calendar, recall and all prompts](docs/calendar-recall-prompts.md).
 
+The [mobile control guide](docs/control-and-rules.md) covers contacts, routing-rule
+review, per-call choices, information audiences, live updates and approvals for
+Rocky or another MCP supervisor. [Docker and cloud migration](docs/cloud-deployment.md)
+provides a portable single-server package without including private deployment data.
+
 | Short-form overview · 1:18 | Cinematic overview · 5:12 |
 |:---:|:---:|
 | [<img src="docs/assets/short-overview.jpg" alt="Conceptual NotebookLM video artwork: a phone inside layered paper rings" height="220">](https://github.com/user-attachments/assets/b265fb63-b578-4d29-a3cf-3bcc7131b640) | [<img src="docs/assets/cinematic-overview.jpg" alt="Conceptual NotebookLM video artwork: a paper figure carrying boxes beside a phone" width="360">](https://github.com/user-attachments/assets/eb4b858d-e842-43eb-a755-cca2225c4fae) |
@@ -58,10 +63,19 @@ implemented behavior and its limits.
 
 ## See the interface
 
+The current mobile controls separate calls, contacts, routing and settings.
+Advanced voice/test controls expand inside a contact; Hang up stays accessible
+while you navigate an active call. This is a fictional, read-only local demo:
+
+<p align="center">
+  <img src="docs/assets/control-mobile.jpg" alt="Current mobile control page with fictional contacts, five bottom tabs and active-call Hang up" width="340">
+</p>
+
 The actual browser monitor, rendered locally from this repository's HTML, CSS,
 and JavaScript with **fictional documentation data**. No telephone call or booking
 was made to create these screenshots. The demo banner identifies the isolated
-preview; it is not part of the deployed monitor.
+preview; it is not part of the deployed monitor. The following captures show the
+earlier single-page layout and its transcript/inbox features.
 
 <p align="center">
   <img src="docs/assets/monitor-desktop.jpg" alt="Actual call monitor in a local documentation demo: fictional pickup-hours conversation, call status, captions, and direct hangup" width="780">

@@ -189,13 +189,19 @@ class VoiceBackends:
 
     def for_record(self, record, override=None, model=None, voice=None):
         contact=None
+        action={}
         if self.manager:
-            ambiguous=record.get('direction')=='inbound' and self.manager.routing.get(record)['caller_identity_ambiguous']
+            rules=getattr(self.manager,'rules',None)
+            action=rules.selection(record).get('actions',{}) if rules else {}
+            ambiguous=record.get('direction')=='inbound' and (record.get('_preview_forwarding') or self.manager.routing.get(record))['caller_identity_ambiguous']
             with self.db.connect() as c:
                 matches=[] if ambiguous else list(c.execute('SELECT contact_id FROM concierge_contacts WHERE phone_number=? LIMIT 3',
                     (record.get('phone_number',''),)))
             if len(matches)==1: contact=self.contact(matches[0]['contact_id'])
-        result=self.resolve(contact=contact,override=override,model=model,voice=voice)
+        provider=override or action.get('provider')
+        same=not override or override==action.get('provider')
+        result=self.resolve(contact=contact,override=provider,model=model or (action.get('model') if same else None),
+                            voice=voice or (action.get('voice') if same else None))
         self.validate(**result)
         return result
 
@@ -214,6 +220,8 @@ class VoiceBackends:
 
     def pin(self, record, override=None, model=None, voice=None):
         if self.manager:
+            if getattr(self.manager,'rules',None):record['routing_rule']=self.manager.rules.pin(record)
+            if getattr(self.manager,'disclosures',None):self.manager.disclosures.pin(record)
             self.manager.personalities.pin(record)
             self.manager.test_contacts.pin(record)
         if current:=self.for_call(record['call_id']): return current

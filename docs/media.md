@@ -4,6 +4,13 @@
 
 ## Actual UI screenshots
 
+`control-mobile.jpg` shows the current five-section interface and fictional
+contacts. It was captured from the read-only preview below at 390 × 844 with Sam
+Demo expanded. It contains only reserved example numbers, no private database or
+credentials. The older `monitor-*.jpg` images document the earlier single-page
+layout. The preview now loads all control scripts and fictional catalogs; writes
+still return 405, including dialing, editing and AI rule review.
+
 The JPEG monitor images were captured in Chrome from this repository's
 `app/web/index.html`, `app/web/style.css`, and `app/web/app.js`. The isolated preview
 adds a visible documentation-demo banner and supplies fictional JSON and SSE
@@ -26,7 +33,7 @@ message view. The server binds only to localhost. Stop it with Ctrl+C.
 `monitor-desktop.jpg` and `monitor-inbox.jpg` are full-page captures at the normal
 browser width; `monitor-mobile.jpg` is a viewport capture at 390 × 844. The mobile
 capture is scrolled to the conversation and persistent hangup control. No
-redaction or compositing was needed. UI source files are unchanged by this update.
+redaction or compositing was needed.
 
 ## Owner-provided NotebookLM videos
 

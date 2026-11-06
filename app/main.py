@@ -65,6 +65,8 @@ def create_app(settings: Settings | None = None, *, gateway=None) -> FastAPI:
     app.include_router(personalities_router)
     from app.api.outbound import router as outbound_router
     app.include_router(outbound_router)
+    from app.api.control import router as control_router
+    app.include_router(control_router)
 
     @app.api_route('/', methods=['GET', 'HEAD'], include_in_schema=False)
     def portal():
