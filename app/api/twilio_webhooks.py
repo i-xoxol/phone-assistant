@@ -58,14 +58,21 @@ async def incoming(request: Request):
     except ValueError:
         return declined_incoming()
     record = manager.db.get(cid)
+    manager.recordings.pin(cid)
     manager.routing.save(cid,form)
     if record['status'] in TERMINAL:
         response = VoiceResponse()
         response.hangup()
         return Response(str(response), media_type='application/xml')
     if not (closed and hours.outside_hours=='closed'):
+        record['voice_name'] = manager.voices.pin(record)
+        try:
+            backend = manager.voice_backends.pin(record)
+        except ValueError:
+            manager.transition(cid,'failed')
+            return declined_incoming()
         manager.greetings.start(cid)
-        if settings.inbound_answer_delay_seconds:
+        if settings.inbound_answer_delay_seconds and backend['provider']=='openai':
             manager.warm_sockets.start(cid)
     if closed and hours.outside_hours=='closed':
         response=VoiceResponse()
@@ -121,13 +128,14 @@ async def recording_status(call_id:UUID,request:Request):
 
 
 @router.get('/recording-notice/{language}.wav')
-def recording_notice(language:str,request:Request):
+def recording_notice(language:str,request:Request,v:str|None=None):
     settings=request.app.state.settings
     if language not in ('en','uk'): raise HTTPException(404,'Notice not found')
     if not settings.twilio_auth_token.get_secret_value() or not RequestValidator(settings.twilio_auth_token.get_secret_value()).validate(
-        settings.public_url(request.url.path),{},request.headers.get('x-twilio-signature','')):
+        settings.public_url(request.url.path)+('?' + request.url.query if request.url.query else ''),{},request.headers.get('x-twilio-signature','')):
         raise HTTPException(403,'Invalid Twilio signature')
-    path=settings.recording_notice_directory/(language+'.wav')
+    try: path=request.app.state.manager.recordings.preferences.asset_path(language,v)
+    except ValueError: raise HTTPException(404,'Notice not found') from None
     if not path.is_file(): raise HTTPException(404,'Notice not prepared')
     return Response(path.read_bytes(),media_type='audio/wav',headers={'Cache-Control':'no-store'})
 

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Make profile spoken names editable in assistant and first-person modes with mode-correct defaults and legacy-call compatibility. Add contact-scoped instructions, approved facts, profile/direction targeting, pinned guidance, and effective previews; filter withdrawn evidence and restricted historical recall. Add grouped recent forwarding/call numbers to browser tests without changing caller ID or manual input.
+
+- Add owner-authenticated browser test calls for direct incoming, forwarded incoming and outbound scenarios using the existing voice/media/tool flow, without telephone dialing. Include editable caller identity, forwarding metadata, voice/personality overrides, microphone mute, captions, duration limits and test-history labels; exclude tests from caller recall and real incoming admission.
+
+- Verify Mini calendar speech before playback using the pinned model and voice; block invented booking claims, skip occupied slots through the shared workflow, and retain a returning caller’s first name while asking only for the missing surname.
+
+- Route Mini new-booking turns through Luna and the verified proposal/consent workflow; bind manual ASR commits to captured audio, suppress speculative replies, and wait for instruction ACKs before speech. Recover earlier zero-time native transcript ordering without rewriting stored records.
+
+- Align native captions with telephone audio for calendar checks, explicitly request spoken booking offers/results, add natural same-number return-call recall with richer Luna evidence, and expose application-owned prompt templates in authenticated extended settings.
+
+- Optional ElevenLabs Realtime Mini/Max telephone voice adapter, separately configured library voice, pinned per-call selection, owner portal/MCP controls and shared tool authorization; OpenAI remains the default.
+
 - Give the phone assistant a gently reserved delivery, natural thinking sounds and a light Ukrainian accent in English while retaining prompt greetings, initiative on authorized tasks and owner approval boundaries.
 - Prepare incoming OpenAI sockets during the configured ring delay, promptly start the greeting after answer, and safely close or retry unused or stale sockets.
 - Keep incoming greetings to the opening of each call; preserve message-taking progress through background context updates and caller "Hello?" checks, including resumed voice sessions.
@@ -122,3 +134,22 @@ Initial public source release of the working self-hosted prototype.
 - Sanitized examples, complete replication documentation, MIT license, and CI.
 
 This release does not include private deployment configuration or real call data.
+
+## Telephone owner controls and optional Gemini Live
+
+- Add authenticated mobile provider/model/voice controls and provider-local contact inheritance, pinned for each new call.
+- Persist audio recording and announcement independently; retain participant opt-outs and truthful notice/request metadata.
+- Add English/Ukrainian cached-notice draft generation, bounded WAV upload, private preview, and atomic activation.
+- Add a disabled-until-verified Google GenAI Live adapter with stateful audio conversion and the existing tool/booking protections.
+- Preserve REST/MCP names and add owner settings tools without changing lookup, coaching or subscription authorization.
+
+See [the controls guide](docs/answering-controls.md) for setup, validation and rollback boundaries.
+# Rules and mobile control
+
+- Focused Calls, New call, Contacts, Rules and Settings pages with phone navigation
+  and persistent active-call hangup.
+- Reviewed deterministic routing by contact, forwarding source, direction and
+  optional owner-assigned score; explicit per-call personality/provider choices.
+- General/friends/family facts and exact, versioned one-call disclosure approvals,
+  available to the portal and authenticated MCP supervisors.
+- Source-only nonroot Docker packaging and a single-server cloud migration guide.

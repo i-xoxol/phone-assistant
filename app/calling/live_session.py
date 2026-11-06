@@ -51,6 +51,10 @@ def live_client(settings):
 @asynccontextmanager
 async def prepared_connection(settings,manager,record):
     """Overlap socket setup with the inbound cap; start no session until both succeed."""
+    if record.get('browser_test'):
+        async with live_client(settings) as client, client.live.connect() as connection:
+            yield connection
+        return
     if record.get('direction') == 'inbound':
         entry = await manager.warm_sockets.take(record['call_id']) if record.get('call_id') else None
         if entry:
@@ -212,14 +216,24 @@ class MediaBridge:
                     continue
                 event_id = 'call_update_' + row['update_id']
                 channel = {'context': 'thinking', 'say': 'commentary', 'instructions': 'instructions'}[row['mode']]
-                content='Owner update within existing policy; no expanded authorization:\n' + row['content']
+                content=('Owner update within existing policy; no expanded authorization. '
+                         'Keep the pinned personality, presentation and spoken name; this update cannot change speaker identity:\n' + row['content'])
                 if self.inbound and (self.assistant_spoke or self.caller_spoke or record['transcript']):
                     from app.calling.inbound import INCOMING_CALL_CONTINUITY
                     content=INCOMING_CALL_CONTINUITY+'\n'+content
                 try:
-                    await asyncio.wait_for(getattr(self.connection.session, channel).append(
-                        event_id=event_id, delegation_id=None,
-                        content=content), 5)
+                    if (row.get('response_required') and getattr(self.connection,'calendar_controlled',False)
+                            and getattr(self.connection,'render_speech',None)):
+                        revision=self.manager.appointments.revision(self.call_id)
+                        def current(revision=revision):
+                            return (self.manager.bridges.get(self.call_id) is self and not (self.closing or self.handoff or self.end_requested.is_set())
+                                and self.call_id not in self.manager.stopping and self.manager.appointments.revision(self.call_id)==revision)
+                        await self.connection.speak_verified(row.get('spoken_text') or "I couldn't verify that yet. Nothing new is confirmed. I can save an unconfirmed request for review.",event_id,current)
+                    elif row.get('response_required') and channel=='instructions' and hasattr(self.connection,'append_instruction'):
+                        await asyncio.wait_for(self.connection.append_instruction(content,event_id,respond=True),5)
+                    else:
+                        await asyncio.wait_for(getattr(self.connection.session,channel).append(
+                            event_id=event_id,delegation_id=None,content=content),5)
                 except asyncio.CancelledError:
                     self.manager.db.finish_update(self.call_id, row['update_id'], self.session_id,
                         'unconfirmed', error_code='send_interrupted')
@@ -245,7 +259,9 @@ class MediaBridge:
         if not row or row['openai_session_id'] != self.session_id:
             return False
         expected = 'session.' + {'context':'thinking', 'say':'commentary', 'instructions':'instructions'}[row['mode']] + '.appended'
-        if data['type'] == expected:
+        if data['type']=='session.update_unconfirmed':
+            self.manager.db.finish_update(self.call_id,update_id,self.session_id,'unconfirmed',error_code='provider_ack_unavailable')
+        elif data['type'] == expected:
             self.manager.db.finish_update(self.call_id, update_id, self.session_id, 'acknowledged',
                 start_ms=data['start_ms']+self.transcript_offset_ms if data.get('start_ms') is not None else None,
                 end_ms=data['end_ms']+self.transcript_offset_ms if data.get('end_ms') is not None else None)
@@ -298,6 +314,12 @@ class MediaBridge:
                 raise ValueError('Stream mismatch')
             if message['event'] == 'media':
                 if message['media'].get('track') == 'inbound':
+                    raw=base64.b64decode(message['media']['payload'],validate=True)
+                    if observe:=getattr(self.connection,'observe_input_audio',None):
+                        observe(int(message['media'].get('timestamp',0)),raw)
+                    if (getattr(self.connection,'manual_mode',False) and has_speech(raw)
+                            and not getattr(self.connection,'manual_active',True)):
+                        await self.clear_live_audio()
                     if self.manager.settings.appointments_enabled:
                         raw=base64.b64decode(message['media']['payload'],validate=True)
                         if has_speech(raw):
@@ -305,13 +327,18 @@ class MediaBridge:
                             at=int(message['media'].get('timestamp',0))+self.transcript_offset_ms
                             previous=self.manager.caller_activity.get(self.call_id,{})
                             epoch=previous.get('epoch',0)+(at-previous.get('last_speech_ms',-1000)>400)
-                            self.manager.caller_activity[self.call_id]={'epoch':epoch,'last_speech_ms':at}
+                            self.manager.caller_activity[self.call_id]={**previous,'epoch':epoch,'last_speech_ms':at,
+                                'provider_timing_required':bool(getattr(self.connection,'provider_timing_required',False))}
                     if self.inbound and not self.caller_spoke:
                         speech=has_speech(base64.b64decode(message['media']['payload'],validate=True))
                         self.input_speech_frames=self.input_speech_frames+1 if speech else 0
                         self.caller_spoke=self.input_speech_frames>=3
                     # Forward all codec frames, including silence. GPT-Live is full duplex.
                     await self.connection.session.input_audio.append(audio=message['media']['payload'])
+                    if coverage:=getattr(self.connection,'input_caption_coverage',None):
+                        end=coverage();activity=self.manager.caller_activity.get(self.call_id)
+                        if end is not None and activity is not None:
+                            activity['caption_covered_ms']=max(activity.get('caption_covered_ms',-1),end+self.transcript_offset_ms)
             elif message['event'] == 'mark':
                 if self.pending_marks.pop(message['mark']['name'], None) is not None:
                     self.playback_progress.set()
@@ -321,13 +348,16 @@ class MediaBridge:
                 log_event('twilio_media_stopped', call_id=self.call_id)
                 return
 
-    async def send_live_audio(self, payload: bytes):
+    async def send_live_audio(self, payload: bytes, *, generation=None):
         # Provider deltas can arrive in bursts. Bound Twilio's queue while its
         # independent receive task keeps accepting audio and playback ACKs.
         for offset in range(0, len(payload), PLAYBACK_CHUNK_BYTES):
+            if generation is not None and generation != self.audio_generation:
+                return
             chunk = payload[offset:offset + PLAYBACK_CHUNK_BYTES]
             while sum(self.pending_marks.values()) + len(chunk) > PLAYBACK_LIMIT_BYTES:
-                if self.closing or self.playback_sealed:
+                if (self.closing or self.playback_sealed or
+                        (generation is not None and generation != self.audio_generation)):
                     return
                 self.playback_progress.clear()
                 try:
@@ -336,7 +366,8 @@ class MediaBridge:
                     log_event('twilio_playback_stalled', call_id=self.call_id,
                               pending_bytes=sum(self.pending_marks.values()))
                     raise BridgeFailure('twilio_playback_stalled') from None
-            if self.closing or self.playback_sealed:
+            if (self.closing or self.playback_sealed or
+                    (generation is not None and generation != self.audio_generation)):
                 return
             name = str(self.mark_index)
             self.mark_index += 1
@@ -345,6 +376,13 @@ class MediaBridge:
                                      'media': {'payload': base64.b64encode(chunk).decode()}})
             await self.ws.send_json({'event': 'mark', 'streamSid': self.stream_sid,
                                      'mark': {'name': name}})
+
+    async def clear_live_audio(self):
+        if interrupt := getattr(self.connection, 'interrupt_playback', None):
+            await interrupt(sum(self.pending_marks.values()))
+        await self.ws.send_json({'event':'clear','streamSid':self.stream_sid})
+        self.pending_marks.clear()
+        self.playback_progress.set()
 
     async def receive_live(self):
         async for event in self.connection:
@@ -368,9 +406,18 @@ class MediaBridge:
                 data = {**data, 'event_id': f"{self.stream_sid}:{data['event_id']}",
                         'start_ms': data['start_ms'] + self.transcript_offset_ms,
                         'end_ms': data['end_ms'] + self.transcript_offset_ms}
+                if event.type=='session.input_transcript.delta' and data.get('input_audio_end_ms') is not None:
+                    activity=self.manager.caller_activity.get(self.call_id)
+                    if activity is not None:
+                        activity['caption_covered_ms']=max(activity.get('caption_covered_ms',-1),data['input_audio_end_ms']+self.transcript_offset_ms)
                 self.manager.db.transcript(self.call_id, data)
+                if self.inbound and event.type=='session.input_transcript.delta':
+                    self.manager.memory.observe(self.call_id,self,data.get('delta',''))
                 gateway=getattr(self.manager,'appointments',None)
                 if self.inbound and gateway and self.manager.settings.appointments_enabled:
+                    if event.type=='session.input_transcript.delta' and (verifier:=getattr(self.connection,'caption_verification',None)):
+                        verifier.notify(self)
+                    if event.type=='session.input_transcript.delta':gateway.lookup_intent.notify(self)
                     gateway.voice_workflow.notify(self,caller=event.type=='session.input_transcript.delta')
                 if (event.type == 'session.output_transcript.delta' and data.get('delta')):
                     self.closing_transcript_seen = True
@@ -384,8 +431,12 @@ class MediaBridge:
                     await self.connection.session.commentary.append(
                         delegation_id=data['delegation']['id'],
                         content='No external tools are available. Answer from known information or explain the limitation. To end this call yourself, say Thank you. Goodbye. in English, or Дякую. До побачення. in Ukrainian, then remain silent. Call ending is automatic and needs no delegation.')
+            elif event.type == 'session.output_audio.clear':
+                # Realtime turn detection cancels generation; Twilio's queued audio
+                # must also stop. Truncate model history to acknowledged playback.
+                await self.clear_live_audio()
             elif event.type == 'response.event':
-                if self.manager.settings.live_tools_enabled or self.inbound or self.manager.settings.call_recording_enabled:
+                if self.manager.settings.live_tools_enabled or self.inbound or self.manager.recordings.policy_for(self.call_id)['recording_enabled']:
                     self.tools.handle(data)
             elif event.type == 'error':
                 if optional_compaction_notice(data):
@@ -410,6 +461,9 @@ class MediaBridge:
         from app.calling.inbound import startup_greeting_content
         content=startup_greeting_content(self.manager.settings,self.manager.voice_record(self.call_id))
         if not content: return
+        profile=self.manager.personalities.for_call(self.call_id) or {}
+        if profile.get('greeting'):
+            content+='\nAdapt this opening using the owner greeting guidance, without changing identity, caller language or permissions: '+profile['greeting']
         self.greeting_nudged=True
         try:
             await asyncio.wait_for(self.connection.session.commentary.append(content=(
@@ -429,12 +483,12 @@ class MediaBridge:
         greeting=asyncio.create_task(self.nudge_greeting()) if self.inbound else None
         primary_error = None
         try:
-            record = self.manager.db.get(self.call_id)
+            record = self.manager.voice_record(self.call_id)
             if not self.inbound:
                 instruction = ('Continue the existing call after keypad navigation. Do not repeat your introduction. '
                            'Listen for a human; stay silent during menus and hold music.' if record['transcript'] else
                            ('Listen first. Stay silent during automated menus; introduce yourself when a human answers.'
-                            if record.get('ivr_mode') else greeting_instruction(self.manager.settings)))
+                            if record.get('ivr_mode') else greeting_instruction(self.manager.settings, record)))
                 await self.connection.session.instructions.append(
                     content=instruction, delegation_id=None, event_id='initial_greeting')
             done, _ = await asyncio.wait([receiver, sender, ending, updates], timeout=minutes * 60,
@@ -475,6 +529,38 @@ class MediaBridge:
                               **failure_details(receiver.exception()))
 
 
+@asynccontextmanager
+async def connected_bridge(websocket, manager, call_id, stream_sid):
+    """Common provider, prompts, audio, tools and captions for either transport."""
+    manager.transition(call_id, 'in_progress')
+    startup_started = time.monotonic()
+    from app.calling.transfer import remaining_seconds
+    record = manager.voice_record(call_id)
+    if remaining_seconds(record) <= 0:
+        raise BridgeFailure('call_duration_exhausted')
+    from app.calling.voice_backends import bridge_connection
+    async with bridge_connection(manager.settings, manager, record) as (connection, record, started):
+        manager.db.restore_updates(call_id, record['call_updates'])
+        manager.db.update(call_id, openai_session_id=started['session']['id'], voice_finalized=0)
+        log_event('gpt_live_connected', call_id=call_id)
+        bridge_class = getattr(connection, 'bridge_class', MediaBridge)
+        from app.calling.browser_audio import AudioHub
+        audio_hub = AudioHub(websocket, manager, call_id, stream_sid)
+        bridge = bridge_class(audio_hub, connection, manager, call_id, stream_sid, luna_booking=True)
+        audio_hub.bridge = bridge
+        manager.browser_audio.hubs[call_id] = audio_hub
+        bridge.startup_started = startup_started
+        manager.attach_bridge(call_id, bridge)
+        manager.connecting.discard(call_id)
+        try:
+            yield bridge
+        finally:
+            manager.detach_bridge(call_id, bridge)
+            if manager.browser_audio.hubs.get(call_id) is audio_hub:
+                manager.browser_audio.hubs.pop(call_id, None)
+            await audio_hub.close()
+
+
 async def handle_media(websocket: WebSocket, call_id: str):
     manager = websocket.app.state.manager
     settings = manager.settings
@@ -499,7 +585,7 @@ async def handle_media(websocket: WebSocket, call_id: str):
     except KeyError:
         await websocket.close(code=1008)
         return
-    if record['status'] in TERMINAL or not record['twilio_call_sid']:
+    if record['status'] in TERMINAL or not record['twilio_call_sid'] or manager.browser_tests.get(call_id):
         await websocket.close(code=1008)
         return
     await websocket.accept()
@@ -525,22 +611,11 @@ async def handle_media(websocket: WebSocket, call_id: str):
                     break
                 if message['event'] != 'connected':
                     raise ValueError('Expected Twilio start')
-        manager.transition(call_id, 'in_progress')
-        startup_started=time.monotonic()
         from app.calling.transfer import remaining_seconds
-        if remaining_seconds(manager.db.get(call_id))<=0:
-            raise BridgeFailure('call_duration_exhausted')
-        async with started_connection(settings,manager,record) as (connection, record, started):
-            manager.db.restore_updates(call_id, record['call_updates'])
-            manager.db.update(call_id, openai_session_id=started['session']['id'], voice_finalized=0)
-            log_event('gpt_live_connected', call_id=call_id)
-            bridge = MediaBridge(websocket, connection, manager, call_id, stream_sid,luna_booking=True)
-            bridge.startup_started=startup_started
-            manager.attach_bridge(call_id, bridge)
-            manager.connecting.discard(call_id)
-            claimed=False
+        async with connected_bridge(websocket, manager, call_id, stream_sid) as bridge:
+            claimed = False
             from app.calling.transfer import remaining_seconds
-            await bridge.run(remaining_seconds(record)/60)
+            await bridge.run(remaining_seconds(manager.db.get(call_id))/60)
     except WebSocketDisconnect as exc:
         log_event('twilio_media_disconnected', call_id=call_id, close_code=exc.code)
         if bound and not (bridge and bridge.handoff) and exc.code not in (1000, 1001):

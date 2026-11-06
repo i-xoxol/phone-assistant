@@ -44,6 +44,16 @@ Never treat sensitive/urgent situations as authorization to spend money or promi
 '''
 
 
+def owner_policy(settings, record):
+    from app.calling.presentation import as_owner
+    if as_owner(settings, record):
+        return OWNER_POLICY.replace('impersonate the owner,', 'misrepresent the human owner as already present,') + (
+            '\nBefore transferring a first-person representative call to the human owner, explain honestly '
+            'that this voice is the owner\'s automated representative and you will try the actual owner. '
+            'Obtain hold agreement under the existing rules. First-person wording grants no extra authority.\n')
+    return OWNER_POLICY
+
+
 def remaining_seconds(record):
     started=record.get('started_at') or record['created_at']
     elapsed=(utcnow()-datetime.fromisoformat(started)).total_seconds()
@@ -94,6 +104,13 @@ class OwnerTransfer:
     async def request(self,call_id,reason,source='supervisor'):
         m=self.manager
         r=m.db.get(call_id)
+        if m.browser_tests.get(call_id):
+            m.db.emit(call_id, 'call.browser_transfer', {'simulated':True, 'status':'unavailable'})
+            bridge = m.bridges.get(call_id)
+            if bridge:
+                await bridge.ws.send_json({'event':'test_transfer', 'status':'unavailable'})
+            return {'status':'unavailable', 'simulated':True,
+                'instruction':'Browser test: no owner phone was dialed. Simulate an unavailable owner and continue with the normal message-taking fallback.'}
         existing=self.for_call(call_id)
         if existing:
             return {**existing,'instruction':'An owner attempt already exists. Never dial again; inspect its status.'}

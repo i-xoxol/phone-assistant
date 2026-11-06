@@ -4,6 +4,13 @@
 
 ## Actual UI screenshots
 
+`control-mobile.jpg` shows the current five-section interface and fictional
+contacts. It was captured from the read-only preview below at 390 × 844 with Sam
+Demo expanded. It contains only reserved example numbers, no private database or
+credentials. The older `monitor-*.jpg` images document the earlier single-page
+layout. The preview now loads all control scripts and fictional catalogs; writes
+still return 405, including dialing, editing and AI rule review.
+
 The JPEG monitor images were captured in Chrome from this repository's
 `app/web/index.html`, `app/web/style.css`, and `app/web/app.js`. The isolated preview
 adds a visible documentation-demo banner and supplies fictional JSON and SSE
@@ -26,7 +33,7 @@ message view. The server binds only to localhost. Stop it with Ctrl+C.
 `monitor-desktop.jpg` and `monitor-inbox.jpg` are full-page captures at the normal
 browser width; `monitor-mobile.jpg` is a viewport capture at 390 × 844. The mobile
 capture is scrolled to the conversation and persistent hangup control. No
-redaction or compositing was needed. UI source files are unchanged by this update.
+redaction or compositing was needed.
 
 ## Owner-provided NotebookLM videos
 
@@ -87,3 +94,5 @@ transcript text are published; secondary review material remains private.
 |---|---|---|
 | [Booking MP3](examples/audio/gregory-booking-test.mp3?raw=true) | 107.258750 seconds | `3f61131cd6a48162f173492ae6071ee919d2a83b6562d6a3f2c5f02df62a8afb` |
 | [Verification MP3](examples/audio/gregory-verification-test.mp3?raw=true) | 60.133875 seconds | `a3c257f7796cdc4288039513875f869fb74f9ddb41e06f4c4b5d0a3e88a5b20d` |
+
+The README now includes two original AI-generated conceptual illustrations: `rocky-call-desk.png` and `cat-on-call.png`. They are not screenshots. See [prompts and provenance](assets/illustration-prompts.md) and the exact-byte review manifest.

@@ -17,6 +17,8 @@ class ContactUpdate(BaseModel):
     preferred_language: str | None = Field(default=None,pattern=r'^(?:|[a-z]{2,3}(?:-[A-Z]{2})?)$',max_length=12)
     preferred_name: str | None = Field(default=None,max_length=120)
     conversation_style: Literal['familiar','formal'] | None = None
+    information_level: Literal['general','friends','family'] | None = None
+    routing_score: int | None = Field(default=None,ge=0,le=100)
 
 
 class FactUpdate(BaseModel):
@@ -27,6 +29,7 @@ class FactUpdate(BaseModel):
     text: str = Field(min_length=1, max_length=600)
     source: str = Field(min_length=1, max_length=120)
     expires_at: AwareDatetime
+    audience: Literal['general','friends','family','approval_required'] | None = None
     approved_for_callers: bool
 
     @field_validator('expires_at')
@@ -38,9 +41,9 @@ class FactUpdate(BaseModel):
 
     @field_validator('approved_for_callers')
     @classmethod
-    def disclosure(cls, value):
-        if not value:
-            raise ValueError('Store only facts explicitly approved for unverified callers')
+    def disclosure(cls, value, info):
+        if not value and info.data.get('audience')!='approval_required':
+            raise ValueError('Facts need owner approval for their audience, or must require approval for each call')
         return value
 
     @field_validator('text')
@@ -63,6 +66,13 @@ class CallKnowledge:
                 CREATE TABLE IF NOT EXISTS concierge_contacts (
                     contact_id TEXT PRIMARY KEY, name TEXT NOT NULL,
                     phone_number TEXT NOT NULL, updated_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS contact_disclosure (
+                    contact_id TEXT PRIMARY KEY REFERENCES concierge_contacts(contact_id),
+                    level TEXT NOT NULL DEFAULT 'general' CHECK(level IN ('general','friends','family')),
+                    score INTEGER CHECK(score BETWEEN 0 AND 100));
+                CREATE TABLE IF NOT EXISTS fact_audiences (
+                    fact_id TEXT PRIMARY KEY REFERENCES concierge_facts(fact_id),
+                    audience TEXT NOT NULL CHECK(audience IN ('general','friends','family','approval_required')));
                 CREATE TABLE IF NOT EXISTS concierge_facts (
                     fact_id TEXT PRIMARY KEY, contact_id TEXT REFERENCES concierge_contacts(contact_id),
                     topic TEXT NOT NULL, text TEXT NOT NULL, source TEXT NOT NULL,
@@ -94,9 +104,13 @@ class CallKnowledge:
                 LEFT JOIN concierge_contact_styles s USING(contact_id)
                 WHERE c.phone_number=? ORDER BY c.name LIMIT 3''', (number,))]
 
-    def contact(self, body: ContactUpdate):
+    def contact(self, body: ContactUpdate, unique_number=False):
         with self.db.connect() as conn:
             conn.execute('BEGIN IMMEDIATE')
+            if unique_number and body.phone_number and conn.execute(
+                'SELECT 1 FROM concierge_contacts WHERE phone_number=? AND contact_id<>?',
+                (body.phone_number, str(body.contact_id))).fetchone():
+                raise ValueError('This number is already in the caller book. Edit the existing contact.')
             count = conn.execute('SELECT count(*) FROM concierge_contacts').fetchone()[0]
             exists = conn.execute('SELECT 1 FROM concierge_contacts WHERE contact_id=?', (str(body.contact_id),)).fetchone()
             if count >= 200 and not exists:
@@ -118,6 +132,12 @@ class CallKnowledge:
                 if body.conversation_style is not None:
                     conn.execute('UPDATE concierge_contact_styles SET conversation_style=? WHERE contact_id=?',
                         (body.conversation_style,str(body.contact_id)))
+            if body.information_level is not None or 'routing_score' in body.model_fields_set:
+                conn.execute('INSERT OR IGNORE INTO contact_disclosure(contact_id) VALUES (?)',(str(body.contact_id),))
+                if body.information_level is not None:
+                    conn.execute('UPDATE contact_disclosure SET level=? WHERE contact_id=?',(body.information_level,str(body.contact_id)))
+                if 'routing_score' in body.model_fields_set:
+                    conn.execute('UPDATE contact_disclosure SET score=? WHERE contact_id=?',(body.routing_score,str(body.contact_id)))
         return {'contact_id': str(body.contact_id), 'status': 'saved'}
 
     @staticmethod
@@ -164,12 +184,19 @@ class CallKnowledge:
         with self.db.connect() as conn:
             rows=[dict(row) for row in conn.execute('''SELECT c.name,c.contact_id,c.phone_number,
                 COALESCE(l.language,NULLIF(p.preferred_language,''),'en') AS language,
-                COALESCE(l.source,'owner') AS language_source
+                COALESCE(l.source,'owner') AS language_source,
+                COALESCE(s.preferred_name,'') AS preferred_name,COALESCE(s.conversation_style,'formal') AS conversation_style
                 FROM concierge_contacts c LEFT JOIN concierge_contact_preferences p USING(contact_id)
+                LEFT JOIN concierge_contact_styles s USING(contact_id)
                 LEFT JOIN caller_languages l USING(phone_number)
-                UNION ALL SELECT '',NULL,l.phone_number,l.language,l.source FROM caller_languages l
+                UNION ALL SELECT '',NULL,l.phone_number,l.language,l.source,'','formal' FROM caller_languages l
                 WHERE NOT EXISTS (SELECT 1 FROM concierge_contacts c WHERE c.phone_number=l.phone_number)
                 ORDER BY name,phone_number LIMIT 200''')]
+        with self.db.connect() as conn:
+            levels={r['contact_id']:dict(r) for r in conn.execute('SELECT * FROM contact_disclosure')}
+        for row in rows:
+            group=levels.get(row['contact_id'],{})
+            row.update(information_level=group.get('level','general'),routing_score=group.get('score'))
         return rows
 
     def fact(self, body: FactUpdate):
@@ -186,6 +213,9 @@ class CallKnowledge:
                 'expires_at=excluded.expires_at,updated_at=excluded.updated_at,active=1',
                 (str(body.fact_id),str(body.contact_id) if body.contact_id else None,body.topic.strip(),body.text.strip(),
                  body.source.strip(),body.expires_at.isoformat(),utcnow().isoformat()))
+            if body.audience is not None:
+                conn.execute('INSERT INTO fact_audiences VALUES (?,?) ON CONFLICT(fact_id) DO UPDATE SET audience=excluded.audience',
+                             (str(body.fact_id),body.audience))
         return {'fact_id':str(body.fact_id),'status':'active','expires_at':body.expires_at.isoformat()}
 
     def retire(self, fact_id):
@@ -195,17 +225,23 @@ class CallKnowledge:
                 raise KeyError(fact_id)
         return {'fact_id':fact_id,'status':'retired'}
 
-    def search(self, query='', *, limit=12, caller_number='', owner=False):
+    def search(self, query='', *, limit=12, caller_number='', owner=False,call_id=None):
         """Literal bounded search, not SQL/model-generated queries. Numbers never go to Luna."""
         stamp=utcnow()
         with self.db.connect() as conn:
-            rows=conn.execute('SELECT f.*,c.name AS contact_name,c.phone_number FROM concierge_facts f '
-                'LEFT JOIN concierge_contacts c USING(contact_id) WHERE f.active=1 ORDER BY f.updated_at DESC LIMIT 500').fetchall()
+            rows=[dict(r) for r in conn.execute('SELECT f.*,c.name AS contact_name,c.phone_number,COALESCE(a.audience,\'general\') audience FROM concierge_facts f '
+                'LEFT JOIN concierge_contacts c USING(contact_id) LEFT JOIN fact_audiences a USING(fact_id) '
+                'WHERE f.active=1 ORDER BY f.updated_at DESC LIMIT 500')]
             contacts=[dict(r) for r in conn.execute('''SELECT c.*,COALESCE(p.preferred_language,'') AS preferred_language,
                 COALESCE(s.preferred_name,'') AS preferred_name,COALESCE(s.conversation_style,'formal') AS conversation_style
                 FROM concierge_contacts c LEFT JOIN concierge_contact_preferences p USING(contact_id)
                 LEFT JOIN concierge_contact_styles s USING(contact_id)
                 ORDER BY c.name LIMIT 200''')] if owner else []
+        grant_keys=set()
+        if not owner:
+            policy=getattr(self,'disclosures',None)
+            rows=policy.filter(rows,call_id=call_id,caller_number=caller_number) if policy else [r for r in rows if r['audience']=='general']
+            grant_keys=policy.grants(call_id) if policy else set()
         terms=words(query)
         ranked=[]
         for row in rows:
@@ -216,20 +252,31 @@ class CallKnowledge:
             match=bool(caller_number and row['phone_number']==caller_number)
             name=row['contact_name'] or ''
             if not owner and row['contact_id'] and not (match or words(name) & terms):
-                continue
+                granted=bool(grant_keys and (row['fact_id'],policy.version(row)) in grant_keys)
+                if not granted:continue
             score=len(terms & words(row['topic']+' '+row['text']+' '+name)) + (3 if match else 0)
             if query and score==0:
                 continue
-            fact={k:row[k] for k in ('fact_id','contact_id','contact_name','topic','text','source','expires_at','updated_at')}
+            fact={k:row[k] for k in ('fact_id','contact_id','contact_name','topic','text','source','expires_at','updated_at','audience')}
             ranked.append((score,fact))
+        if not owner and call_id and (guidance := getattr(self, 'contact_guidance', None)):
+            for fact in guidance.facts(call_id):
+                score = len(terms & words(fact['topic'] + ' ' + fact['text'])) + 3
+                if not query or terms & words(fact['topic'] + ' ' + fact['text']):
+                    ranked.append((score, fact))
         ranked.sort(key=lambda x:x[0],reverse=True)
-        result={'facts':[f for _,f in ranked[:limit]],'disclosure':'All facts approved for unverified callers; contact match is not authentication.'}
+        result={'facts':[f for _,f in ranked[:limit]],'disclosure':'Facts filtered by the saved caller audience and exact current-call approvals; personality/test mode grants no additional disclosure.'}
         if owner:
             result['contacts']=contacts
             result['caller_preferences']=self.caller_book()
         return result
 
-    def still_current(self, facts):
+    def still_current(self, facts,call_id=None):
         """Do not inject a fact retired, changed or expired while the model was working."""
         current={f['fact_id']:f for f in self.search(owner=True,limit=500)['facts']}
-        return [f for f in facts if current.get(f['fact_id'])==f]
+        selected=[f for f in facts if f.get('kind') != 'contact_guidance' and current.get(f['fact_id'])==f]
+        if call_id and getattr(self,'disclosures',None):
+            selected = self.disclosures.filter(selected,call_id=call_id)
+        if guidance := getattr(self, 'contact_guidance', None):
+            selected += guidance.still_current([f for f in facts if f.get('kind') == 'contact_guidance'], call_id)
+        return selected

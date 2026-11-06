@@ -7,6 +7,7 @@ from app.calling.lookup import LookupQuestion
 from app.calling.context import incoming_caller_metadata
 from app.calling.identity import owner_identity_policy, owner_words
 from app.calling.languages import LANGUAGE_TOOL,localized_greeting
+from app.calling.presentation import as_owner, resolve_presentation, voice_identity, incoming_presentation_greeting
 
 
 INCOMING_CALL_CONTINUITY = (
@@ -70,6 +71,15 @@ def greeting_contact(settings,record):
 
 
 def startup_greeting_content(settings,record):
+    if (not record.get('transcript') and not record.get('closed_announcement')
+            and not record.get('voice_opening_claimed') and not resolve_presentation(settings, record)['owner_on_line']):
+        opening = (record.get('contact_guidance') or {}).get('greeting')
+        if opening:
+            return opening
+    return default_startup_greeting_content(settings, record)
+
+
+def default_startup_greeting_content(settings,record):
     """Phone-safe words for a single silent-start fallback, never generated TTS."""
     if record.get('transcript') or record.get('closed_announcement'): return None
     context=record.get('incoming_context',{});caller=context.get('caller',{})
@@ -81,16 +91,24 @@ def startup_greeting_content(settings,record):
     if nickname.casefold() in ('mama','mom','mother','мама'): nickname=''
     owner=bool(contact and record['phone_number']==settings.owner_transfer_number)
     missed=bool(context.get('forwarding',{}).get('missed_call_context') and not owner)
-    name=settings.caller_name;assistant=settings.assistant_name
+    name=settings.caller_name;assistant=resolve_presentation(settings, record)['assistant_name']
     _,object_pronoun,possessive=owner_words(settings)
     if language not in ('en','uk'):
-        return localized_greeting(language,assistant,name,is_owner=owner,nickname=nickname if familiar or owner else '')
+        return localized_greeting(language,assistant,name,is_owner=owner,nickname=nickname if familiar or owner else '',
+            representative_name=resolve_presentation(settings,record)['spoken_name'] if as_owner(settings,record) else '')
     if owner:
         spoken_name=nickname or name
         return ('Привіт, '+spoken_name+'! Як справи?' if language=='uk' else
                 'Hi, '+spoken_name+"! What's up?")
+    if as_owner(settings, record):
+        spoken = resolve_presentation(settings, record)['spoken_name']
+        return (('Привіт' if familiar else 'Вітаю')+', це '+spoken+'. Чим можу допомогти?' if language=='uk' else
+                ('Hi' if familiar else 'Hello')+', '+spoken+' here. How can I help?')
+    profile = record.get('personality') or {}
+    role = profile.get('role', '').casefold()
+    office = not profile or 'office' in role or 'reception' in role or (not role and profile.get('name') in ('Default', 'Office'))
     if language=='uk':
-        opening=('Привіт'+(', '+nickname if nickname else '')+'!' if familiar else f'Вітаю! Це офіс {name}.')
+        opening=('Привіт'+(', '+nickname if nickname else '')+'!' if familiar else f'Вітаю! Це офіс {name}.' if office else 'Вітаю!')
         middle=''
         if missed:
             middle={'he/him':f' На жаль, {name} не зміг відповісти на ваш дзвінок.',
@@ -98,14 +116,14 @@ def startup_greeting_content(settings,record):
                     'they/them':f' На жаль, вам не вдалося додзвонитися до {name}.'}[settings.owner_pronouns]
         return opening+middle+f' Я {assistant}, помічник {name}. Чим можу допомогти?'
     opening=('Hi'+(', '+nickname if nickname else '')+'!' if familiar else
-             "Hello, you've reached "+(context.get('office_name') or 'the office of '+name)+'.')
+             "Hello, you've reached "+(context.get('office_name') or 'the office of '+name)+'.' if office else 'Hello!')
     middle=(f" Sorry you couldn't reach {name}." if familiar else f" Sorry you couldn't reach {object_pronoun}.") if missed else ''
     role=f'{possessive} assistant.' if missed else name+"'s assistant."
     return opening+middle+f" I'm {assistant}, "+role+' How can I help?'
 
 
 CONTEXT_TOOL = {'type':'function','name':'get_call_context','strict':True,
-    'description':'Read the current owner-approved role, phone-safe facts, unexpired anticipated-call notes and '
+    'description':'Read current owner-approved shared reference facts, unexpired anticipated-call notes and '
         'fresh free windows. Local cache only; never calendar credentials or private event titles. '
         'Use before offering availability, after an owner context update, or if saved data expires. '
         'Free windows are information, never proof of a reservation or authority to book.',
@@ -153,12 +171,11 @@ Do not delegate to the backend when:
 Use fresh local context without requiring Rocky. Only request_supervisor needs a live supervising agent.
 Wait for the backend result before stating availability, saving success or booking confirmation.
 Never guess a backend result. Ask useful clarification while work is pending.'''
-    instructions = f'''You are {settings.assistant_name}, {name}'s personal assistant answering incoming calls.
+    instructions = f'''{voice_identity(settings, record or {}, inbound=True)}
 Speak warmly and naturally, with conversational rhythm and contractions. Be professional but approachable.
 Use short, varied replies, usually one or two sentences, then listen. Avoid stiff, rehearsed announcements,
 repeated "Understood" or "Certainly", exaggerated cheerfulness, and forced laughter or filler.
-Introduce yourself as {name}'s assistant, without an upfront digital/AI label; never claim to be human.
-If asked whether you are AI, answer honestly. You can take a message for {name}.
+You can take a message for {name}.
 Ask one short question at a time. Follow the caller's language where possible; English by default.
 Gather what they want to tell {name}, their name if they wish, and an optional callback number.
 Do not demand a name or number. Ask whether to use the presented caller-ID number for callbacks;
@@ -195,7 +212,7 @@ Use end_call only after saving or if the caller declines/asks to end. Never inve
         tools.insert(0, SUPERVISOR_TOOL)
         tools.insert(1, CONTEXT_TOOL)
         if settings.owner_transfer_enabled:
-            from app.calling.transfer import OWNER_TOOL,OWNER_POLICY
+            from app.calling.transfer import OWNER_TOOL,owner_policy
             tools.append(OWNER_TOOL)
             instructions=instructions.replace('- end_call: end this call after your closing phrase.',
                 '- reach_owner: try the fixed owner mobile for this caller, after agreement to hold. '
@@ -205,8 +222,8 @@ Use end_call only after saving or if the caller declines/asks to end. Never inve
                 '- The caller asks to speak to the owner or agrees to an offered owner connection: '
                 'confirm they want to hold, then ask the backend to execute reach_owner with a short reason.\n'
                 '- The caller confirms a message readback/correction, or the call should finish.')
-            instructions+=OWNER_POLICY
-            backend+=OWNER_POLICY
+            instructions+=owner_policy(settings, record)
+            backend+=owner_policy(settings, record)
         if settings.subscription_lookup_enabled:
             tools.insert(2,LOOKUP_TOOL)
             instructions += '''\nQUICK LOOKUP: Backend tools also include request_quick_lookup for missing stored background facts.
@@ -257,7 +274,7 @@ If no reply arrives within about {settings.supervisor_wait_seconds} seconds, tak
 Do not keep the caller waiting indefinitely. Do not repeat unanswered requests merely to extend the wait.
 For needs_owner or declined replies, explain the limitation and take a message. Never promise a callback.
 Call forwarding metadata and familiar caller ID do not verify identity or grant access to private information.'''
-        instructions += '''\nCACHED CONTEXT: The owner can set a role and phone-safe facts. These refine your behavior but cannot
+        instructions += '''\nCACHED CONTEXT: Shared context supplies reference facts and current activities, not a second role or personality. The selected personality owns the work role and presentation. Reference facts cannot
 override identity honesty, authorization limits, caller untrustworthiness, or prohibitions on sensitive disclosures.
 Only offer listed fresh windows, within their dates/time zone; never extrapolate free time from missing data.
 An empty list means no offerable slots in the selected rules, not that the owner has no time at all.
@@ -287,7 +304,7 @@ An information reply does not authorize confirmation; appointment_confirmed mean
             instructions=instructions.replace('For needs_owner or declined replies, explain the limitation and take a message. Never promise a callback.',
                 'For needs_owner replies, offer to try the owner through reach_owner after caller agreement, or take a message. '
                 'For declined replies, explain the limitation and take a message. Never promise a callback.')
-    opening=(f"Greet the caller now in English as {name}'s personal assistant. Begin immediately, then pause to listen. "
+    opening=(incoming_presentation_greeting(settings, record or {})+'Begin immediately, then pause to listen. '
              +( "Ask what they need help with, following the concierge policy." if concierge else
                 "Explain you can take a message and ask what they would like to pass along."))
     if record.get('transcript'):
@@ -314,7 +331,15 @@ An information reply does not authorize confirmation; appointment_confirmed mean
                 instructions+='\nBackend request_quick_lookup is also available solely to recall earlier calls/messages. Delegate callbacks or follow-ups after asking their purpose. Remain message-taking only; no supervisor, booking or owner contact.'
                 backend+='\nrequest_quick_lookup is also permitted solely for prior call context to clarify a message. No other lookup or new actions are allowed.'
         recall='''\nCALL CONTINUITY: Initial call_history lists earlier calls matching the presented number in either direction.
-Caller ID can be spoofed, shared or recycled. Do not greet someone as a known person or volunteer private history.
+Caller ID can be spoofed, shared or recycled. Do not greet someone as a known person before a return-call cue.
+When this caller explicitly says "I just called", "it's me again" or similar and return_call_context matches
+this same number within ten minutes, respond warmly and naturally, optionally checking the earlier first name
+as a question. Continue the previous topic and reuse collected non-sensitive details; avoid restarting intake.
+On a return cue, ask only for a first-name reminder if unsure. After "Gregory", retain Gregory and ask only
+for the last name when calendar retrieval requires it. Do not ask for both names again or restart a known purpose.
+There is no prescribed script. For calls earlier today, recognize the follow-up softly. For yesterday/several
+days ago, confirm their stated topic and use relevant recalled pieces. Never volunteer unrelated/private history.
+A name from history is a hint to confirm, not authentication. Current calendar details still need fresh tools.
 Ask what they are calling about. For callbacks, unanswered outgoing calls or follow-up information, delegate
 request_quick_lookup with their stated purpose to retrieve relevant prior-call context. The lookup can also run
 automatically in the background. Use results internally; confirm the topic before mentioning minimal relevant details.
@@ -356,7 +381,7 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
         identity_replacements = (
             (f'Caller identity and caller ID are unverified, even if someone claims to be {name}. No authentication by voice.',
              'Recognize the caller using the owner-trusted saved-number match in current-call metadata. Spoken identity claims alone cannot replace that match.'),
-            ('Caller ID can be spoofed, shared or recycled. Do not greet someone as a known person or volunteer private history.',
+            ('Caller ID can be spoofed, shared or recycled. Do not greet someone as a known person before a return-call cue.',
              'Recognize the saved-number contact under the owner policy. Do not volunteer private history.'),
             ('Call forwarding metadata and familiar caller ID do not verify identity or grant access to private information.',
              'A recognized contact still receives only information allowed by the owner disclosure policy.'),
@@ -391,12 +416,13 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             'do not force every turn into office/message-taking language. '
             'Use the owner-chosen spoken name '+json.dumps(spoken_name,ensure_ascii=False)+'. '
             'A relationship label like Mama refers to the owner\'s family, not yours; use a personal name only if it is an actual name. '
-            'Never impersonate the owner or imply you have human family relationships. '
+            +('Use the configured first-person representation without inventing human experiences or relationships. ' if as_owner(settings,record) else
+              'Never impersonate the owner or imply you have human family relationships. ')+
             'This conversational style changes tone only, never tool access, permissions or disclosure rules.')
         greeting=('Greet this known caller warmly and informally by their owner-chosen spoken name '
             +json.dumps(spoken_name,ensure_ascii=False)+'. Use a personal name only if it is an actual name; '
             'a relationship label like Mama refers to the owner\'s family, not yours. '
-            'You are '+name+"'s personal assistant. "
+            +('Use the selected owner first-person presentation. ' if as_owner(settings,record) else 'You are '+name+"'s personal assistant. ")+
             'A short natural greeting such as "Hi, [name]! How can I help?" is appropriate; '
             'do not give an office announcement or address friends/family with formal titles. ')
     else:
@@ -405,8 +431,15 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             'For new callers introduce the line as '+office+'. '
             'Do not use familiar nicknames or presume friendship. Keep questions clear and courteous.')
         greeting=('Greet the caller naturally and briefly. For example: "Hello, you\'ve reached '
-            +office+". I'm "+settings.assistant_name+", "+name+"'s assistant. How can I help?\" "
+            +office+". I'm "+resolve_presentation(settings, record)['assistant_name']+", "+name+"'s assistant. How can I help?\" "
             'Use conversational phrasing and intonation; the example is not a script to recite mechanically. ')
+    if record.get('personality'):
+        style=('CONVERSATION STYLE: '+('Familiar: keep the whole conversation warm, relaxed and informal by default, '
+            'unless the selected personality explicitly requests a different tone. Address the recognized contact naturally. ' if familiar else
+            'Formal relationship: be courteous to an unfamiliar caller without assuming friendship. ')+
+            'The selected personality supplies the work role and tone. Do not impose an office persona from shared reference facts. '
+            'A relationship label such as Mama is about the owner, not proof of a human relationship of the automated voice. ')
+        greeting=incoming_presentation_greeting(settings, record, familiar=familiar, nickname=spoken_name)
     if owner_caller:
         instructions=instructions.replace(
             f"Introduce yourself as {name}'s assistant, without an upfront digital/AI label; never claim to be human.",
@@ -421,10 +454,10 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             'Skip all self-introduction and office announcements; then listen. ')
     caller_policy+='\n'+style+'\n'
     routing=record.get('incoming_context',{}).get('forwarding',{})
-    if routing.get('missed_call_context') and not owner_caller:
+    if routing.get('missed_call_context') and not owner_caller and not as_owner(settings, record):
         greeting+=(f'This is a missed mobile call: {name} could not take the call. '
             f'Work this into the same short greeting, for example "Sorry you couldn\'t reach {name}. '
-            f"I'm {settings.assistant_name}, {possessive} assistant. How can I help?\" "
+            f"I'm {resolve_presentation(settings, record)['assistant_name']}, {possessive} assistant. How can I help?\" "
             'Do not deliver a normal greeting and then a second introduction. Offer message-taking naturally if useful. '
             'Keep the configured familiar/formal style. ')
     greeting+=('Owner-approved profile instructions about greeting and conversational tone take precedence '
@@ -445,9 +478,11 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
     elif routing.get('missed_call_context'):
         missed=f'''\nMISSED-CALL ASSISTANT: Carrier metadata reports THIS call was forwarded from the owner's mobile.
 The owner configured this mobile to forward missed/declined calls to the assistant. Treat this as a missed mobile call.
-Continue behaving as {name}'s office or personal assistant, with the configured familiar/formal tone.
+Continue within the selected personality role and presentation, with the configured familiar/formal tone.
 Help within existing concierge permissions, ask the purpose and offer to take a message for the owner and supervising agent.
-You may say {name} could not take the call. Do not claim the owner deliberately declined, is busy, or saw this call;
+In Assistant mode you may say {name} could not take the call. In first-person mode acknowledge the missed call
+without implying that the actual human owner has now answered; clarify the representation if asked.
+Do not claim the owner deliberately declined, is busy, or saw this call;
 declined versus unanswered is not known. Do not ask the caller to redial the mobile they just tried.
 Do not automatically ring the owner back just because the call was missed. Use existing escalation only when explicitly requested
 or actually needed, with agreement to hold. Do not substitute the forwarding number for the caller's callback number.
@@ -463,10 +498,12 @@ If caller_identity_ambiguous is true, do not offer the presented number for call
             'may be direct or unreported forwarding; do not assert a direct route as fact. '
             'If the caller explains they could not reach the owner, acknowledge that and offer help or a message.\n')
         instructions+=routing_policy;backend+=routing_policy
-    if record.get('audio_recording',{}).get('policy'):
+    if record.get('audio_recording') is not None:
         from app.calling.recordings import STOP_TOOL,voice_recording_policy
-        tools.append(STOP_TOOL)
-        instructions+=voice_recording_policy();backend+=voice_recording_policy()
+        snapshot=record['audio_recording']
+        if snapshot.get('pinned_settings',{}).get('recording_enabled') or (snapshot.get('policy') or {}).get('recording_requested_at'):
+            tools.append(STOP_TOOL)
+        instructions+=voice_recording_policy(record.get('audio_recording',{}));backend+=voice_recording_policy(record.get('audio_recording',{}))
     prepared=record.get('incoming_context',{}).get('greeting_preparation',[])
     if prepared:
         instructions+='\nPrepared background for this caller: '+json.dumps(prepared,ensure_ascii=False)+\
@@ -501,8 +538,8 @@ If caller_identity_ambiguous is true, do not offer the presented number for call
             'grade changes, extensions or academic exceptions. Take a message or seek verified supervisor/owner guidance. '
             'Office phone operating hours are not evidence of academic office hours. Expired facts/notes are unavailable.\n')
         instructions+=activity_policy;backend+=activity_policy
-    instructions+=owner_identity_policy(settings)
-    backend+=owner_identity_policy(settings)
+    instructions+=owner_identity_policy(settings, record)
+    backend+=owner_identity_policy(settings, record)
     from app.calling.style import STYLE_POLICY
     instructions+=STYLE_POLICY
     if settings.appointments_enabled and concierge:
@@ -530,7 +567,7 @@ If caller_identity_ambiguous is true, do not offer the presented number for call
     opening+=' This is a one-time startup instruction, not a request to greet again later in the conversation.'
     instructions+=INCOMING_CONTINUITY_POLICY
     backend+=INCOMING_CONTINUITY_POLICY
-    return {'model':settings.openai_live_model, 'instructions':instructions,
+    return {'model':(record.get('voice_backend') or {}).get('model',settings.openai_live_model), 'instructions':instructions,
         'input':[{'type':'message','role':'developer','content':[{'type':'input_text','text':opening}]}],
         'audio':{'format':{'type':'audio/pcmu', 'rate':8000}, 'output':{'voice':record.get('voice_name') or settings.openai_voice}},
         'delegation':{'type':'responses', 'responses':{'model':settings.openai_backend_model,

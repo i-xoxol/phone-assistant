@@ -59,6 +59,20 @@ def create_app(settings: Settings | None = None, *, gateway=None) -> FastAPI:
     app.include_router(hours_router)
     app.include_router(live_router)
     app.include_router(recording_router)
+    from app.api.phone_controls import router as controls_router
+    app.include_router(controls_router)
+    from app.api.personalities import router as personalities_router
+    app.include_router(personalities_router)
+    from app.api.outbound import router as outbound_router
+    app.include_router(outbound_router)
+    from app.api.control import router as control_router
+    app.include_router(control_router)
+    from app.api.browser_tests import router as browser_tests_router
+    app.include_router(browser_tests_router)
+    from app.api.browser_audio import router as browser_audio_router
+    app.include_router(browser_audio_router)
+    from app.api.contact_guidance import router as contact_guidance_router
+    app.include_router(contact_guidance_router)
 
     @app.api_route('/', methods=['GET', 'HEAD'], include_in_schema=False)
     def portal():

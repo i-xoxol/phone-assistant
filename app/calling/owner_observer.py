@@ -243,7 +243,7 @@ class TransferObserver:
     def facts(self,row):
         record=self.m.db.get(row['call_id'])
         # Only already-curated phone-safe information; no private calendar credentials.
-        facts=self.m.knowledge.search('',caller_number=record['phone_number'])['facts']
+        facts=self.m.knowledge.search('',caller_number=record['phone_number'],call_id=record['call_id'])['facts']
         result=[{'fact_id':f['fact_id'],'text':f['text'],'expires_at':f['expires_at']} for f in facts]
         # Earlier speech is useful for internal recall, never a ready-made spoken coaching answer.
         context=self.m.context.for_call(record)

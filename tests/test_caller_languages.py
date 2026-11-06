@@ -106,7 +106,7 @@ def test_private_portal_book_and_language_change_require_auth_and_csrf(service):
     csrf=client.app.state.web_auth.session(token)['csrf']
     assert client.put(path,json=body,headers={'Origin':'https://example.test','X-CSRF-Token':csrf}).status_code==200
     assert client.get('/live/bootstrap').json()['caller_book'][0]['language']=='es'
-    assert 'Caller book' in client.get('/live').text
+    assert 'Phone book' in client.get('/live').text
     assert client.put(path,json={**body,'language':'not a language'},
         headers={'Origin':'https://example.test','X-CSRF-Token':csrf}).status_code==422
 

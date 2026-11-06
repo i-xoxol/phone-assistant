@@ -24,29 +24,69 @@ def notice_text(settings,language):
     return 'This call is being recorded.'
 
 
-def voice_recording_policy():
-    return '''\nCALL RECORDING: The application played a recording notice before this session and requested audio recording.
-Do not repeat it to the same person as your greeting. If an outgoing call first reached an automated menu,
-briefly inform the human when they answer that the call is recorded, before discussing the objective.
-Inform any new human participant who did not hear the opening notice. Actual recording availability is reported separately; do not invent success.
-Backend tools also include stop_call_recording. Delegate immediately if any participant asks not to be recorded.
-Wait for verified success before saying recording stopped. Never restart recording or promise deletion of earlier audio.
-This stops audio recording only. Live conversation still uses speech processing and captions; if the caller declines
-that too, end politely. Do not promise a completely unprocessed call. No new action authority is granted.\n'''
+def voice_recording_policy(snapshot=None):
+    snapshot=snapshot or {}
+    policy=snapshot.get('policy') or {}
+    pinned=snapshot.get('pinned_settings') or {}
+    requested=bool(policy.get('recording_requested_at'))
+    noticed=bool(policy.get('notice_issued_at'))
+    state=('Audio recording is OFF; no audio recording was requested.' if not requested else
+           'Audio recording was requested; a request is not proof of recorded audio.')
+    if policy.get('stop_confirmed_at'):
+        state=('Audio recording was stopped after a participant opt-out. Never restart it.' if requested else
+               'Audio recording is OFF; a participant opt-out has been saved. Never start it.')
+    elif policy.get('stop_requested_at'): state='A recording opt-out is pending; do not claim recording stopped until confirmed.'
+    state+=(' The application issued the cached notice once before this session; do not repeat it.' if noticed else
+            ' The application did NOT play a recording notice. Never claim that it did.')
+    state+=(' Recording announcements are disabled. Do not add one to your greeting or later introductions.'
+            if not pinned.get('announcement_enabled',True) else
+            ' Do not announce recording when recording is disabled or unavailable.')
+    return '\nCALL RECORDING: '+state+\
+        ' If asked directly, answer truthfully from this actual state, including uncertainty. '\
+        'If stop_call_recording is listed, delegate immediately when any participant opts out. '\
+        'Never restart recording or promise deletion of previous audio. Live speech processing and captions '\
+        'are separate and remain enabled. If the participant declines those too, end politely. '\
+        'No new disclosure or action authority is granted.\n'
 
 
 class CallRecordings:
     def __init__(self,manager):
         self.m=manager
+        from app.calling.recording_settings import RecordingSettings
+        self.preferences=RecordingSettings(manager)
         with manager.db.connect() as db:
             db.executescript('''CREATE TABLE IF NOT EXISTS call_recording_policy (
-                call_id TEXT PRIMARY KEY REFERENCES calls(call_id),notice_issued_at TEXT NOT NULL,
-                stop_requested_at TEXT,stop_confirmed_at TEXT,error_code TEXT);
+                call_id TEXT PRIMARY KEY REFERENCES calls(call_id),notice_issued_at TEXT,
+                stop_requested_at TEXT,stop_confirmed_at TEXT,error_code TEXT,
+                recording_requested_at TEXT,notice_asset TEXT);
                 CREATE TABLE IF NOT EXISTS call_recordings (
                 recording_id TEXT PRIMARY KEY,call_id TEXT NOT NULL REFERENCES calls(call_id),
                 status TEXT NOT NULL CHECK(status IN ('in-progress','completed','absent')),
                 duration_seconds INTEGER,channels INTEGER,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS call_recordings_call ON call_recordings(call_id);''')
+            columns={r['name']:r for r in db.execute('PRAGMA table_info(call_recording_policy)')}
+            if 'recording_requested_at' not in columns:
+                # Legacy NOT NULL notice times cannot represent silent recording.
+                # Rebuild only the policy table in one transaction, preserving all opt-outs.
+                db.execute('BEGIN IMMEDIATE')
+                db.execute('ALTER TABLE call_recording_policy RENAME TO legacy_recording_policy')
+                db.execute('''CREATE TABLE call_recording_policy (
+                    call_id TEXT PRIMARY KEY REFERENCES calls(call_id),notice_issued_at TEXT,
+                    stop_requested_at TEXT,stop_confirmed_at TEXT,error_code TEXT,
+                    recording_requested_at TEXT,notice_asset TEXT)''')
+                db.execute('''INSERT INTO call_recording_policy
+                    SELECT call_id,notice_issued_at,stop_requested_at,stop_confirmed_at,error_code,
+                    notice_issued_at,NULL FROM legacy_recording_policy''')
+                db.execute('DROP TABLE legacy_recording_policy')
+            # Also recognize notices issued by an older source after a source-only rollback.
+            db.execute('UPDATE call_recording_policy SET recording_requested_at=notice_issued_at '
+                'WHERE recording_requested_at IS NULL AND notice_issued_at IS NOT NULL')
+
+    def pin(self,cid):
+        return self.preferences.pin(cid)
+
+    def policy_for(self,cid):
+        return self.pin(cid)
 
     def snapshot(self,cid):
         self.m.db.get(cid)
@@ -57,37 +97,47 @@ class CallRecordings:
         for r in rows:
             r['audio_path']='/calls/'+cid+'/recordings/'+r['recording_id']+'/audio'
             r['monitor_audio_path']='/live/calls/'+cid+'/recordings/'+r['recording_id']+'/audio'
-        return {'enabled_for_new_calls':self.m.settings.call_recording_enabled,
+        return {'enabled_for_new_calls':self.preferences.get()['recording_enabled'],
+            'pinned_settings':self.policy_for(cid),
             'policy':dict(policy) if policy else None,'recordings':rows,
+            'recording_requested':bool(policy and policy['recording_requested_at']),
+            'notice_issued':bool(policy and policy['notice_issued_at']),
+            'notice_playback':'requested_unconfirmed' if policy and policy['notice_issued_at'] else 'not_requested',
             'last_event':json.loads(event['payload']) if event else None,
             'note':'Audio remains private at Twilio. Requested is not proof a recording exists. Audio is available after completion.'}
 
     def initial_twiml(self,cid,xml):
-        if not self.m.settings.call_recording_enabled: return xml
+        choice=self.policy_for(cid)
+        if not choice['recording_enabled']: return xml
         record=self.m.db.get(cid)
         if record['status'] in TERMINAL: return xml
-        # A valid cached notice is required before enabling recording. Never
-        # silently start recording if notice preparation was missed.
+        with self.m.db.connect() as db:
+            if db.execute('SELECT 1 FROM call_recording_policy WHERE call_id=?',(cid,)).fetchone(): return xml
         language='en'
         if record['direction']=='inbound':
             number='' if self.m.routing.get(record)['caller_identity_ambiguous'] else record['phone_number']
             language='uk' if self.m.knowledge.language_for(number,cid)['language'].split('-')[0]=='uk' else 'en'
-        path=self.m.settings.recording_notice_directory/(language+'.wav')
-        if not path.is_file():
-            # Keep the phone service usable, but never record silently.
-            self.m.db.emit(cid,'call.recording',{'state':'unavailable','error_code':'notice_not_prepared'})
-            return xml
+        # Disabled notices do not need a clip. Enabled notices fail closed for recording.
+        asset=None
+        if choice['announcement_enabled']:
+            asset=self.preferences.cache_current(language)
+            if not asset:
+                self.m.db.emit(cid,'call.recording',{'state':'unavailable','error_code':'notice_not_prepared'})
+                return xml
+        stamp=utcnow().isoformat()
         with self.m.db.connect() as db:
-            claimed=db.execute('INSERT OR IGNORE INTO call_recording_policy(call_id,notice_issued_at) VALUES (?,?)',
-                (cid,utcnow().isoformat())).rowcount
-        if not claimed: return xml  # No repeated recording or notice on redirects/retries.
+            claimed=db.execute('''INSERT OR IGNORE INTO call_recording_policy
+                (call_id,notice_issued_at,recording_requested_at,notice_asset) VALUES (?,?,?,?)''',
+                (cid,stamp if asset else None,stamp,asset)).rowcount
+        if not claimed: return xml
         response=VoiceResponse()
-        response.play(self.m.settings.public_url('/twilio/recording-notice/'+language+'.wav'))
+        if asset:
+            response.play(self.m.settings.public_url('/twilio/recording-notice/'+language+'.wav')+'?v='+asset)
         response.start().recording(name='call-'+cid,channels='dual',track='both',trim='do-not-trim',
             recording_status_callback=self.m.settings.public_url('/twilio/recordings/'+cid),
             recording_status_callback_method='POST',recording_status_callback_event='in-progress completed absent')
         root=ET.fromstring(str(response));root.extend(list(ET.fromstring(xml)))
-        self.m.db.emit(cid,'call.recording',{'state':'requested'})
+        self.m.db.emit(cid,'call.recording',{'state':'requested','notice_issued':bool(asset)})
         return ET.tostring(root,encoding='unicode')
 
     def callback(self,cid,form):
@@ -104,7 +154,7 @@ class CallRecordings:
         stamp=utcnow().isoformat()
         with self.m.db.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            if not db.execute('SELECT 1 FROM call_recording_policy WHERE call_id=?',(cid,)).fetchone():
+            if not db.execute('SELECT 1 FROM call_recording_policy WHERE recording_requested_at IS NOT NULL AND call_id=?',(cid,)).fetchone():
                 raise ValueError('Recording was not requested for this call')
             old=db.execute('SELECT call_id,status FROM call_recordings WHERE recording_id=?',(rid,)).fetchone()
             if old and old['call_id']!=cid: raise ValueError('Recording binding mismatch')
@@ -117,9 +167,15 @@ class CallRecordings:
 
     async def stop(self,cid):
         record=self.m.db.get(cid)
+        if self.m.browser_tests.get(cid):
+            return {'status':'not_recording', 'instruction':'Browser tests do not create telephone recordings. Live captions remain enabled.'}
         with self.m.db.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
             policy=db.execute('SELECT * FROM call_recording_policy WHERE call_id=?',(cid,)).fetchone()
-            if not policy: return {'status':'not_recording'}
+            if not policy:
+                db.execute('INSERT OR IGNORE INTO call_recording_policy(call_id,stop_requested_at,stop_confirmed_at) VALUES (?,?,?)',
+                    (cid,utcnow().isoformat(),utcnow().isoformat()))
+                return {'status':'not_recording'}
             if policy['stop_confirmed_at']: return {'status':'stopped'}
             claimed=db.execute('UPDATE call_recording_policy SET stop_requested_at=? WHERE call_id=? AND stop_requested_at IS NULL',
                 (utcnow().isoformat(),cid)).rowcount

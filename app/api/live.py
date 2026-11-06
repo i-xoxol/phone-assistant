@@ -9,12 +9,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse, JSONResponse
 from app.calling.voices import VoiceChoice
+from app.calling.voice_backends import BackendChoice
 from app.calling.transfer import ReachOwner
 from app.web_auth import SESSION_SECONDS
 from app.calling.languages import OwnerLanguage
+from app.api.portal_access import portal_access, PUBLIC_COOKIE
 
 router = APIRouter()
-COOKIE = '__Host-phone-owner'
+COOKIE = PUBLIC_COOKIE
 ASSETS = Path(__file__).resolve().parents[1] / 'web'
 # Normal HTML form POSTs need their real Origin. `no-referrer` makes it "null"
 # in browsers; same-origin still withholds referrers from external destinations.
@@ -24,14 +26,16 @@ HEADERS = {'Cache-Control': 'no-store', 'Referrer-Policy': 'same-origin',
 
 
 def owner(request: Request):
-    session = request.app.state.web_auth.session(request.cookies.get(COOKIE, ''))
+    access = portal_access(request)
+    session = request.app.state.web_auth.session(request.cookies.get(access.cookie, ''),
+        origin=access.origin, allow_legacy=not access.private)
     if not session:
         raise HTTPException(401, 'Sign in at /live/login')
     return session
 
 
 def same_origin(request: Request):
-    if request.headers.get('origin') != request.app.state.settings.public_base_url:
+    if request.headers.get('origin') != portal_access(request).origin:
         raise HTTPException(403, 'Same-origin request required')
 
 
@@ -42,7 +46,7 @@ def write_owner(request: Request, session=Depends(owner)):
     return session
 
 
-def login_page(error='', password_enabled=False, status_code=200):
+def login_page(error='', password_enabled=False, status_code=200, private=False):
     password_form = '''<form method="post" action="/live/password/login" id="password-login">
     <label for="username">Username</label>
     <input id="username" name="username" value="owner" autocomplete="username" readonly>
@@ -54,7 +58,8 @@ def login_page(error='', password_enabled=False, status_code=200):
     <meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign in · Phone Assistant</title>
     <link rel="stylesheet" href="/live/style.css"><script src="/live/login.js" defer></script></head><body><main class="login">
     <p class="eyebrow">PHONE ASSISTANT</p><h1>Your calls. In view.</h1>
-    <p>Sign in to watch live transcripts, listen to recordings and manage calls.</p>''' + password_form + '''
+    <p>Sign in to watch live transcripts, listen to recordings and manage calls.</p>''' +
+    ('<p class="muted">Private connection · Use your existing owner password. This browser signs in separately from the public HTTPS site.</p>' if private else '') + password_form + '''
     <p class="error" id="login-error" role="status">''' + html.escape(error) + '''</p>
     <details class="pairing-login"''' + ('' if password_enabled else ' open') + '''><summary>Use a one-time pairing code</summary>
     <form method="post" action="/live/login" id="pairing-login"><label for="code">One-time pairing code</label>
@@ -66,12 +71,17 @@ def login_page(error='', password_enabled=False, status_code=200):
 
 @router.get('/live/login')
 def login(request: Request):
-    return login_page(password_enabled=request.app.state.web_auth.password_enabled())
+    return login_page(password_enabled=request.app.state.web_auth.password_enabled(), private=portal_access(request).private)
 
 
-def session_cookie(response, token):
-    response.set_cookie(COOKIE, token, max_age=SESSION_SECONDS, secure=True,
-                        httponly=True, samesite='strict', path='/')
+def session_cookie(response, token, request):
+    access = portal_access(request)
+    try:
+        request.app.state.web_auth.bind_session_origin(token, access.origin)
+    except ValueError:
+        raise HTTPException(401, 'Sign in again') from None
+    response.set_cookie(access.cookie, token, max_age=SESSION_SECONDS, secure=access.secure,
+                        httponly=True, samesite='strict', path=access.cookie_path)
     return response
 
 
@@ -83,8 +93,15 @@ async def password_login(request: Request):
         str(form.get('username', '')), str(form.get('password', '')))
     if not token:
         return login_page('Sign-in unsuccessful. Check your details or try again in a minute.',
-                          password_enabled=request.app.state.web_auth.password_enabled(), status_code=400)
-    return session_cookie(RedirectResponse('/live', status_code=303, headers=HEADERS), token)
+                          password_enabled=request.app.state.web_auth.password_enabled(), status_code=400,
+                          private=portal_access(request).private)
+    return session_cookie(RedirectResponse('/live', status_code=303, headers=HEADERS), token, request)
+
+
+@router.get('/live/password/login')
+def password_login_link(request: Request):
+    portal_access(request)
+    return RedirectResponse('/live/login', status_code=303, headers=HEADERS)
 
 
 @router.post('/live/login')
@@ -96,14 +113,14 @@ async def pair(request: Request):
         if 'application/json' in request.headers.get('accept', ''):
             return JSONResponse({'detail': 'Code invalid, expired, or already used. Request a fresh code.'}, status_code=400, headers=HEADERS)
         return login_page('Code invalid, expired, or already used. Request a fresh code.',
-                          password_enabled=request.app.state.web_auth.password_enabled())
+                          password_enabled=request.app.state.web_auth.password_enabled(), private=portal_access(request).private)
     if 'application/json' in request.headers.get('accept', ''):
         response = JSONResponse({'authenticated': True}, headers=HEADERS)
     else:
         session = request.app.state.web_auth.session(token)
         page = (ASSETS / 'index.html').read_text(encoding='utf-8').replace('{{csrf}}', html.escape(session['csrf']))
         response = HTMLResponse(page, headers=HEADERS)
-    return session_cookie(response, token)
+    return session_cookie(response, token, request)
 
 
 def password_page(session, enabled, error='', saved=False, status_code=200):
@@ -148,11 +165,11 @@ async def save_password(request: Request, session=Depends(owner)):
     try:
         if form.get('new_password') != form.get('confirm_password'):
             raise ValueError('The new passwords do not match.')
-        token = await asyncio.to_thread(auth.set_password, request.cookies.get(COOKIE, ''),
+        token = await asyncio.to_thread(auth.set_password, request.cookies.get(portal_access(request).cookie, ''),
             str(form.get('current_password', '')), str(form.get('new_password', '')))
     except ValueError as exc:
         return password_page(session, auth.password_enabled(), error=str(exc), status_code=400)
-    return session_cookie(RedirectResponse('/live/password?saved=true', status_code=303, headers=HEADERS), token)
+    return session_cookie(RedirectResponse('/live/password?saved=true', status_code=303, headers=HEADERS), token, request)
 
 
 @router.get('/live')
@@ -175,6 +192,11 @@ def javascript():
     return Response((ASSETS / 'app.js').read_text(encoding='utf-8'), media_type='application/javascript', headers=HEADERS)
 
 
+@router.get('/live/personalities.js')
+def personalities_script():
+    return Response((ASSETS / 'personalities.js').read_text(encoding='utf-8'), media_type='application/javascript', headers=HEADERS)
+
+
 @router.get('/live/login.js')
 def login_javascript():
     return Response((ASSETS / 'login.js').read_text(encoding='utf-8'), media_type='application/javascript', headers=HEADERS)
@@ -189,12 +211,19 @@ def bootstrap(request: Request, call_id: UUID | None = None):
     availability=saved['availability']
     try:
         return {'cursor': cursor, 'calls': db.recent_calls(), 'call': request.app.state.manager.result(str(call_id)) if call_id else None,
-                'caller_book':request.app.state.manager.knowledge.caller_book(),
+                'personalities':request.app.state.manager.personalities.catalog(),
+                'caller_book':[{**row,'personality_id':request.app.state.manager.personalities.assignment(row['contact_id']) if row['contact_id'] else None,
+                    'test_mode':request.app.state.manager.test_contacts.get(row['contact_id']) if row['contact_id'] else None,
+                    'answering':request.app.state.manager.voice_backends.contact_result(row['contact_id']) if row['contact_id'] else None}
+                    for row in request.app.state.manager.knowledge.caller_book()],
+                'recording_settings':request.app.state.manager.recordings.preferences.get(),
+                'recording_notices':request.app.state.manager.recordings.preferences.notices(),
                 'models':{'voice':request.app.state.settings.openai_live_model,
                     'backend':request.app.state.settings.openai_backend_model,
                     'backend_fast':request.app.state.settings.openai_backend_fast,
                     'subscription_lookup_fast':request.app.state.settings.subscription_lookup_fast},
                 'voice':request.app.state.manager.voices.get(),
+                'voice_backend':request.app.state.manager.voice_backends.get(),
                 'owner_contact_enabled':request.app.state.settings.owner_transfer_enabled and bool(request.app.state.settings.owner_transfer_number),
                 'inbox':db.list_messages(limit=20),
                 'requests':db.list_supervisor_requests(call_id=str(call_id) if call_id else None),
@@ -216,9 +245,12 @@ async def stream_events(manager, cursor: int, expires: float, request=None):
         while time.time() < expires:
             if request and await request.is_disconnected():
                 return
-            if request and not request.app.state.web_auth.session(request.cookies.get(COOKIE, '')):
-                yield 'event: expired\ndata: {}\n\n'
-                return
+            if request:
+                try:
+                    owner(request)
+                except HTTPException:
+                    yield 'event: expired\ndata: {}\n\n'
+                    return
             ready.clear()  # Clear BEFORE read to avoid losing a wakeup during SQLite replay.
             events = manager.db.events_after(cursor)
             if events:
@@ -267,6 +299,12 @@ def choose_voice(body:VoiceChoice,request:Request):
     return request.app.state.manager.voices.set(body)
 
 
+@router.put('/live/voice/backend',dependencies=[Depends(write_owner)])
+def choose_voice_backend(body:BackendChoice,request:Request):
+    try: return request.app.state.manager.voice_backends.set(body)
+    except ValueError as exc: raise HTTPException(409,str(exc)) from None
+
+
 @router.post('/live/calls/{call_id}/reach-owner',dependencies=[Depends(write_owner)])
 async def reach_owner(call_id:UUID,body:ReachOwner,request:Request):
     try: return await request.app.state.manager.transfer.request(str(call_id),body.reason,source='owner_monitor')
@@ -276,9 +314,10 @@ async def reach_owner(call_id:UUID,body:ReachOwner,request:Request):
 
 @router.post('/live/logout', dependencies=[Depends(write_owner)])
 def logout(request: Request):
-    request.app.state.web_auth.logout(request.cookies.get(COOKIE, ''))
+    access = portal_access(request)
+    request.app.state.web_auth.logout(request.cookies.get(access.cookie, ''))
     response = Response(status_code=204, headers=HEADERS)
-    response.delete_cookie(COOKIE, path='/', secure=True, httponly=True, samesite='strict')
+    response.delete_cookie(access.cookie, path=access.cookie_path, secure=access.secure, httponly=True, samesite='strict')
     return response
 
 

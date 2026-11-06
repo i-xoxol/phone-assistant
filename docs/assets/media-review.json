@@ -1,6 +1,6 @@
 {
   "review_date": "2026-10-23",
-  "review_scope": "Visual review of every published JPEG for private caller data, numbers, calendar/student/family details, credentials, and secrets. UI captures use fictional fixtures; video frames are conceptual art. A hash is provenance, not an automated privacy guarantee.",
+  "review_scope": "Visual review of each published image for private data and credentials. Screenshots use fictional fixtures; generated illustrations and video frames are conceptual art. Exact hashes record reviewed bytes, not an automated privacy guarantee.",
   "images": {
     "monitor-desktop.jpg": {
       "sha256": "ad3ae8cf37d0a9c1a4d176e394fb1d677a2921836ddf3555b963942c813fe08d",
@@ -26,6 +26,24 @@
       "sha256": "d5cc017a3242e60bc5694958147eb6da6956d4684293775315bf6915af1c54d3",
       "privacy_reviewed": true,
       "source": "Frame at 2 seconds of the owner-provided NotebookLM cinematic overview; conceptual video art."
+    },
+    "control-mobile.jpg": {
+      "sha256": "7c37937e37b8aee978108285a5c7135cfa595f267639a4d4216701a2e086962c",
+      "privacy_reviewed": true,
+      "review_date": "2026-11-05",
+      "source": "Actual current repository UI, read-only localhost documentation preview, fictional contacts in reserved example range; 390 by 844 mobile viewport. Visually reviewed, no private records or credentials."
+    },
+    "rocky-call-desk.png": {
+      "sha256": "85a108429ed6be8f1783a473c320188d4ea501144a70bb34f3a4e4425de06f67",
+      "privacy_reviewed": true,
+      "review_date": "2026-11-06",
+      "source": "Original AI-generated conceptual clay and paper illustration, built-in imagegen; visually reviewed, no private records, names, numbers, credentials or real screenshots. Prompts: illustration-prompts.md."
+    },
+    "cat-on-call.png": {
+      "sha256": "10ceceb2fc87b69fd804dcd1eaff20b141c8902616bdd9850e75320282bf5c69",
+      "privacy_reviewed": true,
+      "review_date": "2026-11-06",
+      "source": "Original AI-generated conceptual clay and paper illustration, built-in imagegen; visually reviewed, no private records, names, numbers, credentials or real screenshots. Prompts: illustration-prompts.md."
     }
   }
 }

@@ -20,8 +20,9 @@ class IncomingRouting:
     def get(self,record,*,for_voice=False):
         with self.m.db.connect() as db:
             row=db.execute('SELECT * FROM incoming_routing WHERE call_id=?',(record['call_id'],)).fetchone()
-        reported=bool(row and row['forwarding_reported'])
-        number=row['forwarded_from'] if row else ''
+        preview=record.get('_preview_forwarding')
+        reported=bool(preview.get('detected')) if preview else bool(row and row['forwarding_reported'])
+        number=preview.get('forwarded_from','') if preview else row['forwarded_from'] if row else ''
         inbound=record.get('direction')=='inbound'
         owner_mobile=self.m.settings.owner_transfer_number
         via_owner=bool(inbound and reported and number and owner_mobile and number==owner_mobile)

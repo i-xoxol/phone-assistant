@@ -19,8 +19,8 @@ class GreetingPreparation:
     def candidates(self,record):
         m=self.m
         if m.routing.get(record,for_voice=True)['caller_identity_ambiguous']:
-            return m.knowledge.search('')['facts'] if record['inbound_mode']=='concierge' else []
-        result=m.knowledge.search('',caller_number=record['phone_number'])['facts'] if record['inbound_mode']=='concierge' else []
+            return m.knowledge.search('',call_id=record['call_id'])['facts'] if record['inbound_mode']=='concierge' else []
+        result=m.knowledge.search('',caller_number=record['phone_number'],call_id=record['call_id'])['facts'] if record['inbound_mode']=='concierge' else []
         result+=m.memory.candidates(record)
         matches=m.knowledge.matching_contacts(record['phone_number'])
         if len(matches)==1 and m.settings.caller_id_trust_saved_contacts:

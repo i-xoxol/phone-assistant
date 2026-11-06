@@ -16,6 +16,8 @@ from app.mcp.events import PhoneEvents, Subscribe, advertise_events
 from app.calling.context import ProfileUpdate, AvailabilityUpdate, AvailabilitySlot, ExpectedCallUpdate
 from app.calling.knowledge import ContactUpdate, FactUpdate
 from app.calling.languages import OwnerLanguage
+from app.calling.personalities import PersonalityUpdate
+from app.calling.contact_testing import ContactTestChoice
 from app.calling.voices import VoiceChoice
 from app.calling.hours import HoursSettings,HoursWindow
 from pydantic import AwareDatetime
@@ -118,6 +120,12 @@ def create_mcp(manager):
     events = PhoneEvents(manager, provider)
     manager.mcp_events = events
     instructions=INSTRUCTIONS
+    instructions+='''\nVOICE BACKENDS: get_voice_backend reads the selected telephone provider. At the owner's request,
+set_voice_backend selects OpenAI GPT-Live, configured ElevenLabs Realtime, or verified Gemini Live for new calls.
+place_call.voice_provider overrides one call without changing that default. Active/queued calls retain
+their pinned provider/model/voice. OpenAI delegates to its Responses backend; ElevenLabs calls the
+same server-checked functions directly. Neither mode requires this chat to poll before voice tools act.
+Private owner coaching and subscription Luna lookup models are separate and unchanged.\n'''
     if settings.appointments_enabled:
         instructions=instructions.replace('The live voice model has no calendar access.',
             'The live voice backend has only the listed bounded appointment tools, gated by server policy.')
@@ -140,6 +148,12 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
     write = ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True)
 
     @mcp.tool(annotations=read)
+    def get_system_prompts() -> dict:
+        """Read application-owned system prompt templates, including calendar/Luna/coaching. No providers or calls."""
+        from app.calling.prompt_catalog import system_prompt_catalog
+        return system_prompt_catalog()
+
+    @mcp.tool(annotations=read)
     def get_voice_settings() -> dict:
         """Read the current default and documented GPT-Live voice choices. Changes apply to new calls."""
         return manager.voices.get()
@@ -149,6 +163,70 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
         """Set a documented GPT-Live voice for new calls. Does not change any active conversation.
         Read get_voice_settings for API names and regional/presentation descriptions. No cloning/import."""
         return manager.voices.set(VoiceChoice(voice=voice))
+
+    @mcp.tool(annotations=read)
+    def get_voice_backend() -> dict:
+        """Read configured voice providers and the default for new calls. No keys are returned.
+        OpenAI GPT-Live, ElevenLabs Realtime and verified Gemini Live retain the same server tool permissions.
+        The owner-only private coaching model is separate and unchanged."""
+        return manager.voice_backends.get()
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False))
+    def set_voice_backend(provider:Literal['openai','elevenlabs','gemini'],
+                          elevenlabs_model:Literal['eleven_realtime_v1_mini','eleven_realtime_v1_max']|None=None,
+                          model:str|None=None,voice:str|None=None) -> dict:
+        """Set the default provider for NEW calls when the owner requests a change.
+        ElevenLabs requires a server-configured API key and voice; costs are billed by that provider.
+        This never switches an active call, changes tool authorization or starts a call.
+        Model/voice must come from get_voice_backend. Omitted values retain provider-local defaults.
+        set_voice remains compatible and changes only the default OpenAI voice."""
+        from app.calling.voice_backends import BackendChoice
+        return manager.voice_backends.set(BackendChoice(provider=provider,elevenlabs_model=elevenlabs_model,model=model,voice=voice))
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=True))
+    async def refresh_voice_library() -> dict:
+        """Refresh the bounded ElevenLabs saved-library voice catalog on explicit owner request. No speech or calls."""
+        return await manager.voice_backends.refresh_elevenlabs()
+
+    @mcp.tool(annotations=read)
+    def get_contact_voice(contact_id:UUID) -> dict:
+        """Read saved contact answering overrides and effective inheritance. No change to authorization."""
+        return manager.voice_backends.contact_result(contact_id)
+
+    @mcp.tool(annotations=read)
+    def get_recording_settings() -> dict:
+        """Read separate audio recording/announcement preferences for NEW calls; captions remain separate."""
+        return manager.recordings.preferences.get()
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False))
+    def set_recording_settings(recording_enabled:bool,announcement_enabled:bool) -> dict:
+        """Save owner-requested NEW-call recording policy. Never restarts a participant opt-out or deletes audio."""
+        from app.calling.recording_settings import RecordingChoice
+        return manager.recordings.preferences.set(RecordingChoice(recording_enabled=recording_enabled,announcement_enabled=announcement_enabled))
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False))
+    def set_contact_voice(contact_id:UUID,provider:Literal['openai','elevenlabs','gemini']|None=None,
+                          model:str|None=None,voice:str|None=None) -> dict:
+        """Set a saved contact's answering preferences for NEW calls. Null provider/model/voice means inheritance.
+        Provider must be explicit to override model/voice; use get_voice_backend's capability registry.
+        This changes neither contact identity nor disclosure, booking, lookup or coaching authorization."""
+        from app.calling.voice_backends import ContactVoiceChoice
+        return manager.voice_backends.set_contact(contact_id,ContactVoiceChoice(provider=provider,model=model,voice=voice))
+
+    @mcp.tool(annotations=read)
+    def get_recording_notices() -> dict:
+        """Read active/draft English and Ukrainian notice metadata. No speech generation."""
+        return {'notices':manager.recordings.preferences.notices()}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=True))
+    async def generate_recording_notice(language:Literal['en','uk'],text:Annotated[str,Field(min_length=1,max_length=180)]) -> dict:
+        """Only on explicit owner request: generate a charged draft clip. Preview in portal before activation."""
+        return {'notices':await manager.recordings.preferences.generate(language,text)}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False))
+    def activate_recording_notice(language:Literal['en','uk'],asset_id:str) -> dict:
+        """Activate the exact owner-reviewed current draft. Previous clips remain available for pinned calls."""
+        return {'notices':manager.recordings.preferences.activate(language,asset_id)}
 
     @mcp.tool(annotations=write)
     async def reach_owner(call_id:UUID,reason:Annotated[str,Field(min_length=1,max_length=200)]) -> dict:
@@ -192,6 +270,8 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
             office_hours=office_hours,owner_reach_hours=owner_reach_hours,outside_hours=outside_hours))
 
     knowledge_write=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False)
+    from app.mcp.control import register_control_tools
+    register_control_tools(mcp,manager,read,write)
 
     @mcp.tool(annotations=read)
     def get_call_recordings(call_id:UUID) -> dict:
@@ -215,6 +295,63 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
         Live speech processing/captions remain on. If the provider stop fails, the service ends the call."""
         return await manager.recordings.stop(str(call_id))
 
+    @mcp.tool(annotations=knowledge_write)
+    def set_contact_test_mode(contact_id:UUID,enabled:bool,instructions:str='') -> dict:
+        """Owner-only test contact switch for NEW calls from one exact saved number. Optional test instructions.
+        Cooperative general conversation and harmless supported tests; never a credential, spending, booking,
+        privacy or tool-permission override. Cannot be enabled by the telephone caller. No call is placed."""
+        return manager.test_contacts.set(contact_id,ContactTestChoice(enabled=enabled,instructions=instructions))
+
+    @mcp.tool(annotations=read)
+    def get_contact_test_mode(contact_id:UUID) -> dict:
+        """Read one saved contact's test flag, custom/default instructions and new-call applicability."""
+        with manager.db.connect() as c:
+            if not c.execute('SELECT 1 FROM concierge_contacts WHERE contact_id=?',(str(contact_id),)).fetchone():
+                raise ValueError('Contact not found')
+        return manager.test_contacts.get(contact_id)
+
+    @mcp.tool(annotations=read)
+    def get_call_personalities() -> dict:
+        """Read editable owner personality profiles and the default. Separate from model/voice and permissions."""
+        return manager.personalities.catalog()
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False))
+    def set_call_personality(name:str,instructions:str='',context:str='',greeting:str='',
+            personality_id:UUID|None=None,revision:int|None=None,role:str|None=None,
+            presentation_mode:Literal['assistant','owner_first_person']|None=None,spoken_name:str|None=None,
+            outbound_greeting:str|None=None) -> dict:
+        """Create or update an owner-requested personality for NEW calls. Read profiles first; updates require
+        the current revision to avoid losing another editor's changes. Context must be approved for callers.
+        Speak as assistant or authorized owner_first_person, with an optional spoken_name (independent of voice).
+        Omitted role/presentation/name/outbound_greeting preserve saved values. Honest identity answers remain required.
+        Tone/greeting preferences never grant new tools, booking, spending or disclosure permission."""
+        return manager.personalities.save(PersonalityUpdate(name=name,instructions=instructions,context=context,
+            greeting=greeting,revision=revision,role=role,presentation_mode=presentation_mode,
+            spoken_name=spoken_name,outbound_greeting=outbound_greeting),personality_id)
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False))
+    def duplicate_call_personality(personality_id:UUID,name:str) -> dict:
+        """Copy a saved profile into an independent editable personality. Does not change default or assignments."""
+        return manager.personalities.duplicate(personality_id,name)
+
+    @mcp.tool(annotations=knowledge_write)
+    def set_default_call_personality(personality_id:UUID) -> dict:
+        """Set the default for new calls whose contact inherits Default. Does not alter active calls."""
+        return manager.personalities.set_default(personality_id)
+
+    @mcp.tool(annotations=knowledge_write)
+    def set_contact_personality(contact_id:UUID,personality_id:UUID|None=None) -> dict:
+        """Assign a saved personality to one curated contact; null restores Default inheritance for new calls."""
+        return manager.personalities.assign(contact_id,personality_id)
+
+    @mcp.tool(annotations=read)
+    def get_call_instructions(call_id:UUID|None=None,contact_id:UUID|None=None,personality_id:UUID|None=None) -> dict:
+        """Private read-only assembled application instructions/context preview; never dials or calls providers.
+        A call uses its pinned personality/voice plus current context, not a historical prompt recording.
+        Contact/no arguments previews a new incoming call. Optional personality is preview-only."""
+        from app.api.personalities import Preview,prompt_preview
+        return prompt_preview(manager,Preview(call_id=call_id,contact_id=contact_id,personality_id=personality_id))
+
     @mcp.tool(annotations=read)
     def search_call_knowledge(query:Annotated[str,Field(max_length=600)]='') -> dict:
         """Read/search the owner's curated contacts and current phone-safe facts (max 50).
@@ -224,18 +361,25 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
 
     @mcp.tool(annotations=knowledge_write)
     async def set_call_contact(name:str,phone_number:str='',contact_id:UUID|None=None,preferred_language:str|None=None,
-                         preferred_name:str|None=None,conversation_style:Literal['familiar','formal']|None=None) -> dict:
+                         preferred_name:str|None=None,conversation_style:Literal['familiar','formal']|None=None,
+                         information_level:Literal['general','friends','family']|None=None,routing_score:int|None=None,
+                         clear_routing_score:bool=False) -> dict:
         """Create/update a curated contact. Optional E.164 number follows the owner's saved-number recognition policy.
         preferred_language can be uk for Ukrainian, en for English, or another language code. Omit to preserve; empty clears.
         preferred_name is the spoken name/nickname; empty clears it. conversation_style=familiar uses warm first-name
         conversation for friends/family/the owner; formal uses a professional office greeting (default).
         Omit these preferences to preserve them. A saved business contact is not automatically a friend.
-        Reuse contact_id for updates/retries. This record grants no disclosure rights or access to private tools.
+        information_level selects the owner-approved general/friends/family information audience; omit to preserve.
+        routing_score is optional OWNER-assigned data (0-100) for routing rules, never a caller identity/security score.
+        clear_routing_score removes it. These settings never grant tool/financial authority.
+        Reuse contact_id for updates/retries.
         Store phone-safe facts separately using set_call_fact; do not import a whole address book."""
         data={'name':name,'phone_number':phone_number}
         if preferred_language is not None: data['preferred_language']=preferred_language
         if preferred_name is not None: data['preferred_name']=preferred_name
         if conversation_style is not None: data['conversation_style']=conversation_style
+        if information_level is not None:data['information_level']=information_level
+        if routing_score is not None or clear_routing_score:data['routing_score']=None if clear_routing_score else routing_score
         if contact_id: data['contact_id']=contact_id
         result=manager.knowledge.contact(ContactUpdate(**data))
         if preferred_language is not None and phone_number:
@@ -255,15 +399,19 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
 
     @mcp.tool(annotations=knowledge_write)
     async def set_call_fact(topic:str,text:str,source:str,expires_at:AwareDatetime,
-            approved_for_callers:bool,contact_id:UUID|None=None,fact_id:UUID|None=None) -> dict:
+            approved_for_callers:bool,contact_id:UUID|None=None,fact_id:UUID|None=None,
+            audience:Literal['general','friends','family','approval_required']|None=None) -> dict:
         """Store/update one verified phone-safe fact, max 250 UTF-8 bytes, expiry within ninety days.
-        approved_for_callers must be true: this may be disclosed to ANY unverified caller mentioning the contact/topic.
+        Audience general is approved for all callers; friends/family require the saved caller audience.
+        approval_required withholds the value until exact-fact owner approval for that call.
+        approved_for_callers must be true unless audience=approval_required. Omitted audience preserves existing scope.
         No secrets, private schedules, sensitive identifiers, payment authority or booking confirmations.
         Optional contact_id scopes retrieval, not authentication. Cite how you verified it; never infer missing data.
         Reuse fact_id for updates/retries; retire obsolete facts. Dynamic calendar windows belong in set_inbound_availability."""
         data={'topic':topic,'text':text,'source':source,'expires_at':expires_at,
               'approved_for_callers':approved_for_callers,'contact_id':contact_id}
         if fact_id: data['fact_id']=fact_id
+        if audience is not None:data['audience']=audience
         result=manager.knowledge.fact(FactUpdate(**data))
         manager.observer.realtime.context_changed()
         return result
@@ -277,13 +425,17 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
 
     @mcp.tool(annotations=read)
     def get_inbound_context() -> dict:
-        """Read owner-maintained role, phone-safe facts, availability freshness and anticipated-call notes.
+        """Read phone-safe facts, availability freshness and anticipated-call notes.
+        The role field is a deprecated compatibility alias for the migrated Default personality, not a global role.
         Caller ID matching is not authentication. Stale slots are withheld from the live assistant."""
-        return manager.context.snapshot()
+        return {**manager.context.snapshot(), 'legacy_role_personality_id': manager.personalities.catalog()['legacy_role_personality_id'],
+                'role_policy': 'Deprecated alias: update the migrated profile only; use set_call_personality for role/presentation.'}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=True,openWorldHint=False))
-    async def set_inbound_context(role:str,context:str) -> dict:
-        """Replace the default incoming concierge role and phone-safe facts. This content can be disclosed
+    async def set_inbound_context(context:str,role:str|None=None) -> dict:
+        """Replace shared phone-safe facts. Optional legacy role changes update only the migrated Default profile
+        for future calls, never the identity of active calls or other personalities. Prefer set_call_personality.
+        This content can be disclosed
         to unverified incoming callers. No secrets, full calendars or new financial/contractual authority.
         Keep friends/evening rules here; use expected-call notes for specific approved exceptions.
         Persists across calls/restarts and prompts active incoming sessions to fetch the latest context."""
@@ -367,14 +519,24 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
     @mcp.tool(annotations=write)
     async def place_call(phone_number: str, objective: str, recipient: str = '', context: str = '',
                          constraints: list[str] | None = None, max_duration_minutes: int = 15,
-                         ivr_mode: bool = False) -> dict:
+                         ivr_mode: bool = False, voice_provider:Literal['openai','elevenlabs','gemini']|None=None,
+                         voice_model:str|None=None,voice:str|None=None,
+                         caller_id:Literal['default','twilio','mobile']='default',request_id:UUID|None=None,
+                         personality_id:UUID|None=None) -> dict:
         """Place one real outbound call on the owner's behalf. Requires the owner's explicit request; costs money.
         Use E.164 number. Set ivr_mode for business menus. Returns voice_tools_enabled:
         if true, spoken keypad requests execute inside the live voice backend; do not instruct it to
-        wait for ChatGPT or send duplicate digits. Returns immediately; do not duplicate/retry blindly."""
+        wait for ChatGPT or send duplicate digits. caller_id chooses the saved default, office Twilio number,
+        or the owner's configured verified mobile. Mobile is reverified before dialing; arbitrary caller IDs are not accepted.
+        Supply request_id for idempotency: repeating the same ID/brief returns the original call, never redials.
+        personality_id selects one saved profile for this call, overriding routing/contact/default personality.
+        Read get_call_personalities first. A profile with presentation_mode=owner_first_person uses the owner's
+        configured name and I/my wording while keeping honest answers to direct identity questions and all permissions.
+        Returns immediately; do not duplicate/retry blindly."""
         return await manager.place_call(CallRequest(phone_number=phone_number, recipient=recipient,
             objective=objective, context=context, constraints=constraints or [],
-            max_duration_minutes=max_duration_minutes, ivr_mode=ivr_mode))
+            max_duration_minutes=max_duration_minutes, ivr_mode=ivr_mode,voice_provider=voice_provider,voice_model=voice_model,voice=voice,
+            caller_id=caller_id,request_id=request_id,personality_id=personality_id))
 
     @mcp.tool(annotations=read)
     async def get_call_status(call_id: UUID) -> dict:

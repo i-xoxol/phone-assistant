@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
+from ipaddress import ip_address
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,10 +16,23 @@ class Settings(BaseSettings):
     twilio_account_sid: str = ''
     twilio_auth_token: SecretStr = SecretStr('')
     twilio_phone_number: str = ''
+    outbound_mobile_number: str = Field(default='',pattern=r'^(?:|\+[1-9][0-9]{7,14})$')
     public_base_url: str = ''
+    private_portal_origin: str = ''
+    private_portal_trusted_peers: list[str] = Field(default_factory=list)
     local_api_token: SecretStr = SecretStr('')
     openai_live_model: str = 'gpt-live-1'
     openai_voice: str = 'marin'
+    voice_provider: Literal['openai', 'elevenlabs', 'gemini'] = 'openai'
+    elevenlabs_api_key: SecretStr = SecretStr('')
+    elevenlabs_realtime_model: Literal['eleven_realtime_v1_mini', 'eleven_realtime_v1_max'] = 'eleven_realtime_v1_mini'
+    elevenlabs_voice_id: str = Field(default='', max_length=100, pattern=r'^[A-Za-z0-9_-]*$')
+    elevenlabs_voice_label: str = Field(default='Custom voice', max_length=100)
+    elevenlabs_permitted_voices: list[dict[str,str]] = Field(default_factory=list)
+    gemini_api_key: SecretStr = SecretStr('')
+    gemini_live_verified: bool = False
+    gemini_voice: str = 'Kore'
+    recording_announcement_enabled: bool = True
     caller_name: str = 'Alex'
     owner_pronouns: Literal['he/him', 'she/her', 'they/them'] = 'they/them'
     assistant_name: str = Field(default='Assistant',min_length=1,max_length=80)
@@ -30,6 +44,8 @@ class Settings(BaseSettings):
     openai_backend_model: str = 'gpt-6-luna'
     openai_backend_fast: bool = False
     subscription_lookup_fast: bool = False
+    rules_review_model: str = ''
+    rules_review_timeout_seconds: int = Field(default=60,ge=10,le=120)
     webhook_url: str = ''
     webhook_secret: SecretStr = SecretStr('')
     inbound_enabled: bool = False
@@ -104,6 +120,43 @@ class Settings(BaseSettings):
         if self.openai_backend_model == 'gpt-6-luna':
             options['reasoning'] = {'effort': 'low'}
         return options
+
+    @field_validator('private_portal_origin')
+    @classmethod
+    def private_origin(cls, value):
+        if not value:
+            return ''
+        try:
+            parts = urlsplit(value)
+            address = ip_address(parts.hostname or '')
+            valid = (parts.scheme in ('http', 'https') and address.is_private and not address.is_unspecified
+                     and not address.is_multicast and not parts.username and not parts.password
+                     and parts.path in ('', '/') and not parts.query and not parts.fragment)
+            _ = parts.port
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ValueError('PRIVATE_PORTAL_ORIGIN must be one exact private-IP HTTP(S) origin')
+        return value.rstrip('/')
+
+    @field_validator('private_portal_trusted_peers')
+    @classmethod
+    def private_peers(cls, values):
+        for value in values:
+            try:
+                address = ip_address(value)
+                valid = address.is_private and not address.is_unspecified and not address.is_multicast
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError('Private portal peers must be exact private IP addresses, not subnets or hostnames')
+        return list(dict.fromkeys(values))
+
+    @model_validator(mode='after')
+    def private_portal_boundary(self):
+        if bool(self.private_portal_origin) != bool(self.private_portal_trusted_peers):
+            raise ValueError('Configure both PRIVATE_PORTAL_ORIGIN and its exact trusted peer addresses')
+        return self
 
     @field_validator('webhook_url')
     @classmethod

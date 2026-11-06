@@ -299,8 +299,10 @@ def test_authenticated_mcp2_discovery_events_and_legacy_tools(tmp_path):
         assert discover['result']['supportedVersions'] == [VERSION]
         assert discover['result']['capabilities']['events'] == {}
         assert [e['name'] for e in rpc('events/list').json()['result']['events']] == [
-            'transcript.delta','call.status','call.incoming','call.supervisor_requested','message.received','call.recording']
-        assert len(rpc('tools/list').json()['result']['tools']) == 33
+            'transcript.delta','call.status','call.incoming','call.supervisor_requested','call.approval_requested','message.received','call.recording']
+        listed = rpc('tools/list').json()['result']['tools']
+        assert len(listed) == 62
+        assert {'get_voice_backend','set_voice_backend'} <= {t['name'] for t in listed}
         cid = app.state.manager.db.create(CallRequest(phone_number='+12025550101', objective='Protocol test'))
         challenges = []
         async def receiver(url, body, headers):
