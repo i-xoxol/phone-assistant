@@ -95,4 +95,4 @@ transcript text are published; secondary review material remains private.
 | [Booking MP3](examples/audio/gregory-booking-test.mp3?raw=true) | 107.258750 seconds | `3f61131cd6a48162f173492ae6071ee919d2a83b6562d6a3f2c5f02df62a8afb` |
 | [Verification MP3](examples/audio/gregory-verification-test.mp3?raw=true) | 60.133875 seconds | `a3c257f7796cdc4288039513875f869fb74f9ddb41e06f4c4b5d0a3e88a5b20d` |
 
-The README now includes two original AI-generated conceptual illustrations: `rocky-call-desk.png` and `cat-on-call.png`. They are not screenshots. See [prompts and provenance](assets/illustration-prompts.md) and the exact-byte review manifest.
+The README uses two owner-provided Gemini concept illustrations: `rocky-call-desk-gemini.jpg` and `cat-on-call-gemini.jpg`, copied unchanged from the received JPEG attachments. They are not screenshots. The earlier Codex PNG artwork is retained. See [selection, prompts and provenance](assets/illustration-prompts.md) and the exact-byte review manifest.

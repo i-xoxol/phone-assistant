@@ -44,6 +44,18 @@
       "privacy_reviewed": true,
       "review_date": "2026-11-06",
       "source": "Original AI-generated conceptual clay and paper illustration, built-in imagegen; visually reviewed, no private records, names, numbers, credentials or real screenshots. Prompts: illustration-prompts.md."
+    },
+    "rocky-call-desk-gemini.jpg": {
+      "sha256": "b51be3df550bb071f7bf4c4b8aa49b007197bc100297083cf86b901f5f3b3089",
+      "privacy_reviewed": true,
+      "review_date": "2026-11-06",
+      "source": "Owner-provided Gemini illustration attached in conversation, copied from the received JPEG without editing. Wide banner: Rocky at a call desk, a server and a human browser participant with a supervising robot. Visually reviewed; conceptual art, no real caller data, credentials or product screenshots."
+    },
+    "cat-on-call-gemini.jpg": {
+      "sha256": "cddd02c3269ccf0d09af277de5f1d8d9b4607fe0e6585d1bf9348be45edde6e4",
+      "privacy_reviewed": true,
+      "review_date": "2026-11-06",
+      "source": "Owner-provided Gemini illustration attached in conversation, copied from the received JPEG without editing. Companion scene: Rocky and a human at a laptop, with an orange cat on an oversized telephone keypad. Visually reviewed; conceptual art, no real caller data, credentials or product screenshots."
     }
   }
 }
