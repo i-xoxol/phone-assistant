@@ -86,7 +86,8 @@ class Preview(BaseHTTPRequestHandler):
             html = html.replace('{{csrf}}', 'documentation-demo')
             banner = '<aside style="text-align:center;padding:10px;background:#173c36;color:#effaf0;font:12px system-ui">Documentation demo · Fictional data · No phone connection</aside>'
             self.send(html.replace('<body>', '<body>' + banner), 'text/html; charset=utf-8')
-        elif url.path in ('/live/app.js', '/live/style.css','/live/personalities.js','/live/outbound.js','/live/control.js'):
+        elif url.path in ('/live/app.js', '/live/style.css','/live/personalities.js','/live/outbound.js','/live/control.js',
+                          '/live/browser-tests.js','/live/browser-audio-worklet.js'):
             path = ROOT / 'app/web' / url.path.rsplit('/', 1)[-1]
             kind = 'text/javascript' if path.suffix == '.js' else 'text/css'
             self.send(path.read_bytes(), kind + '; charset=utf-8')

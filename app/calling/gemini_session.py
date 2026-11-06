@@ -237,7 +237,7 @@ class GeminiConnection:
 async def started_gemini_connection(settings,manager,record,selection):
     if not settings.gemini_api_key.get_secret_value() or not settings.gemini_live_verified:
         raise BridgeFailure('gemini_not_verified')
-    if record.get('direction')=='inbound':
+    if record.get('direction')=='inbound' and not record.get('browser_test'):
         try:
             await asyncio.wait_for(manager.gateway.prepare_inbound(record['twilio_call_sid'],record['max_duration_minutes']),5)
         except Exception as exc: raise BridgeFailure('incoming_duration_limit_failed') from exc

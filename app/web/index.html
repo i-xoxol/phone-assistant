@@ -2,13 +2,17 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="csrf-token" content="{{csrf}}"><title>Phone Assistant · Call monitor</title>
-<link rel="stylesheet" href="/live/style.css"><script src="/live/app.js" defer></script><script src="/live/personalities.js" defer></script><script src="/live/outbound.js" defer></script><script src="/live/control.js" defer></script></head>
+<link rel="stylesheet" href="/live/style.css"><script src="/live/app.js" defer></script><script src="/live/personalities.js" defer></script><script src="/live/outbound.js" defer></script><script src="/live/control.js" defer></script><script src="/live/browser-tests.js" defer></script></head>
 <body><main class="monitor">
 <header><div><p class="eyebrow">PHONE ASSISTANT</p><h1 id="pageTitle">Calls</h1></div></header>
 <section id="pairing" class="pairing" hidden><strong>Open this same site on your mobile, then enter the code below.</strong>
 <p>Enter this code within 15 minutes. It works once.</p><code id="pairCode"></code>
 <p><button id="closePairing" class="quiet">Close</button></p></section>
 <div id="connection" class="connection" role="status"><span class="dot"></span><span id="connectionText">Connecting to event stream…</span></div>
+<section id="browserSession" class="browser-session" hidden aria-label="Browser test audio">
+<strong>Browser test · no phone call</strong><p id="browserSessionState" role="status"></p>
+<div class="message-actions"><button id="browserMute" type="button" class="quiet" aria-pressed="false">Mute microphone</button><button id="browserEnd" type="button" class="hangup">End test</button></div>
+<p id="browserActionState" class="caption-note" role="status"></p></section>
 <nav class="app-nav" aria-label="Phone assistant sections" role="tablist">
 <button type="button" role="tab" data-open-page="calls" aria-selected="true">Calls</button>
 <button type="button" role="tab" data-open-page="call" aria-selected="false">New call</button>
@@ -16,6 +20,26 @@
 <button type="button" role="tab" data-open-page="rules" aria-selected="false">Rules</button>
 <button type="button" role="tab" data-open-page="settings" aria-selected="false">Settings</button></nav>
 <div id="pageViews"></div>
+<details id="browserTestPanel" class="inbox" open><summary>Test in browser · no phone call</summary>
+<p class="caption-note">Talk to the assistant through your microphone and speakers. Use the same saved contacts, routing, personality, voice, context and tools as a real call. Voice-provider usage is billed normally. Messages, context changes and enabled calendar actions are real; telephone dialing, owner transfers, keypad tones and telephone recordings are simulated or unavailable.</p>
+<form id="browserTestForm"><div class="settings-grid">
+<label for="browserScenario">Call scenario<select id="browserScenario"><option value="direct">Incoming · direct to assistant</option><option value="forwarded">Incoming · forwarded from a number</option><option value="outbound">Outgoing · I play the recipient</option></select></label>
+<label for="browserContact">Use saved contact<select id="browserContact"><option value="">Enter a number or leave caller ID hidden</option></select></label>
+<label for="browserNumber"><span id="browserNumberLabel">Caller ID the assistant sees</span><input id="browserNumber" type="tel" placeholder="+12025550101 · blank for hidden caller ID" pattern="\+[1-9][0-9]{7,14}" maxlength="16"></label>
+<label id="browserForwardedField" for="browserForwarded" hidden>Forwarded from<input id="browserForwarded" type="tel" placeholder="+12025550102" pattern="\+[1-9][0-9]{7,14}" maxlength="16"></label>
+<label for="browserMinutes">Maximum minutes<input id="browserMinutes" type="number" min="1" max="15" value="5" required></label></div>
+<section id="browserOutboundFields" hidden><p class="caption-note">The assistant behaves as if it called this recipient. You answer using this browser.</p>
+<label class="editor-field" for="browserObjective">Call objective<textarea id="browserObjective" maxlength="4000" rows="3"></textarea></label>
+<label class="editor-field" for="browserContext">Context<textarea id="browserContext" maxlength="8000" rows="4"></textarea></label>
+<label class="editor-field" for="browserConstraints">Additional limits · one per line<textarea id="browserConstraints" rows="3"></textarea></label>
+<label class="editor-field" for="browserCallerId">Simulated outgoing caller ID<select id="browserCallerId"><option value="default">Saved default / routing rule</option><option value="twilio">Office / Twilio number</option><option value="mobile">My mobile</option></select></label>
+<label class="check-setting"><input id="browserIvr" type="checkbox"> Expect a phone menu / hold music</label>
+<button id="browserCopyBrief" type="button" class="quiet">Copy brief from outbound form</button></section>
+<details class="editor-card"><summary>Override personality and voice for this test</summary><p class="caption-note">Leave these on automatic to test the contact and routing choices. Changes here apply only to this test.</p>
+<label class="editor-field" for="browserPersonality">Personality<select id="browserPersonality"><option value="">Contact / routing / default</option></select></label>
+<div class="settings-grid"><label for="browserProvider">Voice provider<select id="browserProvider"><option value="">Contact / routing / default</option></select></label><label for="browserModel">Model<select id="browserModel" disabled></select></label><label for="browserVoice">Voice<select id="browserVoice" disabled></select></label></div></details>
+<button id="browserStart" type="submit" class="primary">Start browser test</button><p id="browserTestState" class="caption-note" role="status">Allow microphone access when prompted. Headphones help prevent echo. Open this page over HTTPS or localhost.</p>
+</form></details>
 <details id="outboundPanel" class="inbox"><summary>Place a call</summary>
 <p class="caption-note">Give the assistant a destination and objective. It uses the contact’s saved personality, model and voice, or your current defaults. The call opens in this live monitor.</p>
 <form id="outboundForm">

@@ -39,6 +39,8 @@ own library voice. See [setup, selection and testing](docs/voice-backends.md).
 
 The private control page can [place outbound calls with context, reusable brief defaults,
 and an office or verified mobile caller ID](docs/outbound-calls.md).
+It can also [test incoming, forwarded and outgoing calls using browser audio](docs/browser-tests.md),
+without dialing through Twilio.
 It also supports [caller profiles, editable personalities,
 shared context and an assembled-instructions viewer](docs/personalities.md).
 
