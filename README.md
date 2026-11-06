@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/rocky-call-desk.png" alt="Rocky at a cozy call desk, with a VPS, a human joining from a browser, and a supervising agent" width="100%">
+  <img src="docs/assets/rocky-call-desk-gemini.jpg" alt="Rocky at a cozy call desk, with a VPS, a human joining from a browser, and a supervising agent" width="100%">
 </p>
 
 <p align="center">
@@ -59,8 +59,8 @@ keep you in control without hanging up the call. Joining needs configured owner
 transcription and HTTPS. [Browser audio guide →](docs/browser-live-audio.md)
 
 <p align="center">
-  <img src="docs/assets/cat-on-call.png" alt="A headset robot and human enjoy a call while an orange cat helpfully operates the oversized phone keypad" width="760">
-  <br><sub>Original AI-generated concept art. Cat-assisted dialing is currently an enthusiasm, not a feature.</sub>
+  <img src="docs/assets/cat-on-call-gemini.jpg" alt="A headset robot and human enjoy a call while an orange cat helpfully operates the oversized phone keypad" width="760">
+  <br><sub>Owner-provided Gemini concept art. Cat-assisted dialing is currently an enthusiasm, not a feature.</sub>
 </p>
 
 ### Deploy it like the running VPS
