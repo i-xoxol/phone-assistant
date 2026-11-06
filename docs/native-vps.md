@@ -25,8 +25,11 @@ resampling and optional lookup processes, rather than the Python process alone.
    `python -m scripts.check_subscription_lookup --fast`. Do not copy a complete
    developer home/config directory into production. Credentials are runtime
    state, never an image layer or build argument. An existing deployment's
-   CLI-managed cache may instead be migrated privately with its owner; never
-   extract tokens into application code or silently substitute an API key.
+   CLI-managed cache may instead be migrated privately with its owner, but its
+   use must move to one runner. If the source machine continues using Codex,
+   establish an independent sign-in for the new host to avoid refresh-token
+   conflicts. Follow the [official authentication lifecycle guidance](https://learn.chatgpt.com/docs/auth/ci-cd-auth).
+   Never extract tokens into application code or silently substitute an API key.
 5. Enable linger for a systemd user deployment, or use a system unit with an
    explicit unprivileged `User`. Adapt [deploy/phone-agent.service](../deploy/phone-agent.service)
    to the actual working directory and virtual environment. Set `UMask=0077`,
