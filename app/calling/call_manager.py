@@ -72,17 +72,21 @@ class CallManager:
             self.appointments = AppointmentGateway(self)
         from app.calling.browser_tests import BrowserTests
         self.browser_tests = BrowserTests(self)
+        from app.calling.contact_guidance import ContactGuidance
+        self.contact_guidance = ContactGuidance(self)
+        self.knowledge.contact_guidance = self.contact_guidance
 
     def result(self, call_id):
         from app.calling.presentation import resolve_presentation
         record = self.db.get(call_id)
         record['personality'] = self.personalities.for_call(call_id)
+        record['contact_guidance'] = self.contact_guidance.for_record(record)
         if record.get('direction') == 'inbound':
             record['incoming_context'] = self.incoming_context(record)
         presentation = resolve_presentation(self.settings, record)
         return {**self.db.get(call_id),'browser_test':self.browser_tests.get(call_id),
                 'lookup_requests':self.lookup.list_for_call(call_id),
-                'presentation':presentation,
+                'presentation':presentation, 'contact_guidance':record['contact_guidance'],
                 'personality':self.personalities.for_call(call_id),
                 'test_mode':self.test_contacts.for_call(call_id),
                 'voice_backend':self.voice_backends.for_call(call_id),
@@ -99,6 +103,7 @@ class CallManager:
         record['routing_rule']=self.rules.pin(record)
         self.disclosures.pin(record)
         record['personality']=self.personalities.pin(record)
+        record['contact_guidance']=self.contact_guidance.for_record(record)
         record['test_mode']=self.test_contacts.pin(record)
         record['voice_name']=self.voices.pin(record)
         record['owner_transfer']=self.transfer.for_call(call_id)
@@ -123,6 +128,7 @@ class CallManager:
 
     def incoming_context(self,record,question=''):
         context=self.context.for_call(record,question=question)
+        context['contact_guidance'] = record.get('contact_guidance') or self.contact_guidance.for_record(record)
         test_mode=record.get('test_mode') or self.test_contacts.for_call(record.get('call_id')) or self.test_contacts.resolve(record)
         if test_mode.get('enabled'):
             context['test_mode']=test_mode

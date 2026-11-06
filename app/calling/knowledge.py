@@ -259,6 +259,11 @@ class CallKnowledge:
                 continue
             fact={k:row[k] for k in ('fact_id','contact_id','contact_name','topic','text','source','expires_at','updated_at','audience')}
             ranked.append((score,fact))
+        if not owner and call_id and (guidance := getattr(self, 'contact_guidance', None)):
+            for fact in guidance.facts(call_id):
+                score = len(terms & words(fact['topic'] + ' ' + fact['text'])) + 3
+                if not query or terms & words(fact['topic'] + ' ' + fact['text']):
+                    ranked.append((score, fact))
         ranked.sort(key=lambda x:x[0],reverse=True)
         result={'facts':[f for _,f in ranked[:limit]],'disclosure':'Facts filtered by the saved caller audience and exact current-call approvals; personality/test mode grants no additional disclosure.'}
         if owner:
@@ -269,6 +274,9 @@ class CallKnowledge:
     def still_current(self, facts,call_id=None):
         """Do not inject a fact retired, changed or expired while the model was working."""
         current={f['fact_id']:f for f in self.search(owner=True,limit=500)['facts']}
-        selected=[f for f in facts if current.get(f['fact_id'])==f]
-        if call_id and getattr(self,'disclosures',None):return self.disclosures.filter(selected,call_id=call_id)
+        selected=[f for f in facts if f.get('kind') != 'contact_guidance' and current.get(f['fact_id'])==f]
+        if call_id and getattr(self,'disclosures',None):
+            selected = self.disclosures.filter(selected,call_id=call_id)
+        if guidance := getattr(self, 'contact_guidance', None):
+            selected += guidance.still_current([f for f in facts if f.get('kind') == 'contact_guidance'], call_id)
         return selected

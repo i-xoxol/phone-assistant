@@ -68,6 +68,28 @@ class BrowserTests:
                 'FROM browser_test_calls WHERE call_id=?', (cid,)).fetchone()
         return dict(row) if row else None
 
+    def recent_numbers(self):
+        import re
+        from app.storage.models import E164
+        with self.db.connect() as db:
+            rows = list(db.execute('''SELECT c.phone_number,c.created_at,c.call_id,r.forwarded_from
+                FROM calls c LEFT JOIN incoming_routing r USING(call_id)
+                WHERE NOT EXISTS (SELECT 1 FROM browser_test_calls b WHERE b.call_id=c.call_id)
+                ORDER BY c.created_at DESC,c.call_id DESC LIMIT 100'''))
+            contacts = list(db.execute('SELECT name,phone_number FROM concierge_contacts'))
+        names = {}
+        for row in contacts:
+            names.setdefault(row['phone_number'], []).append(row['name'])
+        groups = {'forwarding': {}, 'calls': {}}
+        for row in rows:
+            for group, field in [('forwarding','forwarded_from'), ('calls','phone_number')]:
+                number = row[field] or ''
+                if re.fullmatch(E164, number) and number not in groups[group]:
+                    groups[group][number] = {'number':number, 'last_seen':row['created_at'],
+                        'contact_name':names[number][0] if len(names.get(number, [])) == 1 else ''}
+        return {'forwarding_sources':list(groups['forwarding'].values())[:20],
+            'call_numbers':[row for number,row in groups['calls'].items() if number not in groups['forwarding']][:20]}
+
     def create(self, body, csrf):
         fingerprint = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
         owner_hash = hashlib.sha256(csrf.encode()).hexdigest()

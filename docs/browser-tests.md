@@ -21,6 +21,17 @@ voice defaults apply normally. Optional explicit choices override those defaults
 for this test only. Outgoing tests can copy the existing outbound composer's
 brief. Mobile caller ID is simulated without a Twilio verification request.
 
+For forwarded tests, **Choose from recent history** groups recorded forwarding
+sources separately from other caller/recipient numbers. Suggestions come from
+the latest 100 real calls, with up to 20 unique numbers per group and saved-contact
+names where unambiguous. Browser test records are excluded. Selecting a source
+changes only **Forwarded from**; manual caller ID stays separate. Refreshing the
+suggestions preserves a manually typed forwarding number.
+
+The selected profile also resolves any [contact instructions and approved
+facts](contact-guidance.md). This lets you compare assistant and first-person
+presentations for the same fictional contact without changing global settings.
+
 After **Start browser test**, talk normally. The existing call monitor displays
 captions and saved call state. The blue browser-test panel stays available while
 you navigate, with **Mute microphone** and **End test**. The ordinary selected-call
