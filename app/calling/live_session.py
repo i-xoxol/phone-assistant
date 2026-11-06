@@ -378,7 +378,8 @@ class MediaBridge:
                                      'mark': {'name': name}})
 
     async def clear_live_audio(self):
-        await self.connection.interrupt_playback(sum(self.pending_marks.values()))
+        if interrupt := getattr(self.connection, 'interrupt_playback', None):
+            await interrupt(sum(self.pending_marks.values()))
         await self.ws.send_json({'event':'clear','streamSid':self.stream_sid})
         self.pending_marks.clear()
         self.playback_progress.set()
@@ -543,7 +544,11 @@ async def connected_bridge(websocket, manager, call_id, stream_sid):
         manager.db.update(call_id, openai_session_id=started['session']['id'], voice_finalized=0)
         log_event('gpt_live_connected', call_id=call_id)
         bridge_class = getattr(connection, 'bridge_class', MediaBridge)
-        bridge = bridge_class(websocket, connection, manager, call_id, stream_sid, luna_booking=True)
+        from app.calling.browser_audio import AudioHub
+        audio_hub = AudioHub(websocket, manager, call_id, stream_sid)
+        bridge = bridge_class(audio_hub, connection, manager, call_id, stream_sid, luna_booking=True)
+        audio_hub.bridge = bridge
+        manager.browser_audio.hubs[call_id] = audio_hub
         bridge.startup_started = startup_started
         manager.attach_bridge(call_id, bridge)
         manager.connecting.discard(call_id)
@@ -551,6 +556,9 @@ async def connected_bridge(websocket, manager, call_id, stream_sid):
             yield bridge
         finally:
             manager.detach_bridge(call_id, bridge)
+            if manager.browser_audio.hubs.get(call_id) is audio_hub:
+                manager.browser_audio.hubs.pop(call_id, None)
+            await audio_hub.close()
 
 
 async def handle_media(websocket: WebSocket, call_id: str):

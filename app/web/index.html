@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="csrf-token" content="{{csrf}}"><title>Phone Assistant · Call monitor</title>
-<link rel="stylesheet" href="/live/style.css"><script src="/live/app.js" defer></script><script src="/live/personalities.js" defer></script><script src="/live/outbound.js" defer></script><script src="/live/control.js" defer></script><script src="/live/browser-tests.js" defer></script><script src="/live/contact-guidance.js" defer></script></head>
+<link rel="stylesheet" href="/live/style.css"><script src="/live/app.js" defer></script><script src="/live/personalities.js" defer></script><script src="/live/outbound.js" defer></script><script src="/live/control.js" defer></script><script src="/live/browser-tests.js" defer></script><script src="/live/contact-guidance.js" defer></script><script src="/live/browser-audio.js" defer></script></head>
 <body><main class="monitor">
 <header><div><p class="eyebrow">PHONE ASSISTANT</p><h1 id="pageTitle">Calls</h1></div></header>
 <section id="pairing" class="pairing" hidden><strong>Open this same site on your mobile, then enter the code below.</strong>
@@ -162,6 +162,7 @@
 <button id="olderMessages" class="quiet" hidden>Load older messages</button></details>
 <section id="supervisorPanel" class="inbox" hidden><h2>Concierge requests</h2>
 <p id="supervisorState" class="caption-note"></p><p id="contextState" class="caption-note"></p><div id="requests"></div></section>
+<section id="liveAudioSession" class="browser-session live-audio-session" hidden aria-label="Active browser audio"><strong id="liveAudioCall"></strong><p id="liveAudioSessionState" role="status"></p><div class="message-actions"><button id="liveAudioMute" class="quiet" hidden aria-pressed="false">Mute microphone</button><button id="liveAudioLeave" class="quiet" hidden>Leave microphone</button><button id="stopLiveAudio" class="quiet">Stop listening</button></div></section>
 <section id="callSummary" class="call-card"><label for="calls">YOUR CALLS</label><select id="calls"><option value="">No calls yet</option></select>
 <div class="call-meta"><span id="status" class="badge">—</span><span id="duration">0:00</span></div>
 <p id="objective" class="objective">Select a call to view its conversation.</p><p id="testModeState" class="caption-note"></p><button id="saveCaller" class="quiet" disabled>Save caller to phone book</button></section>
@@ -172,6 +173,9 @@
 <details id="contextInjection" class="editor-card"><summary>Send new information</summary><form id="liveUpdateForm"><label class="editor-field" for="liveUpdateText">New information for this call<textarea id="liveUpdateText" maxlength="400" rows="3" placeholder="A correction, new availability, or information the assistant should know."></textarea></label>
 <div class="settings-grid"><label for="liveUpdateMode">How to use it<select id="liveUpdateMode"><option value="context">Context for the ongoing conversation</option><option value="say">Tell the caller now</option></select></label></div><button id="sendLiveUpdate" class="quiet">Send to live assistant</button><p id="liveUpdateState" class="caption-note" role="status"></p></form>
 </details></details>
+<section id="liveAudioPanel" class="inbox"><h2>Live audio</h2>
+<p id="liveAudioHint" class="caption-note"></p><div class="message-actions"><button id="listenLive" class="quiet" disabled>Listen live</button><button id="joinLive" class="quiet" disabled>Join with microphone</button></div>
+<p id="liveAudioState" class="caption-note" role="status"></p></section>
 <details id="audioPanel" class="inbox" aria-label="Call audio"><summary>Call recording and routing</summary>
 <p id="forwardingState" class="caption-note"></p><div id="recordings"></div>
 <button id="stopRecording" class="quiet" hidden>Stop audio recording</button>

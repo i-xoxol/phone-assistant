@@ -1,7 +1,7 @@
 'use strict';
 let appPage='calls',rulesData=null,rulesDirty=false,rulesJsonDirty=false,ruleDraft=null;
 let controlCallId=null,liveBusy=false,liveUpdateId=null,approvalKey='';
-const controlPages={calls:['callSummary','transferState','liveControlPanel','conversationPanel','audioPanel','inbox','supervisorPanel','ownerJoin'],
+const controlPages={calls:['callSummary','transferState','liveControlPanel','conversationPanel','liveAudioPanel','audioPanel','inbox','supervisorPanel','ownerJoin'],
   call:['browserTestPanel','outboundPanel'],contacts:['callerBookPanel'],rules:['rulesPanel'],
   settings:['personalitiesPanel','answeringPanel','recordingSettingsPanel','ownerContextPanel','instructionsPanel','accountPanel']};
 for(const [name,ids] of Object.entries(controlPages)) {

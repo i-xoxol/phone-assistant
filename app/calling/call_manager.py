@@ -72,6 +72,8 @@ class CallManager:
             self.appointments = AppointmentGateway(self)
         from app.calling.browser_tests import BrowserTests
         self.browser_tests = BrowserTests(self)
+        from app.calling.browser_audio import BrowserAudio
+        self.browser_audio = BrowserAudio(self)
         from app.calling.contact_guidance import ContactGuidance
         self.contact_guidance = ContactGuidance(self)
         self.knowledge.contact_guidance = self.contact_guidance

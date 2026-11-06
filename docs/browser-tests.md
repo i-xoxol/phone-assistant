@@ -83,3 +83,5 @@ session isolation, origin/CSRF checks, audio/caption playback, malformed frames,
 phone-action simulation, private-portal authentication, and recall/admission
 separation using mocked providers and fictional records. The full regression
 suite and release audit remain required before deployment.
+
+To listen to a test or join it as the owner, open that call in a second paired tab and follow [browser live audio](browser-live-audio.md).
