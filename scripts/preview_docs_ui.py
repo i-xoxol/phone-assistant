@@ -34,6 +34,30 @@ MESSAGE = {
     'body': 'Please let Alex know that the sample is ready for pickup. No reply is needed.',
 }
 
+# Deliberately fictional catalogs, not imported from a live service or database.
+VOICE={'provider':'openai','model':'gpt-live-1','voice':'marin',
+    'provider_defaults':{'openai':{'model':'gpt-live-1','voice':'marin'}},
+    'providers':[{'id':'openai','label':'OpenAI GPT-Live','configured':True,
+        'models':[{'id':'gpt-live-1','label':'GPT-Live 1','voices':[{'id':'marin','label':'Marin'}]}]}]}
+PROFILES={'owner_name':'Alex','default_personality_id':'00000000-0000-4000-8000-000000000001',
+    'personalities':[{'personality_id':'00000000-0000-4000-8000-000000000001','name':'Default',
+        'revision':1,'presentation_mode':'assistant','spoken_name':'Alex','role':'Personal assistant',
+        'instructions':'Warm, clear and concise.','context':'','greeting':'','outbound_greeting':''}]}
+CONTACTS=[{'contact_id':'00000000-0000-4000-8000-00000000000'+str(i),'name':name,
+    'phone_number':number,'preferred_name':'','language':'en','conversation_style':'formal',
+    'information_level':level,'routing_score':None,'personality_id':None,
+    'test_mode':{'enabled':False,'instructions':''},
+    'answering':{'preference':{'provider':None,'model':None,'voice':None},
+        'effective':{'provider':'openai','model':'gpt-live-1','voice':'marin'}}}
+    for i,name,number,level in [(2,'Pat Example','+12025550102','friends'),(3,'Sam Demo','+12025550103','family')]]
+OUTBOUND={'defaults':{'revision':0,'caller_id':'twilio','objective':'','context':'','constraints':[],
+    'max_duration_minutes':15,'ivr_mode':False},'caller_ids':[
+        {'id':'twilio','label':'Office / Twilio number','number':'+12025550100','available':True},
+        {'id':'mobile','label':'My mobile','number':'+12025550109','available':True}],
+    'note':'Read-only fictional preview. No telephone connection; every write is rejected.'}
+RULES={'revision':0,'instructions':'','rules':[],'reviewers':{'codex':False,'openai':False},
+    'precedence':'Explicit call choices > first matching rule > contact > defaults.'}
+
 
 class Preview(BaseHTTPRequestHandler):
     def log_message(self, *_):
@@ -62,7 +86,7 @@ class Preview(BaseHTTPRequestHandler):
             html = html.replace('{{csrf}}', 'documentation-demo')
             banner = '<aside style="text-align:center;padding:10px;background:#173c36;color:#effaf0;font:12px system-ui">Documentation demo · Fictional data · No phone connection</aside>'
             self.send(html.replace('<body>', '<body>' + banner), 'text/html; charset=utf-8')
-        elif url.path in ('/live/app.js', '/live/style.css'):
+        elif url.path in ('/live/app.js', '/live/style.css','/live/personalities.js','/live/outbound.js','/live/control.js'):
             path = ROOT / 'app/web' / url.path.rsplit('/', 1)[-1]
             kind = 'text/javascript' if path.suffix == '.js' else 'text/css'
             self.send(path.read_bytes(), kind + '; charset=utf-8')
@@ -70,17 +94,18 @@ class Preview(BaseHTTPRequestHandler):
             # The referrer selects a fixture, never a real record or service.
             inbox = parse_qs(urlsplit(self.headers.get('Referer', '')).query).get('view') == ['inbox']
             data = {
-                'calls': [CALL], 'call': CALL, 'cursor': 0, 'caller_book': [],
+                'calls': [CALL], 'call': CALL, 'cursor': 0, 'caller_book': CONTACTS,'personalities':PROFILES,
                 'inbox': {'unread_count': int(inbox), 'messages': [MESSAGE] if inbox else [], 'next_cursor': None},
                 'concierge': {'enabled': False}, 'requests': [],
                 'owner_contact_enabled': False,
                 'voice': {'voice': 'marin', 'voices': [{'id': 'marin', 'label': 'Marin'}]},
-                'voice_backend': {'provider':'openai', 'elevenlabs_model':'eleven_realtime_v1_mini',
-                    'elevenlabs_voice_label':'Example library voice',
-                    'providers':[{'id':'openai','label':'OpenAI GPT-Live','configured':True},
-                                 {'id':'elevenlabs','label':'ElevenLabs Realtime','configured':True}]},
+                'voice_backend': VOICE,
             }
             self.send(json.dumps(data))
+        elif url.path in ('/live/personalities','/live/outbound/settings','/live/rules'):
+            self.send(json.dumps({'/live/personalities':PROFILES,'/live/outbound/settings':OUTBOUND,'/live/rules':RULES}[url.path]))
+        elif url.path.endswith('/approvals'):
+            self.send(json.dumps({'call_id':CALL['call_id'],'approvals':[]}))
         elif url.path == '/live/events':
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream')

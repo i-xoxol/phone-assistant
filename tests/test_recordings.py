@@ -92,7 +92,7 @@ def test_outbound_is_also_noticed_and_historical_calls_remain_unrecorded(service
     root=ET.fromstring(response.text)
     assert [n.tag for n in root][:3]==['Play','Start','Connect']
     config=session_config(m.settings,m.voice_record(cid))
-    assert {t['name'] for t in config['delegation']['responses']['tools']}=={'stop_call_recording'}
+    assert {t['name'] for t in config['delegation']['responses']['tools']}=={'stop_call_recording','request_disclosure_approval'}
 
 
 def test_signed_callbacks_bind_recordings_and_never_fetch_provider_url(service,tmp_path):

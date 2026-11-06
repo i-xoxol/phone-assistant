@@ -63,10 +63,19 @@ implemented behavior and its limits.
 
 ## See the interface
 
+The current mobile controls separate calls, contacts, routing and settings.
+Advanced voice/test controls expand inside a contact; Hang up stays accessible
+while you navigate an active call. This is a fictional, read-only local demo:
+
+<p align="center">
+  <img src="docs/assets/control-mobile.jpg" alt="Current mobile control page with fictional contacts, five bottom tabs and active-call Hang up" width="340">
+</p>
+
 The actual browser monitor, rendered locally from this repository's HTML, CSS,
 and JavaScript with **fictional documentation data**. No telephone call or booking
 was made to create these screenshots. The demo banner identifies the isolated
-preview; it is not part of the deployed monitor.
+preview; it is not part of the deployed monitor. The following captures show the
+earlier single-page layout and its transcript/inbox features.
 
 <p align="center">
   <img src="docs/assets/monitor-desktop.jpg" alt="Actual call monitor in a local documentation demo: fictional pickup-hours conversation, call status, captions, and direct hangup" width="780">

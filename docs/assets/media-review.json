@@ -26,6 +26,12 @@
       "sha256": "d5cc017a3242e60bc5694958147eb6da6956d4684293775315bf6915af1c54d3",
       "privacy_reviewed": true,
       "source": "Frame at 2 seconds of the owner-provided NotebookLM cinematic overview; conceptual video art."
+    },
+    "control-mobile.jpg": {
+      "sha256": "7c37937e37b8aee978108285a5c7135cfa595f267639a4d4216701a2e086962c",
+      "privacy_reviewed": true,
+      "review_date": "2026-11-05",
+      "source": "Actual current repository UI, read-only localhost documentation preview, fictional contacts in reserved example range; 390 by 844 mobile viewport. Visually reviewed, no private records or credentials."
     }
   }
 }

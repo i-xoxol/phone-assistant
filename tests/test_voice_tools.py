@@ -20,7 +20,7 @@ def test_responses_configuration_keeps_voice_and_authorization(service):
     backend=config['delegation']['responses']
     assert backend['model']=='gpt-6-luna'
     assert backend['parallel_tool_calls'] is False
-    assert {t['name'] for t in backend['tools']}=={'press_digits','end_call'}
+    assert {t['name'] for t in backend['tools']}=={'press_digits','end_call','request_disclosure_approval'}
     assert 'OTP' in backend['instructions'] and 'approve charges' in config['instructions']
 
 
