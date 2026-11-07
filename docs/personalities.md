@@ -67,6 +67,21 @@ stay distinct; transcript events remain `assistant`, with `presentation` metadat
 reported separately in call results. Presentation grants no extra permissions and
 does not enable the separate contact test switch.
 
+For recognized familiar callers, **Me** starts with a personal greeting in the
+saved caller language, without routinely introducing itself again. The native
+voice opening and silent-start fallback both use that familiar contact name.
+Owner-mobile forwarding keeps the original caller's contact and language; it
+does not replace them with the forwarding owner's identity or add a third-person
+missed-call apology in Me mode. Direct identity questions still receive an honest
+answer. Unknown callers retain a brief introduction.
+
+Language, familiar tone and relationship guidance belong to each exact contact
+number. Two contacts with similar names remain separate. Save a language on both
+contacts if both should use it; store family/friend context and optional
+profile-specific openings under the appropriate contact's guidance. Changing
+these settings applies to future calls; an existing call keeps its pinned profile
+and contact instructions. Start a new browser test to verify an edit.
+
 Spoken name and synthesis voice are independent. Choosing the owner's name does
 not select a cloned voice or change the answering provider. The same generated
 identity rules feed OpenAI, ElevenLabs and Gemini; voice behavior still varies by model.
