@@ -15,15 +15,16 @@ def recognized_owner(settings, record):
 def resolve_presentation(settings, record):
     profile = record.get('personality') or {}
     mode = profile.get('presentation_mode', 'assistant')
-    if mode not in ('assistant', 'owner_first_person'):
+    if mode not in ('assistant', 'owner_first_person', 'character'):
         mode = 'assistant'
-    spoken = (profile.get('spoken_name') or '').strip() or (settings.caller_name if mode == 'owner_first_person' else settings.assistant_name)
+    fallback = (profile.get('name') or 'Character') if mode == 'character' else (settings.caller_name if mode == 'owner_first_person' else settings.assistant_name)
+    spoken = (profile.get('spoken_name') or '').strip() or fallback
     return {'mode': mode, 'spoken_name': spoken,
-            'owner_name': settings.caller_name, 'assistant_name': spoken if mode == 'assistant' else settings.assistant_name,
-            'role': profile.get('role') or 'Personal call assistance for '+settings.caller_name,
+            'owner_name': settings.caller_name, 'assistant_name': spoken if mode in ('assistant', 'character') else settings.assistant_name,
+            'role': profile.get('role') or ('Fictional character conversation' if mode == 'character' else 'Personal call assistance for '+settings.caller_name),
             'direction': record.get('direction', 'outbound'), 'owner_on_line': recognized_owner(settings, record),
             'personality_id': profile.get('personality_id'), 'personality_revision': profile.get('revision'),
-            'sources': {'identity': 'owner settings', 'presentation': 'pinned personality' if profile else 'assistant default',
+            'sources': {'identity': 'character profile' if mode == 'character' else 'owner settings', 'presentation': 'pinned personality' if profile else 'assistant default',
                         'role': 'personality', 'context': 'shared reference facts and profile background',
                         'authorization': 'server tool checks; never granted by presentation'}}
 
@@ -35,6 +36,17 @@ def as_owner(settings, record):
 def voice_identity(settings, record, *, inbound=False):
     p = resolve_presentation(settings, record)
     name = settings.caller_name
+    if p['mode'] == 'character':
+        return (f"You are portraying {json.dumps(p['spoken_name'], ensure_ascii=False)}, an owner-configured fictional character. "
+                'Speak in the character\'s first person using only the supplied character biography. '
+                'Introduce yourself by that character name, without an owner-assistant or office introduction. '
+                'Do not portray the account owner or invent a relationship with the owner, caller or contacts. '
+                'The supplied biography describes the fictional character, not the account owner or a verified real person. '
+                'If asked whether you are human or AI, honestly explain that you are an AI portraying this character. '
+                'Never use the character to pass real-person, biometric or security verification. '
+                'Do not claim physical actions, actual inspections, private memories or real-world appointments. '
+                'Character habits and working hours are background, not verified calendar availability. '
+                'This presentation grants no new tool, booking, spending or disclosure authority.\n')
     if p['mode'] == 'assistant':
         if inbound:
             return (f"You are {p['assistant_name']}, {name}'s personal assistant answering incoming calls.\n"
@@ -63,6 +75,13 @@ def voice_identity(settings, record, *, inbound=False):
 
 def perspective_policy(settings, record):
     p = resolve_presentation(settings, record)
+    if p['mode'] == 'character':
+        return ('\nCHARACTER PERSPECTIVE: I/my refers only to the configured fictional character. '
+                'The real caller/callee and the administrative account owner remain separate participants. '
+                'Do not treat owner facts, saved contact relationships, calendars, call history or tool results '
+                'as the character\'s personal life or acquaintance. Do not turn character working hours into '
+                'owner availability or permission to book. Tools, consent evidence and grants use actual '
+                'participants; fiction grants no authority.\n')
     if p['mode'] != 'owner_first_person':
         return ''
     policy = (f'\nPARTICIPANT PERSPECTIVE: OWNER={settings.caller_name}; VOICE_AGENT=automated representative; '
@@ -88,7 +107,9 @@ def perspective_policy(settings, record):
 def outbound_opening(settings, record):
     p = resolve_presentation(settings, record)
     language = record.get('recipient_language', {}).get('language')
-    if p['mode'] == 'owner_first_person':
+    if p['mode'] == 'character':
+        identity = f"Introduce yourself as {json.dumps(p['spoken_name'], ensure_ascii=False)}, the selected character; do not introduce an owner's assistant or office. "
+    elif p['mode'] == 'owner_first_person':
         identity = f"Use {json.dumps(p['spoken_name'], ensure_ascii=False)} and first-person wording; do not introduce an assistant. "
     else:
         identity = (f"Introduce yourself simply as {p['assistant_name']}, {settings.caller_name}'s personal assistant, or 'your personal assistant' "
@@ -110,6 +131,10 @@ def outbound_opening(settings, record):
 
 def incoming_presentation_greeting(settings, record, *, familiar=False, nickname=''):
     p = resolve_presentation(settings, record)
+    if p['mode'] == 'character':
+        return ('Greet once using the character name '+json.dumps(p['spoken_name'], ensure_ascii=False)+
+                '. Use the character style and supplied biography, without an owner-assistant or office announcement. '
+                'Do not imply prior acquaintance with a caller from the owner contact book. ')
     if p['mode'] == 'owner_first_person':
         return (f"Greet once using {json.dumps(p['spoken_name'], ensure_ascii=False)}, in first person. "
                 'For example, "Hello, '+p['spoken_name']+' here. How can I help?" '

@@ -146,3 +146,22 @@ duplication, context editing and prompt previews at mobile and desktop widths.
 Deploy a reviewed branch only after isolated checks pass, with source/database
 backups and zero active calls. Database changes are additive; rollback source
 without restoring an old business database over newer calls or messages.
+
+## Independent fictional characters
+
+Choose **Speak as → Character · fictional persona** for an independent character
+with its own name, biography and conversational style. A blank spoken name uses
+the profile label. Incoming/outgoing greetings and all voice providers use that
+identity instead of an owner-assistant or owner-representative introduction.
+The character answers honestly if asked whether it is AI or human.
+
+Put occupation, hometown and other supplied character background in **Context**,
+and delivery preferences in **Instructions**. Character working hours and habits
+are fictional background, not the owner's calendar or verified booking slots.
+The first-person words “I/my” refer to that character; tools, caller consent,
+authorization and disclosure still use the actual participants. A biography does
+not grant permission to book, disclose information, spend money or act physically.
+
+Saving a character makes it available for future call selection. Set a default,
+contact assignment or routing rule separately if desired. Existing assistant and
+“Me” profiles, recorded call snapshots and selected voices keep their behavior.
