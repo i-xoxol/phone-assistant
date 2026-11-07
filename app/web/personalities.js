@@ -8,11 +8,19 @@ const personalityDrafts=new Map();
 const testContactDrafts=new Map();
 const personalityFields={name:'personalityName',instructions:'personalityInstructions',context:'personalityContext',
   greeting:'personalityGreeting',role:'personalityRole',presentation_mode:'personalityPresentation',
-  spoken_name:'personalitySpokenName',outbound_greeting:'personalityOutboundGreeting'};
-function personalityBody() {return Object.fromEntries(Object.entries(personalityFields).map(([key,id])=>[key,$(id).value]));}
+  spoken_name:'personalitySpokenName',outbound_greeting:'personalityOutboundGreeting',allow_character_invention:'personalityDevelopLife'};
+function personalityBody() {return Object.fromEntries(Object.entries(personalityFields).map(([key,id])=>[key,$(id).type==='checkbox'?$(id).checked:$(id).value]));}
 function presentationFields() {
-  $('personalitySpokenName').disabled=$('personalityPresentation').value!=='owner_first_person';
-  $('personalitySpokenName').placeholder=personalityCatalog?.owner_name || 'Your configured name';
+  $('personalitySpokenName').disabled=false;
+  const ownerMode=$('personalityPresentation').value==='owner_first_person';
+  const characterMode=$('personalityPresentation').value==='character';
+  $('personalityDevelopLifeLabel').hidden=!characterMode;
+  $('personalityDevelopLife').disabled=!characterMode;
+  if(!characterMode) $('personalityDevelopLife').checked=false;
+  if(typeof renderCharacterBiography==='function') renderCharacterBiography();
+  const inherited=(characterMode?($('personalityName').value || 'Character name'):ownerMode?personalityCatalog?.owner_name:personalityCatalog?.assistant_name) || (ownerMode?'Owner name':'Assistant name');
+  $('personalitySpokenName').placeholder=inherited;
+  $('personalityNameHint').textContent='Leave blank to use '+inherited+'. This is the spoken identity; the profile label above is separate.';
 }
 function profileOptions() {return (personalityCatalog?.personalities || []).map(p=>({id:p.personality_id,label:p.name}));}
 function currentProfile() {return personalityCatalog?.personalities.find(p=>p.personality_id===editingPersonality);}
@@ -24,7 +32,10 @@ function editPersonality(id) {
   rememberPersonalityDraft();editingPersonality=id || null;personalityDirty=false;
   const draft=personalityDrafts.get(id || ''), row=draft || currentProfile() || {};
   editingRevision=row.revision || null;
-  for(const [key,field] of Object.entries(personalityFields)) $(field).value=row[key] || (key==='presentation_mode'?'assistant':'');
+  for(const [key,field] of Object.entries(personalityFields)) {
+    if($(field).type==='checkbox') $(field).checked=!!row[key];
+    else $(field).value=row[key] || (key==='presentation_mode'?'assistant':'');
+  }
   presentationFields();
   $('personalityPicker').value=id || '';$('duplicatePersonality').disabled=!id;
   personalityDirty=!!draft;
@@ -64,7 +75,7 @@ $('personalityForm').onsubmit=async event=>{
   try {
     const r=await api('/live/personalities'+(editingPersonality?'/'+editingPersonality:''),{...writeOptions(body),method:editingPersonality?'PUT':'POST'});
     personalityDrafts.delete(editingPersonality || '');personalityDirty=false;editingPersonality=r.personality_id;
-    await refreshPeople();$('personalityState').textContent='Saved '+r.name+' · revision '+r.revision+' · new calls only.';
+    await refreshPeople();if(typeof renderCharacterBiography==='function' && !characterBiographyDirty) renderCharacterBiography(true);$('personalityState').textContent='Saved '+r.name+' · revision '+r.revision+' · new calls only.';
   } catch(e) {$('personalityState').textContent='Not saved: '+e.message;} finally {$('savePersonality').disabled=false;}
 };
 $('duplicatePersonality').onclick=async()=>{
@@ -215,7 +226,8 @@ $('contextNoteForm').onsubmit=async event=>{
 };
 async function showInstructions(forSelected) {
   if(forSelected && !selected) {$('instructionsState').textContent='Select a call first.';return;}
-  const body=forSelected?{call_id:selected}:{contact_id:$('previewContact').value || null,personality_id:$('previewPersonality').value || null};
+  const body=forSelected?{call_id:selected}:{contact_id:$('previewContact').value || null,personality_id:$('previewPersonality').value || null,
+    direction:$('previewDirection').value,forwarded_from:$('previewDirection').value==='inbound'?$('previewForwarded').value.trim():''};
   $('instructionsState').textContent='Building preview locally…';
   try {
     const result=await api('/live/instructions-preview',{...writeOptions(body),method:'POST'});
@@ -223,6 +235,7 @@ async function showInstructions(forSelected) {
     const output=$('instructionsOutput');output.replaceChildren();
     for(const [label,value] of [['Personality, presentation and answering',{personality:result.personality,presentation:result.presentation,answering:result.answering,test_mode:result.test_mode,routing_rule:result.routing_rule}],
       ['Effective greeting',result.greeting],
+      ['Effective contact instructions and facts',result.contact_guidance],
       ['Voice instructions',result.voice_instructions],['Tool planner instructions',result.planner_instructions],
       ['Live owner/server updates',result.runtime_updates],['One-time startup input',result.startup_input],['Tool definitions',result.tool_definitions],['Caller context',result.context],['Shared owner context',result.owner_context]]) {
       const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent=label;

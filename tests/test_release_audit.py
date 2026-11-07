@@ -39,18 +39,20 @@ def test_plugin_template_cannot_embed_operator_endpoint():
     assert content_problems(Path('plugin/.mcp.json'), text) == [('non-template plugin endpoint', 1)]
 
 
-def test_binary_documentation_images_require_review_of_the_exact_bytes(tmp_path):
+@pytest.mark.parametrize('suffix', ['jpg', 'png'])
+def test_binary_documentation_images_require_review_of_the_exact_bytes(tmp_path, suffix):
     import hashlib
     import json
 
-    relative = Path('docs/assets/demo.jpg')
+    relative = Path('docs/assets/demo.' + suffix)
     image = tmp_path/relative
     image.parent.mkdir(parents=True)
-    data = b'\xff\xd8\xff' + b'fictional test image' + b'\xff\xd9'
+    data = (b'\xff\xd8\xff' + b'fictional test image' + b'\xff\xd9' if suffix == 'jpg'
+            else b'\x89PNG\r\n\x1a\nfictional test imageIEND\xaeB`\x82')
     image.write_bytes(data)
     assert not reviewed_doc_image(relative, tmp_path)
     manifest = tmp_path/'docs/assets/media-review.json'
-    manifest.write_text(json.dumps({'images': {'demo.jpg': {
+    manifest.write_text(json.dumps({'images': {relative.name: {
         'sha256': hashlib.sha256(data).hexdigest(),
         'privacy_reviewed': True, 'source': 'synthetic fixture',
     }}}))

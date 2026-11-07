@@ -1,5 +1,6 @@
 """Private owner editing and a read-only view of the actual prompt builders."""
 from uuid import UUID, uuid4
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -144,6 +145,8 @@ class Preview(BaseModel):
     call_id: UUID | None = None
     contact_id: UUID | None = None
     personality_id: UUID | None = None
+    direction: Literal['inbound', 'outbound'] = 'inbound'
+    forwarded_from: str = Field(default='', pattern=r'^(?:|\+[1-9][0-9]{7,14})$')
 
 
 def prompt_preview(manager, body):
@@ -169,19 +172,24 @@ def prompt_preview(manager, body):
                 raise KeyError('Contact not found')
             number = row['phone_number']
         record = {'call_id': str(uuid4()), 'created_at': utcnow().isoformat(), 'phone_number': number,
-                  'direction': 'inbound', 'inbound_mode': manager.settings.inbound_mode,
+                  'direction': body.direction, 'inbound_mode': manager.settings.inbound_mode,
                   'inbound_booking_allowed': manager.settings.inbound_booking_allowed,
                   'max_duration_minutes': manager.settings.inbound_max_duration_minutes,
                   'transcript': [], 'call_updates': [], 'constraints': [], 'objective': '', 'context': '', 'recipient': ''}
+        record['_preview_forwarding'] = {'detected':bool(body.forwarded_from), 'forwarded_from':body.forwarded_from,
+            'caller_identity_ambiguous':bool(body.forwarded_from and body.forwarded_from == number)}
         record['routing_rule'] = manager.rules.selection(record)
         record['personality'] = manager.personalities.effective(record)
         record['test_mode'] = manager.test_contacts.resolve(record)
         record['voice_backend'] = manager.voice_backends.for_record(record)
         record['audio_recording'] = {'pinned_settings': manager.recordings.preferences.get(), 'policy': {}}
-        basis = 'Preview of a new incoming call with current settings; forwarding and caller speech are not simulated.'
+        basis = 'Preview of a new '+body.direction+' call with current settings and selected forwarding metadata; no call is created.'
     if body.personality_id:
-        record['personality'] = manager.personalities.get(body.personality_id)
+        record['personality'] = manager.personalities.effective(record, body.personality_id)
         basis += ' Selected personality is a preview override only.'
+    record['contact_guidance'] = manager.contact_guidance.for_record(record)
+    if not body.call_id:
+        record['contact_guidance'] = manager.contact_guidance.resolve(record, record['personality'])
     record['voice_name'] = record['voice_backend']['voice']
     if record.get('direction') == 'inbound':
         record['incoming_context'] = manager.incoming_context(record)
@@ -191,6 +199,7 @@ def prompt_preview(manager, body):
         record['disclosure_context']={'access':manager.disclosures.access(record),
             'facts':manager.knowledge.search('',caller_number=record['phone_number'],call_id=record['call_id'])['facts'],
             'restricted_fact_topics':manager.disclosures.topics(record)}
+    record['character_biography']=manager.character_biographies.for_record(record)
     config = session_config(manager.settings, record)
     presentation = resolve_presentation(manager.settings, record)
     native = None
@@ -203,6 +212,7 @@ def prompt_preview(manager, body):
         native = gemini_config(manager.settings, record, record['voice_backend'])['system_instruction']
     backend = config.get('delegation', {}).get('responses', {})
     return {'basis': basis, 'routing_rule':record['routing_rule'], 'personality': record['personality'], 'presentation': presentation,
+            'contact_guidance':record['contact_guidance'], 'character_biography':record['character_biography'],
             'greeting': config.get('input', []) if record.get('direction') == 'inbound' else outbound_opening(manager.settings, record),
             'test_mode': record['test_mode'], 'answering': record['voice_backend'],
             'voice_instructions': native or config['instructions'], 'planner_instructions': backend.get('instructions', ''),

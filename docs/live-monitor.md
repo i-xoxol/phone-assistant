@@ -6,6 +6,10 @@ The monitor is a plain HTML/CSS/JS page at `/live`, designed for both phone and
 laptop screens. It displays recent calls, state, duration, and two-speaker
 captions, with a large fixed **Hang up call** button.
 
+Choose **New call → Test in browser** to role-play an incoming, forwarded or
+outgoing call through your microphone without dialing a phone. See the
+[browser test guide](browser-tests.md) for scenario choices and tool behavior.
+
 ## Sign in on a phone and laptop
 
 The portal supports a reusable password and one-time pairing codes. To create
@@ -130,3 +134,5 @@ single-owner monitor, not per-call sharing. Only pair devices you control. No
 provider API key, static REST token, or permanent access token is embedded in
 the monitor URL. Runtime cookies and codes are never included in the public
 repository or its illustrative preview.
+
+Live listening and full browser microphone participation are described in [browser live audio](browser-live-audio.md).

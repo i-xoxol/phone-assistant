@@ -71,6 +71,15 @@ def greeting_contact(settings,record):
 
 
 def startup_greeting_content(settings,record):
+    if (not record.get('transcript') and not record.get('closed_announcement')
+            and not record.get('voice_opening_claimed') and not resolve_presentation(settings, record)['owner_on_line']):
+        opening = (record.get('contact_guidance') or {}).get('greeting')
+        if opening:
+            return opening
+    return default_startup_greeting_content(settings, record)
+
+
+def default_startup_greeting_content(settings,record):
     """Phone-safe words for a single silent-start fallback, never generated TTS."""
     if record.get('transcript') or record.get('closed_announcement'): return None
     context=record.get('incoming_context',{});caller=context.get('caller',{})
@@ -82,17 +91,26 @@ def startup_greeting_content(settings,record):
     if nickname.casefold() in ('mama','mom','mother','мама'): nickname=''
     owner=bool(contact and record['phone_number']==settings.owner_transfer_number)
     missed=bool(context.get('forwarding',{}).get('missed_call_context') and not owner)
-    name=settings.caller_name;assistant=settings.assistant_name
+    name=settings.caller_name;assistant=resolve_presentation(settings, record)['assistant_name']
     _,object_pronoun,possessive=owner_words(settings)
+    if resolve_presentation(settings, record)['mode']=='character':
+        spoken=resolve_presentation(settings, record)['spoken_name']
+        if language not in ('en','uk'):
+            return localized_greeting(language,assistant,name,representative_name=spoken)
+        return ('Привіт, це '+spoken+'. Чим можу допомогти?' if language=='uk' else 'Hi, '+spoken+' here. How can I help?')
     if language not in ('en','uk'):
         return localized_greeting(language,assistant,name,is_owner=owner,nickname=nickname if familiar or owner else '',
-            representative_name=resolve_presentation(settings,record)['spoken_name'] if as_owner(settings,record) else '')
+            representative_name=resolve_presentation(settings,record)['spoken_name'] if as_owner(settings,record) else '',
+            familiar=familiar)
     if owner:
         spoken_name=nickname or name
         return ('Привіт, '+spoken_name+'! Як справи?' if language=='uk' else
                 'Hi, '+spoken_name+"! What's up?")
     if as_owner(settings, record):
         spoken = resolve_presentation(settings, record)['spoken_name']
+        if familiar:
+            return ('Привіт'+(', '+nickname if nickname else '')+'! Як ти?' if language=='uk' else
+                    'Hi'+(', '+nickname if nickname else '')+"! What's up?")
         return (('Привіт' if familiar else 'Вітаю')+', це '+spoken+'. Чим можу допомогти?' if language=='uk' else
                 ('Hi' if familiar else 'Hello')+', '+spoken+' here. How can I help?')
     profile = record.get('personality') or {}
@@ -422,7 +440,7 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             'For new callers introduce the line as '+office+'. '
             'Do not use familiar nicknames or presume friendship. Keep questions clear and courteous.')
         greeting=('Greet the caller naturally and briefly. For example: "Hello, you\'ve reached '
-            +office+". I'm "+settings.assistant_name+", "+name+"'s assistant. How can I help?\" "
+            +office+". I'm "+resolve_presentation(settings, record)['assistant_name']+", "+name+"'s assistant. How can I help?\" "
             'Use conversational phrasing and intonation; the example is not a script to recite mechanically. ')
     if record.get('personality'):
         style=('CONVERSATION STYLE: '+('Familiar: keep the whole conversation warm, relaxed and informal by default, '
@@ -431,7 +449,7 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             'The selected personality supplies the work role and tone. Do not impose an office persona from shared reference facts. '
             'A relationship label such as Mama is about the owner, not proof of a human relationship of the automated voice. ')
         greeting=incoming_presentation_greeting(settings, record, familiar=familiar, nickname=spoken_name)
-    if owner_caller:
+    if owner_caller and resolve_presentation(settings, record)['mode']!='character':
         instructions=instructions.replace(
             f"Introduce yourself as {name}'s assistant, without an upfront digital/AI label; never claim to be human.",
             'You are speaking to the recognized owner. Skip self-introductions; never claim to be human.')
@@ -445,10 +463,11 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             'Skip all self-introduction and office announcements; then listen. ')
     caller_policy+='\n'+style+'\n'
     routing=record.get('incoming_context',{}).get('forwarding',{})
-    if routing.get('missed_call_context') and not owner_caller and not as_owner(settings, record):
+    if (routing.get('missed_call_context') and not owner_caller and not as_owner(settings, record)
+            and resolve_presentation(settings, record)['mode']!='character'):
         greeting+=(f'This is a missed mobile call: {name} could not take the call. '
             f'Work this into the same short greeting, for example "Sorry you couldn\'t reach {name}. '
-            f"I'm {settings.assistant_name}, {possessive} assistant. How can I help?\" "
+            f"I'm {resolve_presentation(settings, record)['assistant_name']}, {possessive} assistant. How can I help?\" "
             'Do not deliver a normal greeting and then a second introduction. Offer message-taking naturally if useful. '
             'Keep the configured familiar/formal style. ')
     greeting+=('Owner-approved profile instructions about greeting and conversational tone take precedence '
@@ -471,7 +490,8 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
 The owner configured this mobile to forward missed/declined calls to the assistant. Treat this as a missed mobile call.
 Continue within the selected personality role and presentation, with the configured familiar/formal tone.
 Help within existing concierge permissions, ask the purpose and offer to take a message for the owner and supervising agent.
-In Assistant mode you may say {name} could not take the call. In first-person mode acknowledge the missed call
+In Assistant mode you may say {name} could not take the call. In first-person mode keep the selected personal greeting;
+do not add a third-person missed-call apology or an assistant/office introduction. If asked about the missed call, acknowledge it
 without implying that the actual human owner has now answered; clarify the representation if asked.
 Do not claim the owner deliberately declined, is busy, or saw this call;
 declined versus unanswered is not known. Do not ask the caller to redial the mobile they just tried.

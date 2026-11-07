@@ -318,16 +318,16 @@ Native supervision subscriptions/expiry are unchanged. The optional private Real
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False))
     def set_call_personality(name:str,instructions:str='',context:str='',greeting:str='',
             personality_id:UUID|None=None,revision:int|None=None,role:str|None=None,
-            presentation_mode:Literal['assistant','owner_first_person']|None=None,spoken_name:str|None=None,
-            outbound_greeting:str|None=None) -> dict:
+            presentation_mode:Literal['assistant','owner_first_person','character']|None=None,spoken_name:str|None=None,
+            outbound_greeting:str|None=None,allow_character_invention:bool|None=None) -> dict:
         """Create or update an owner-requested personality for NEW calls. Read profiles first; updates require
         the current revision to avoid losing another editor's changes. Context must be approved for callers.
-        Speak as assistant or authorized owner_first_person, with an optional spoken_name (independent of voice).
+        Speak as assistant, authorized owner_first_person, or an independent fictional character, with an optional spoken_name (independent of voice).
         Omitted role/presentation/name/outbound_greeting preserve saved values. Honest identity answers remain required.
-        Tone/greeting preferences never grant new tools, booking, spending or disclosure permission."""
+        allow_character_invention opts a character into persistent fictional biography development. It never grants real-world tools, booking, spending or disclosure permission."""
         return manager.personalities.save(PersonalityUpdate(name=name,instructions=instructions,context=context,
             greeting=greeting,revision=revision,role=role,presentation_mode=presentation_mode,
-            spoken_name=spoken_name,outbound_greeting=outbound_greeting),personality_id)
+            spoken_name=spoken_name,outbound_greeting=outbound_greeting,allow_character_invention=allow_character_invention),personality_id)
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False))
     def duplicate_call_personality(personality_id:UUID,name:str) -> dict:

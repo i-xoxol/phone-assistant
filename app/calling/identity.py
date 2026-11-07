@@ -10,7 +10,9 @@ def owner_words(settings):
 
 def owner_identity_policy(settings, record=None):
     if record:
-        from app.calling.presentation import as_owner, perspective_policy
+        from app.calling.presentation import as_owner, perspective_policy, resolve_presentation
+        if resolve_presentation(settings, record)['mode'] == 'character':
+            return perspective_policy(settings, record)
         if as_owner(settings, record):
             return ('\nOWNER REFERENCE: '+settings.caller_name+' uses '+ '/'.join(owner_words(settings))+
                     '. Use these pronouns and corresponding grammatical gender when a third-person owner reference is needed; '

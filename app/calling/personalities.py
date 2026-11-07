@@ -17,9 +17,10 @@ class PersonalityUpdate(BaseModel):
     greeting: str = Field(default='', max_length=1000)
     revision: int | None = Field(default=None, ge=1)
     role: str | None = Field(default=None, max_length=1000)
-    presentation_mode: Literal['assistant', 'owner_first_person'] | None = None
+    presentation_mode: Literal['assistant', 'owner_first_person', 'character'] | None = None
     spoken_name: str | None = Field(default=None, max_length=120)
     outbound_greeting: str | None = Field(default=None, max_length=1000)
+    allow_character_invention: bool | None = None
 
 
 class PersonalityAssignment(BaseModel):
@@ -53,11 +54,14 @@ class Personalities:
             ''')
             columns = {r['name'] for r in c.execute('PRAGMA table_info(telephone_personalities)')}
             for name, definition in [('role', "TEXT NOT NULL DEFAULT ''"),
-                    ('presentation_mode', "TEXT NOT NULL DEFAULT 'assistant' CHECK(presentation_mode IN ('assistant','owner_first_person'))"),
-                    ('spoken_name', "TEXT NOT NULL DEFAULT ''"), ('outbound_greeting', "TEXT NOT NULL DEFAULT ''")]:
+                    ('presentation_mode', "TEXT NOT NULL DEFAULT 'assistant' CHECK(presentation_mode IN ('assistant','owner_first_person','character'))"),
+                    ('spoken_name', "TEXT NOT NULL DEFAULT ''"), ('outbound_greeting', "TEXT NOT NULL DEFAULT ''"),
+                    ('allow_character_invention', "INTEGER NOT NULL DEFAULT 0 CHECK(allow_character_invention IN (0,1))")]:
                 if name not in columns:
                     c.execute('ALTER TABLE telephone_personalities ADD COLUMN '+name+' '+definition)
             c.commit()
+            from app.storage.character_profiles import allow_character_profiles
+            allow_character_profiles(c)
             c.execute('BEGIN IMMEDIATE')
             if not c.execute('SELECT 1 FROM telephone_default_personality').fetchone():
                 stamp = utcnow().isoformat()
@@ -116,27 +120,36 @@ class Personalities:
                 if body.revision is None or body.revision != old['revision']:
                     raise ValueError('Personality changed elsewhere. Reload before saving your edits.')
                 additions = {k: getattr(body, k) if getattr(body, k) is not None else old[k]
-                             for k in ('role', 'presentation_mode', 'spoken_name', 'outbound_greeting')}
+                             for k in ('role', 'presentation_mode', 'spoken_name', 'outbound_greeting', 'allow_character_invention')}
+                if additions['presentation_mode']!='character':
+                    if body.allow_character_invention: raise ValueError('Only character profiles can develop fictional personal facts')
+                    additions['allow_character_invention']=False
                 c.execute('UPDATE telephone_personalities SET name=?,instructions=?,context=?,greeting=?,role=?, '
                           'presentation_mode=?,spoken_name=?,outbound_greeting=?, '
-                          'revision=revision+1,updated_at=? WHERE personality_id=?',
+                          'allow_character_invention=?,revision=revision+1,updated_at=? WHERE personality_id=?',
                           (body.name.strip(), body.instructions, body.context, body.greeting,
                            additions['role'], additions['presentation_mode'], additions['spoken_name'].strip(),
-                           additions['outbound_greeting'], stamp, pid))
+                           additions['outbound_greeting'], int(additions['allow_character_invention']), stamp, pid))
             else:
+                if body.allow_character_invention and body.presentation_mode!='character':
+                    raise ValueError('Only character profiles can develop fictional personal facts')
                 if c.execute('SELECT count(*) FROM telephone_personalities').fetchone()[0] >= 50:
                     raise ValueError('At most 50 personalities')
                 c.execute('INSERT INTO telephone_personalities(personality_id,name,instructions,context,greeting,revision,created_at,updated_at, '
-                          'role,presentation_mode,spoken_name,outbound_greeting) VALUES (?,?,?,?,?,1,?,?,?,?,?,?)',
+                          'role,presentation_mode,spoken_name,outbound_greeting,allow_character_invention) VALUES (?,?,?,?,?,1,?,?,?,?,?,?,?)',
                           (pid, body.name.strip(), body.instructions, body.context, body.greeting, stamp, stamp,
-                           body.role or '', body.presentation_mode or 'assistant', (body.spoken_name or '').strip(), body.outbound_greeting or ''))
+                           body.role or '', body.presentation_mode or 'assistant', (body.spoken_name or '').strip(), body.outbound_greeting or '',int(body.allow_character_invention or False)))
         return self.get(pid)
 
     def duplicate(self, personality_id, name):
         old = self.get(personality_id)
-        return self.save(PersonalityUpdate(name=name, instructions=old['instructions'],
+        saved=self.save(PersonalityUpdate(name=name, instructions=old['instructions'],
             context=old['context'], greeting=old['greeting'], role=old['role'],
-            presentation_mode=old['presentation_mode'], spoken_name=old['spoken_name'], outbound_greeting=old['outbound_greeting']))
+            presentation_mode=old['presentation_mode'], spoken_name=old['spoken_name'], outbound_greeting=old['outbound_greeting'],
+            allow_character_invention=bool(old.get('allow_character_invention'))))
+        if old['presentation_mode']=='character':
+            self.manager.character_biographies.clone(str(personality_id),saved['personality_id'])
+        return saved
 
     def legacy_role_changed(self, conn, role):
         """Old Rocky clients update the migrated profile only, never all personalities."""
@@ -191,6 +204,10 @@ class Personalities:
             profile.update(presentation_mode='assistant', spoken_name=self.manager.settings.caller_name,
                            role=migration['original_role'] if call and call['direction']=='inbound' and call['inbound_mode']=='concierge' else '',
                            outbound_greeting='')
+        if profile.get('presentation_mode') == 'assistant' and not profile.get('identity_version'):
+            # Legacy assistant names were ignored by speech, and often contained
+            # the generated owner-name fallback. Never reinterpret that as a custom name.
+            profile['spoken_name'] = self.manager.settings.assistant_name
         return profile
 
     def effective(self, record, override=None):
@@ -202,18 +219,28 @@ class Personalities:
                 profile['greeting' if record.get('direction')=='inbound' else 'outbound_greeting']=actions['greeting']
             if actions.get('instructions'):
                 profile['instructions']+='\nOwner routing-rule guidance within existing permissions:\n'+actions['instructions']
-        profile['spoken_name'] = profile['spoken_name'] or self.manager.settings.caller_name
+        fallback = (self.manager.settings.caller_name if profile['presentation_mode'] == 'owner_first_person'
+                    else self.manager.settings.assistant_name)
+        if profile['presentation_mode'] == 'character':
+            fallback = profile['name']
+        profile['spoken_name'] = profile['spoken_name'].strip() or fallback
+        profile['identity_version'] = 2
         return profile
 
     def pin(self, record, override=None):
         if saved := self.for_call(record['call_id']):
+            if guidance := getattr(self.manager, 'contact_guidance', None):
+                guidance.pin(record, saved)
             return saved
         profile=self.effective(record,override)
         with self.db.connect() as c:
             c.execute('INSERT OR IGNORE INTO call_personalities VALUES (?,?,?,?,?)',
                       (record['call_id'], profile['personality_id'], profile['revision'],
                        json.dumps(profile, ensure_ascii=False), utcnow().isoformat()))
-        return self.for_call(record['call_id'])
+        saved = self.for_call(record['call_id'])
+        if guidance := getattr(self.manager, 'contact_guidance', None):
+            guidance.pin(record, saved)
+        return saved
 
 
 def apply_personality(config, record):

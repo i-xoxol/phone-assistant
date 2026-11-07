@@ -23,6 +23,7 @@ async function api(path, options={}) {
 function clock(seconds) { return Math.floor(seconds/60)+':'+String(Math.floor(seconds%60)).padStart(2,'0'); }
 function renderCallerBook(rows=[]) {
   callerRows=rows;
+  if(typeof renderBrowserChoices==='function') renderBrowserChoices();
   if(typeof refreshOutboundContacts==='function') refreshOutboundContacts();
   refreshContactPickers();
   const target=$('callerBook'); target.replaceChildren();
@@ -51,16 +52,20 @@ function renderCallerBook(rows=[]) {
     const editContact=document.createElement('button');editContact.className='quiet';editContact.textContent=row.contact_id?'Edit contact':'Save as contact';
     editContact.onclick=()=>openContact(row);
     const summary=document.createElement('summary');summary.append(title,number);
-    entry.append(summary,edit,editContact);addContactTesting(entry,row);addContactPersonality(entry,row);addContactAnswering(entry,row);target.append(entry);
+    entry.append(summary,edit,editContact);addContactPersonality(entry,row);
+    if(typeof addContactGuidance==='function') addContactGuidance(entry,row);
+    addContactTesting(entry,row);addContactAnswering(entry,row);target.append(entry);
   });
 }
 function showCall() {
+  if(typeof renderLiveAudio==='function') renderLiveAudio();
   showRecordings();
   $('saveCaller').disabled=!call?.phone_number || !!call?.forwarding?.caller_identity_ambiguous;
   $('status').textContent=call ? call.status.replaceAll('_',' ') : '—';
   $('status').className='badge'+(call && !terminal.has(call.status)?' active':'');
   $('objective').textContent=call?.objective || 'Select a call to view its conversation.';
-  $('testModeState').textContent=call?.test_mode?.enabled?'Test contact · additional testing instructions are active for this call.':'';
+  $('testModeState').textContent=call?.browser_test?'Browser test · '+call.browser_test.scenario+' · no telephone call or recording.':
+    call?.test_mode?.enabled?'Test contact · additional testing instructions are active for this call.':'';
   $('hangup').disabled=!call || terminal.has(call.status) || pending;
   $('hangup').textContent=pending?'Ending call…':'Hang up call';
   $('reachOwner').disabled=!ownerContactEnabled || !call || call.status!=='in_progress' || !!call.owner_transfer || pending;
@@ -147,7 +152,7 @@ function addText(event) {
   if (!turn) {
     const div=document.createElement('div'); div.className='turn '+event.speaker;
     const label=document.createElement('div'); label.className='speaker';
-    const name=document.createElement('span'); name.textContent=event.speaker==='assistant'?(call?.presentation?.mode==='owner_first_person'?'Voice representative · '+call.presentation.spoken_name:'Your assistant'):(call?.direction==='inbound'?'Caller':'Recipient');
+    const name=document.createElement('span'); name.textContent=event.speaker==='assistant'?(call?.presentation?.mode==='owner_first_person'?'Voice representative · '+call.presentation.spoken_name:call?.presentation?.mode==='character'?call.presentation.spoken_name+' · character':'Your assistant'):(call?.direction==='inbound'?'Caller':'Recipient');
     const stamp=document.createElement('time'); stamp.textContent=clock(event.timestamp);
     label.append(name,stamp); const words=document.createElement('div'); words.className='words'; div.append(label,words);
     turn={speaker:event.speaker,start:event.timestamp,end:event.end_timestamp,words}; turns.push(turn); $('transcript').append(div);

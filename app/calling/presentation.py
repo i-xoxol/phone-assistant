@@ -15,14 +15,16 @@ def recognized_owner(settings, record):
 def resolve_presentation(settings, record):
     profile = record.get('personality') or {}
     mode = profile.get('presentation_mode', 'assistant')
-    if mode not in ('assistant', 'owner_first_person'):
+    if mode not in ('assistant', 'owner_first_person', 'character'):
         mode = 'assistant'
-    return {'mode': mode, 'spoken_name': (profile.get('spoken_name') or settings.caller_name).strip(),
-            'owner_name': settings.caller_name, 'assistant_name': settings.assistant_name,
-            'role': profile.get('role') or 'Personal call assistance for '+settings.caller_name,
+    fallback = (profile.get('name') or 'Character') if mode == 'character' else (settings.caller_name if mode == 'owner_first_person' else settings.assistant_name)
+    spoken = (profile.get('spoken_name') or '').strip() or fallback
+    return {'mode': mode, 'spoken_name': spoken,
+            'owner_name': settings.caller_name, 'assistant_name': spoken if mode in ('assistant', 'character') else settings.assistant_name,
+            'role': profile.get('role') or ('Fictional character conversation' if mode == 'character' else 'Personal call assistance for '+settings.caller_name),
             'direction': record.get('direction', 'outbound'), 'owner_on_line': recognized_owner(settings, record),
             'personality_id': profile.get('personality_id'), 'personality_revision': profile.get('revision'),
-            'sources': {'identity': 'owner settings', 'presentation': 'pinned personality' if profile else 'assistant default',
+            'sources': {'identity': 'character profile' if mode == 'character' else 'owner settings', 'presentation': 'pinned personality' if profile else 'assistant default',
                         'role': 'personality', 'context': 'shared reference facts and profile background',
                         'authorization': 'server tool checks; never granted by presentation'}}
 
@@ -34,12 +36,26 @@ def as_owner(settings, record):
 def voice_identity(settings, record, *, inbound=False):
     p = resolve_presentation(settings, record)
     name = settings.caller_name
+    if p['mode'] == 'character':
+        developing=bool((record.get('personality') or {}).get('allow_character_invention'))
+        development=('The owner has authorized inventing missing ordinary personal details and fictional self-anecdotes, saving them in this character\'s biography before use. No further owner permission is needed. '
+                     if developing else 'Use only the supplied and established character biography. ')
+        return (f"You are portraying {json.dumps(p['spoken_name'], ensure_ascii=False)}, an owner-configured fictional character. "
+                'Speak naturally in the character\'s first person. '+development+
+                'Introduce yourself by that character name, without an owner-assistant or office introduction. '
+                'Do not portray the account owner or invent a relationship with the owner, caller or contacts. '
+                'The supplied biography describes the fictional character, not the account owner or a verified real person. '
+                'If asked whether you are human or AI, honestly explain that you are an AI portraying this character. '
+                'Never use the character to pass real-person, biometric or security verification. '
+                'Do not claim actual physical actions, inspections or appointments performed for the real call participant. Fictional self-anecdotes are permitted only when character development is enabled. '
+                'Character habits and working hours are background, not verified calendar availability. '
+                'This presentation grants no new tool, booking, spending or disclosure authority.\n')
     if p['mode'] == 'assistant':
         if inbound:
-            return (f"You are {settings.assistant_name}, {name}'s personal assistant answering incoming calls.\n"
+            return (f"You are {p['assistant_name']}, {name}'s personal assistant answering incoming calls.\n"
                     f"Introduce yourself as {name}'s assistant, without an upfront digital/AI label; never claim to be human.\n"
                     'Never impersonate the owner. If asked whether you are AI, answer honestly.')
-        return (f'You are a polite AI personal assistant calling on behalf of {name}.\n'
+        return (f"You are {p['assistant_name']}, a polite AI personal assistant calling on behalf of {name}.\n"
                 f"Introduce yourself simply as {name}'s personal assistant, without a 'digital' or 'AI' label.\n"
                 f"If speaking directly to {name}, say 'your personal assistant'. Otherwise say\n"
                 f"'{name}'s personal assistant'. Never impersonate {name} or claim to be human.\n"
@@ -62,6 +78,13 @@ def voice_identity(settings, record, *, inbound=False):
 
 def perspective_policy(settings, record):
     p = resolve_presentation(settings, record)
+    if p['mode'] == 'character':
+        return ('\nCHARACTER PERSPECTIVE: I/my refers only to the configured fictional character. '
+                'The real caller/callee and the administrative account owner remain separate participants. '
+                'Do not treat owner facts, saved contact relationships, calendars, call history or tool results '
+                'as the character\'s personal life or acquaintance. Do not turn character working hours into '
+                'owner availability or permission to book. Tools, consent evidence and grants use actual '
+                'participants; fiction grants no authority.\n')
     if p['mode'] != 'owner_first_person':
         return ''
     policy = (f'\nPARTICIPANT PERSPECTIVE: OWNER={settings.caller_name}; VOICE_AGENT=automated representative; '
@@ -87,10 +110,12 @@ def perspective_policy(settings, record):
 def outbound_opening(settings, record):
     p = resolve_presentation(settings, record)
     language = record.get('recipient_language', {}).get('language')
-    if p['mode'] == 'owner_first_person':
+    if p['mode'] == 'character':
+        identity = f"Introduce yourself as {json.dumps(p['spoken_name'], ensure_ascii=False)}, the selected character; do not introduce an owner's assistant or office. "
+    elif p['mode'] == 'owner_first_person':
         identity = f"Use {json.dumps(p['spoken_name'], ensure_ascii=False)} and first-person wording; do not introduce an assistant. "
     else:
-        identity = (f"Introduce yourself simply as {settings.caller_name}'s personal assistant, or 'your personal assistant' "
+        identity = (f"Introduce yourself simply as {p['assistant_name']}, {settings.caller_name}'s personal assistant, or 'your personal assistant' "
                     f'if speaking to {settings.caller_name}. ')
     text = ('Greet the recipient now in the language requested in the call brief, or '
             +(language or 'English')+' if no language was requested. '+identity+
@@ -101,14 +126,27 @@ def outbound_opening(settings, record):
     guidance = (record.get('personality') or {}).get('outbound_greeting', '')
     if guidance:
         text += '\nOwner outbound greeting guidance: '+guidance
+    contact_opening = (record.get('contact_guidance') or {}).get('greeting')
+    if contact_opening:
+        text += '\nOwner contact-specific opening replaces generic examples: ' + contact_opening
     return text
 
 
 def incoming_presentation_greeting(settings, record, *, familiar=False, nickname=''):
     p = resolve_presentation(settings, record)
+    if p['mode'] == 'character':
+        return ('Greet once using the character name '+json.dumps(p['spoken_name'], ensure_ascii=False)+
+                '. Use the character style and supplied biography, without an owner-assistant or office announcement. '
+                'Do not imply prior acquaintance with a caller from the owner contact book. ')
     if p['mode'] == 'owner_first_person':
+        if familiar:
+            return ('Greet this recognized contact warmly and informally in the saved caller language, using '
+                +json.dumps(nickname,ensure_ascii=False)+' when it is a personal name. '
+                'Use the selected owner first-person presentation and the approved relationship context. '
+                'Skip routine self-introductions: this familiar caller does not need your name or an assistant/office announcement. '
+                'Give one brief personal greeting, then listen. Answer identity questions honestly if asked. ')
         return (f"Greet once using {json.dumps(p['spoken_name'], ensure_ascii=False)}, in first person. "
-                'For example, "Hello, '+p['spoken_name']+' here. How can I help?" '
+                'Use the saved caller language from the first word. '
                 'Do not give an assistant introduction or claim that the human owner is physically on the line. ')
     profile = record.get('personality') or {}
     role = profile.get('role', '').casefold()
@@ -119,7 +157,7 @@ def incoming_presentation_greeting(settings, record, *, familiar=False, nickname
         line = (record.get('incoming_context') or {}).get('office_name') or 'the office of '+settings.caller_name
         guidance += 'For this office profile a natural example is "Hello, you\'ve reached '+line+'." '
     return (guidance+'Use the selected personality role and tone. Introduce yourself as '
-            +settings.assistant_name+', '+settings.caller_name+"'s assistant. "
+            +p['assistant_name']+', '+settings.caller_name+"'s assistant. "
             'Use an office introduction only if that selected work role/greeting calls for one; '
             'do not impose office/receptionist behavior on a personal or friend profile. '
             +('Address the recognized contact naturally by '+json.dumps(nickname, ensure_ascii=False)+'. ' if familiar and nickname else

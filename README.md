@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/hero.svg" alt="Phone Assistant — real calls, live conversation, human control" width="100%">
+  <img src="docs/assets/rocky-call-desk.png" alt="Rocky at a cozy call desk, with a VPS, a human joining from a browser, and a supervising agent" width="100%">
 </p>
 
 <p align="center">
@@ -10,14 +10,20 @@
 </p>
 
 <p align="center">
-  <strong>A self-hosted phone assistant for ChatGPT, Codex, and other MCP clients.</strong><br>
-  Twilio connects the call. OpenAI GPT-Live handles the conversation. You keep control.
+  <strong>Your own calling agent. A browser seat at the conversation. Another agent watching over it.</strong><br>
+  Real phone calls, contact-aware personalities, live audio and human control — hosted on your VPS.
 </p>
 
-Make outbound calls, answer incoming calls, and take messages. Follow captions
-from your phone or laptop, send bounded updates, or end a call yourself. Optional
-workflows add approved caller context, guarded appointments, and private coaching
-when the owner joins a conversation.
+Phone Assistant makes outbound calls, answers incoming and forwarded calls,
+and takes messages using your configured voice provider and Twilio account.
+It runs the conversation independently of an open ChatGPT/Codex chat, with
+private persistent state, bounded tools and optional guarded appointments.
+Connect another agent through MCP to oversee calls and answer requests, or
+open the browser to read, **listen live, and join with your microphone**.
+
+**Self-sufficient orchestration, on your own server:** one Python service and
+SQLite, with optional calendar and supervisor integrations. External phone,
+voice and transcription providers still require your accounts and billing.
 
 <p align="center">
   <a href="#watch-the-overviews">Watch the videos</a> ·
@@ -32,6 +38,44 @@ when the owner joins a conversation.
 > access to the author's running service or private operational records. Any
 > approved owner-run test examples are identified separately.
 
+## Why run your own calling agent?
+
+| Benefit | What you get |
+|---|---|
+| A phone line that can handle a conversation | Incoming and outgoing calls, messages, keypad tools and duration limits |
+| A control room in your browser | Live captions, both sides of the audio, microphone joining, updates, approvals and hangup |
+| Personality that fits the contact | Editable Rocky/owner names; shared and profile-specific instructions and approved facts, scoped by call direction |
+| Test without dialing | Browser calls model direct, forwarded and outbound scenarios, with recent forwarding-number choices |
+| Another agent can oversee | OAuth MCP tools, verified events and bounded supervisor replies; the owner retains approvals |
+| Your deployment and records | One VPS service, private SQLite state and backups, native or Docker deployment |
+| Choice of voice backend | OpenAI GPT-Live, ElevenLabs Realtime, and the verification-gated Gemini Live adapter |
+
+### Listen, then jump in
+
+Choose an active call → **Listen live** → **Join with microphone**. The caller
+hears you directly alongside the assistant; the assistant receives your speech
+as labelled owner captions. **Mute**, **Leave microphone**, and **Stop listening**
+keep you in control without hanging up the call. Joining needs configured owner
+transcription and HTTPS. [Browser audio guide →](docs/browser-live-audio.md)
+
+<p align="center">
+  <img src="docs/assets/cat-on-call.png" alt="A headset robot and human enjoy a call while an orange cat helpfully operates the oversized phone keypad" width="760">
+  <br><sub>Original AI-generated concept art. Cat-assisted dialing is currently an enthusiasm, not a feature.</sub>
+</p>
+
+### Deploy it like the running VPS
+
+The owner's deployment uses an Ubuntu VPS, Python 3.14, a dedicated user systemd
+service, one loopback Uvicorn worker, Nginx HTTPS and Cloudflare. It keeps private
+runtime data separate from reviewed source releases and checks for active calls
+before backup and restart.
+
+Follow the [complete anonymized VPS example](docs/vps-example.md),
+[native installation guide](docs/native-vps.md), or [Docker package](docs/cloud-deployment.md).
+Then connect [a supervising agent](docs/supervising-agent.md) if desired. An MCP
+connection supplies tools; continuous oversight additionally requires an available
+client and verified, renewed event delivery.
+
 ## Watch the overviews
 
 Optional voice backend: keep GPT-Live or choose ElevenLabs Realtime with your
@@ -39,8 +83,14 @@ own library voice. See [setup, selection and testing](docs/voice-backends.md).
 
 The private control page can [place outbound calls with context, reusable brief defaults,
 and an office or verified mobile caller ID](docs/outbound-calls.md).
+It can also [test incoming, forwarded and outgoing calls using browser audio](docs/browser-tests.md),
+without dialing through Twilio.
 It also supports [caller profiles, editable personalities,
 shared context and an assembled-instructions viewer](docs/personalities.md).
+Independent fictional characters can also develop a persistent biography:
+missing personal details become saved canon they reuse across calls, with an
+owner editor for reviewing and correcting their story.
+Use [per-contact instructions and approved facts](docs/contact-guidance.md) to vary behavior and shared information by profile and call direction.
 
 Calendar caption fixes, natural return-call recall and the extended prompt viewer
 are described in [calendar, recall and all prompts](docs/calendar-recall-prompts.md).
@@ -138,10 +188,12 @@ are preserved. The transcripts were not reconstructed from the audio.
 flowchart LR
     Client["ChatGPT / Codex / MCP client"] -->|OAuth MCP or REST| App["FastAPI + CallManager"]
     App -->|Calls API| Twilio["Twilio telephone network"]
-    Twilio <-->|Audio via voice bridge| Live["OpenAI GPT-Live"]
+    Twilio <-->|Phone audio| App
+    App <-->|Voice bridge| Live["Configured voice provider"]
     App <--> DB[("Private SQLite records")]
     DB -->|SSE captions| Monitor["Paired browser"]
-    Monitor -->|Direct hangup| App
+    Monitor <-->|Listen and microphone join| App
+    Monitor -->|Live updates, approvals, hangup| App
     App -->|Optional guarded workflow| Calendar["Google Calendar adapter"]
 ```
 
@@ -226,6 +278,7 @@ Client/account availability varies. Browser pairing is a separate flow.
 
 | Start here | Explore a workflow | Operate and extend |
 |---|---|---|
+| [VPS deployment example](docs/vps-example.md) | [Live listening and browser joining](docs/browser-live-audio.md) | [Supervising agent](docs/supervising-agent.md) |
 | [Getting started](docs/getting-started.md) | [Incoming calls](docs/incoming-calls.md) | [Configuration](docs/configuration.md) |
 | [Architecture](docs/architecture.md) | [Context and availability](docs/concierge-context.md) | [Deployment](docs/deployment.md) |
 | [MCP and plugin setup](docs/mcp.md) | [Appointments](docs/appointments.md) | [Testing](docs/testing.md) |

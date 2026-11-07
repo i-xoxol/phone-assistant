@@ -86,7 +86,8 @@ class Preview(BaseHTTPRequestHandler):
             html = html.replace('{{csrf}}', 'documentation-demo')
             banner = '<aside style="text-align:center;padding:10px;background:#173c36;color:#effaf0;font:12px system-ui">Documentation demo · Fictional data · No phone connection</aside>'
             self.send(html.replace('<body>', '<body>' + banner), 'text/html; charset=utf-8')
-        elif url.path in ('/live/app.js', '/live/style.css','/live/personalities.js','/live/outbound.js','/live/control.js'):
+        elif url.path in ('/live/app.js', '/live/style.css','/live/personalities.js','/live/outbound.js','/live/control.js',
+                          '/live/browser-tests.js','/live/browser-audio-worklet.js','/live/contact-guidance.js'):
             path = ROOT / 'app/web' / url.path.rsplit('/', 1)[-1]
             kind = 'text/javascript' if path.suffix == '.js' else 'text/css'
             self.send(path.read_bytes(), kind + '; charset=utf-8')
@@ -106,6 +107,10 @@ class Preview(BaseHTTPRequestHandler):
             self.send(json.dumps({'/live/personalities':PROFILES,'/live/outbound/settings':OUTBOUND,'/live/rules':RULES}[url.path]))
         elif url.path.endswith('/approvals'):
             self.send(json.dumps({'call_id':CALL['call_id'],'approvals':[]}))
+        elif url.path.startswith('/live/contacts/') and url.path.endswith('/guidance'):
+            self.send(json.dumps({'revision':0,'entries':[]}))
+        elif url.path == '/live/browser-tests/recent-numbers':
+            self.send(json.dumps({'forwarding_sources':[],'call_numbers':[]}))
         elif url.path == '/live/events':
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream')

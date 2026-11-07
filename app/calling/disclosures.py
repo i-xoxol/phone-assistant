@@ -221,6 +221,9 @@ class Disclosures:
         return {'approval_id':str(approval_id),'status':decision,'scope':'this_call','delivery':delivery}
 
     def history_private(self,call_id,current_call_id=None):
+        if guidance := getattr(self.m, 'contact_guidance', None):
+            if guidance.history_private(call_id, current_call_id):
+                return True
         with self.db.connect() as c:
             access=c.execute('SELECT level,contact_id FROM call_disclosure_access WHERE call_id=?',(call_id,)).fetchone()
             approved=c.execute('SELECT 1 FROM call_disclosure_approvals WHERE call_id=? AND status=\'approved\'',(call_id,)).fetchone()
