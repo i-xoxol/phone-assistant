@@ -100,13 +100,17 @@ def default_startup_greeting_content(settings,record):
         return ('Привіт, це '+spoken+'. Чим можу допомогти?' if language=='uk' else 'Hi, '+spoken+' here. How can I help?')
     if language not in ('en','uk'):
         return localized_greeting(language,assistant,name,is_owner=owner,nickname=nickname if familiar or owner else '',
-            representative_name=resolve_presentation(settings,record)['spoken_name'] if as_owner(settings,record) else '')
+            representative_name=resolve_presentation(settings,record)['spoken_name'] if as_owner(settings,record) else '',
+            familiar=familiar)
     if owner:
         spoken_name=nickname or name
         return ('Привіт, '+spoken_name+'! Як справи?' if language=='uk' else
                 'Hi, '+spoken_name+"! What's up?")
     if as_owner(settings, record):
         spoken = resolve_presentation(settings, record)['spoken_name']
+        if familiar:
+            return ('Привіт'+(', '+nickname if nickname else '')+'! Як ти?' if language=='uk' else
+                    'Hi'+(', '+nickname if nickname else '')+"! What's up?")
         return (('Привіт' if familiar else 'Вітаю')+', це '+spoken+'. Чим можу допомогти?' if language=='uk' else
                 ('Hi' if familiar else 'Hello')+', '+spoken+' here. How can I help?')
     profile = record.get('personality') or {}
@@ -486,7 +490,8 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
 The owner configured this mobile to forward missed/declined calls to the assistant. Treat this as a missed mobile call.
 Continue within the selected personality role and presentation, with the configured familiar/formal tone.
 Help within existing concierge permissions, ask the purpose and offer to take a message for the owner and supervising agent.
-In Assistant mode you may say {name} could not take the call. In first-person mode acknowledge the missed call
+In Assistant mode you may say {name} could not take the call. In first-person mode keep the selected personal greeting;
+do not add a third-person missed-call apology or an assistant/office introduction. If asked about the missed call, acknowledge it
 without implying that the actual human owner has now answered; clarify the representation if asked.
 Do not claim the owner deliberately declined, is busy, or saw this call;
 declined versus unanswered is not known. Do not ask the caller to redial the mobile they just tried.

@@ -139,8 +139,14 @@ def incoming_presentation_greeting(settings, record, *, familiar=False, nickname
                 '. Use the character style and supplied biography, without an owner-assistant or office announcement. '
                 'Do not imply prior acquaintance with a caller from the owner contact book. ')
     if p['mode'] == 'owner_first_person':
+        if familiar:
+            return ('Greet this recognized contact warmly and informally in the saved caller language, using '
+                +json.dumps(nickname,ensure_ascii=False)+' when it is a personal name. '
+                'Use the selected owner first-person presentation and the approved relationship context. '
+                'Skip routine self-introductions: this familiar caller does not need your name or an assistant/office announcement. '
+                'Give one brief personal greeting, then listen. Answer identity questions honestly if asked. ')
         return (f"Greet once using {json.dumps(p['spoken_name'], ensure_ascii=False)}, in first person. "
-                'For example, "Hello, '+p['spoken_name']+' here. How can I help?" '
+                'Use the saved caller language from the first word. '
                 'Do not give an assistant introduction or claim that the human owner is physically on the line. ')
     profile = record.get('personality') or {}
     role = profile.get('role', '').casefold()
