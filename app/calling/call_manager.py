@@ -41,6 +41,8 @@ class CallManager:
         from app.calling.personalities import Personalities
         self.personalities = Personalities(self)
         self.context.personalities = self.personalities
+        from app.calling.character_biography import CharacterBiographies
+        self.character_biographies=CharacterBiographies(self)
         from app.calling.contact_testing import ContactTesting
         self.test_contacts = ContactTesting(self)
         from app.calling.forwarding import IncomingRouting
@@ -105,6 +107,7 @@ class CallManager:
         record['routing_rule']=self.rules.pin(record)
         self.disclosures.pin(record)
         record['personality']=self.personalities.pin(record)
+        record['character_biography']=self.character_biographies.for_record(record)
         record['contact_guidance']=self.contact_guidance.for_record(record)
         record['test_mode']=self.test_contacts.pin(record)
         record['voice_name']=self.voices.pin(record)

@@ -199,6 +199,7 @@ def prompt_preview(manager, body):
         record['disclosure_context']={'access':manager.disclosures.access(record),
             'facts':manager.knowledge.search('',caller_number=record['phone_number'],call_id=record['call_id'])['facts'],
             'restricted_fact_topics':manager.disclosures.topics(record)}
+    record['character_biography']=manager.character_biographies.for_record(record)
     config = session_config(manager.settings, record)
     presentation = resolve_presentation(manager.settings, record)
     native = None
@@ -211,7 +212,7 @@ def prompt_preview(manager, body):
         native = gemini_config(manager.settings, record, record['voice_backend'])['system_instruction']
     backend = config.get('delegation', {}).get('responses', {})
     return {'basis': basis, 'routing_rule':record['routing_rule'], 'personality': record['personality'], 'presentation': presentation,
-            'contact_guidance':record['contact_guidance'],
+            'contact_guidance':record['contact_guidance'], 'character_biography':record['character_biography'],
             'greeting': config.get('input', []) if record.get('direction') == 'inbound' else outbound_opening(manager.settings, record),
             'test_mode': record['test_mode'], 'answering': record['voice_backend'],
             'voice_instructions': native or config['instructions'], 'planner_instructions': backend.get('instructions', ''),

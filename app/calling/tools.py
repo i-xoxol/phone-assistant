@@ -101,6 +101,16 @@ class VoiceTools:
         manager = self.bridge.manager
         name = item['name']
         inbound = manager.db.get(self.bridge.call_id).get('direction') == 'inbound'
+        if name in ('get_character_biography','remember_character_facts'):
+            if (manager.bridges.get(self.bridge.call_id) is not self.bridge or self.bridge.closing
+                    or self.bridge.handoff or self.bridge.call_id in manager.stopping):
+                raise ValueError('Character voice session is no longer current')
+            from app.calling.character_biography import ReadBiography,RememberPersonalFacts
+            if name=='get_character_biography':
+                ReadBiography.model_validate_json(item['arguments'])
+                return manager.character_biographies.read_call(self.bridge.call_id)
+            args=RememberPersonalFacts.model_validate_json(item['arguments'])
+            return manager.character_biographies.remember(self.bridge.call_id,item['call_id'],args)
         if name=='request_disclosure_approval':
             from app.calling.disclosures import DisclosureRequest
             if (manager.bridges.get(self.bridge.call_id) is not self.bridge or self.bridge.closing
@@ -246,7 +256,9 @@ class VoiceTools:
                 except Exception as exc:
                     self.bridge.manager.db.finish_tool(self.bridge.call_id, item['call_id'], 'unconfirmed')
                     log_event('voice_tool_unconfirmed', call_id=self.bridge.call_id, tool_name=item['name'],error_type=type(exc).__name__)
-                    result = {'status': 'unconfirmed', 'instruction': 'Do not retry automatically. Ask the owner or end the call.'}
+                    result = ({'status':'not_saved','instruction':'Character memory is unavailable. Use established canonical details or keep this answer general. No owner approval is needed for fiction; do not claim an unsaved detail was remembered.'}
+                              if item['name'] in ('get_character_biography','remember_character_facts') else
+                              {'status': 'unconfirmed', 'instruction': 'Do not retry automatically. Ask the owner or end the call.'})
                 if self.bridge.handoff or self.bridge.closing:
                     # New Live session reads durable keypad history. Old socket is gone.
                     return

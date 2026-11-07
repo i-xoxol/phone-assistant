@@ -111,7 +111,7 @@ application prompts, not private model reasoning or provider credentials.
 New tools reuse the existing `phone.calls` connection:
 
 - `get_call_personalities()`
-- `set_call_personality(name, instructions, context, greeting, personality_id?, revision?, role?, presentation_mode?, spoken_name?, outbound_greeting?)`
+- `set_call_personality(name, instructions, context, greeting, personality_id?, revision?, role?, presentation_mode?, spoken_name?, outbound_greeting?, allow_character_invention?)`
 - `duplicate_call_personality(personality_id, name)`
 - `set_default_call_personality(personality_id)`
 - `set_contact_personality(contact_id, personality_id?)` — omit the profile to inherit.
@@ -121,8 +121,8 @@ Read the current profile before updating it, retain its fields, and supply its
 revision. Caller requests never authorize personality changes. Existing contact,
 language, context, model/voice and live-update tools continue to work.
 
-`presentation_mode` is `assistant` or `owner_first_person`. Omitted new fields
-(`role`, `presentation_mode`, `spoken_name`, `outbound_greeting`) preserve saved
+`presentation_mode` is `assistant`, `owner_first_person` or `character`. Omitted fields
+(`role`, `presentation_mode`, `spoken_name`, `outbound_greeting`, `allow_character_invention`) preserve saved
 values on update; creation defaults to Assistant. To clear a name or greeting,
 send an empty string. Duplication copies these fields into an independent profile.
 The legacy `set_inbound_context(context, role?)` tool still accepts `role`:
@@ -165,3 +165,56 @@ not grant permission to book, disclose information, spend money or act physicall
 Saving a character makes it available for future call selection. Set a default,
 contact assignment or routing rule separately if desired. Existing assistant and
 “Me” profiles, recorded call snapshots and selected voices keep their behavior.
+
+### Let a character develop its own life
+
+Enable **Develop this character's life** in the personality editor to preauthorize
+inventing missing ordinary personal details. The character can answer naturally
+about family, hobbies, preferences and fictional anecdotes without asking you or
+the supervising agent for approval. It saves each new detail before speaking it,
+then reuses that detail in later calls. This option starts off for existing
+profiles and is available only in Character mode.
+
+Open **Established character biography** beneath the profile editor to review
+or edit those details. Each has a stable topic, value, enabled switch and source:
+provided/edited in settings, or developed during conversation. Put known facts
+here to establish canon; use the profile's Context for a broader description.
+Saved canon takes precedence over older background text. Store birth dates
+rather than ages when an age should advance naturally.
+
+The biography belongs to one profile, across callers and directions. It is
+fiction, never an approved contact fact, owner fact or real calendar entry.
+Characters do not receive the owner's call-history recall, and their calls are
+excluded from other personalities' automatic recall. The private owner history
+still lists those calls and labels their fictional character. Duplicating a
+profile copies its biography into an independent store.
+
+The server binds `get_character_biography` and `remember_character_facts` to the
+current active character call. There is no model-supplied profile ID. A model can
+add missing topics but cannot overwrite established values. Concurrent calls
+keep the first committed value; the tool returns current canon for the voice to
+use. Owner edits use a revision check and can correct any detail. Disabling or
+omitting a detail retires its topic, preventing the model from recreating it.
+Turning development off stops new writes, including from already active calls;
+established details remain available. Existing calls keep their pinned identity.
+
+Use the same editor with incoming, outgoing and browser test calls. No separate
+AI request is made to preview or edit the biography. Voice conversations use the
+configured provider and normal billing. As with other prompt-driven behavior,
+the model must follow the save-before-speaking policy; the application persists
+and checks actual tool writes, rather than treating an unsaved spoken claim as
+stored memory. A failed save asks the voice to use existing details or keep its
+answer general.
+
+Authenticated REST access is `GET`/`PUT /voice/personalities/{id}/biography`.
+PUT takes `{"revision": 0, "facts": [{"key": "hobby", "value": "Bicycle repair", "enabled": true}]}`;
+read first and retain the returned revision. The owner browser equivalents use
+`/live/personalities/{id}/biography` with session, Origin and CSRF checks. Reads
+include active `facts`, owner-editable `entries`, `retired_keys` and the current
+development setting. Writes return HTTP 409 for a stale revision. At most 128
+active details and 24,000 UTF-8 bytes are stored per profile, with 256 total
+topics including retired entries and 64 save operations per call.
+
+This authority concerns fictional autobiography. Existing real-world tool,
+disclosure and verification permissions still apply. The character answers
+honestly when directly asked whether it is AI.
