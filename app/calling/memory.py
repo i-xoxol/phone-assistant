@@ -42,19 +42,28 @@ class CallMemory:
 
     def records(self,number,exclude='',limit=5,before=None,*,rich=False,since=None):
         if not re.fullmatch(r'\+[1-9][0-9]{7,14}',number or ''): return []
+        # A character develops its own biography, not the owner's call history.
+        if exclude:
+            pinned=self.m.personalities.for_call(exclude)
+            if pinned and pinned.get('presentation_mode')=='character':return []
         cutoff=(utcnow()-timedelta(days=self.m.settings.call_history_days)).isoformat()
         recency=max(cutoff,since) if since else cutoff
         before=before or utcnow().isoformat()
         with self.m.db.connect() as db:
             rows=db.execute('''SELECT call_id,created_at,completed_at,direction,status,objective,duration_seconds
                 FROM calls WHERE phone_number=? AND call_id!=? AND created_at>=? AND created_at<?
+                AND (?='' OR NOT EXISTS (SELECT 1 FROM call_personalities p WHERE p.call_id=calls.call_id
+                    AND json_extract(p.snapshot,'$.presentation_mode')='character'))
                 AND NOT EXISTS (SELECT 1 FROM browser_test_calls b WHERE b.call_id=calls.call_id)
                 AND COALESCE(completed_at,created_at)>=?
                 AND status IN ('completed','failed','busy','no_answer','cancelled')
-                ORDER BY created_at DESC,call_id DESC LIMIT ?''',(number,exclude,cutoff,before,recency,limit)).fetchall()
+                ORDER BY created_at DESC,call_id DESC LIMIT ?''',(number,exclude,cutoff,before,exclude,recency,limit)).fetchall()
             result=[]
             for row in rows:
                 item=dict(row)
+                profile=self.m.personalities.for_call(row['call_id'])
+                if profile and profile.get('presentation_mode')=='character':
+                    item['fictional_character']={'personality_id':profile['personality_id'],'name':profile.get('spoken_name') or profile['name']}
                 item['objective']=phone_safe(item['objective'])
                 if getattr(self.m,'disclosures',None) and self.m.disclosures.history_private(row['call_id'],exclude):
                     item.update(objective='Prior call included restricted information; ask the caller to recap.',conversation=[],saved_message=None)
