@@ -87,6 +87,9 @@ It can also [test incoming, forwarded and outgoing calls using browser audio](do
 without dialing through Twilio.
 It also supports [caller profiles, editable personalities,
 shared context and an assembled-instructions viewer](docs/personalities.md).
+Independent fictional characters can also develop a persistent biography:
+missing personal details become saved canon they reuse across calls, with an
+owner editor for reviewing and correcting their story.
 Use [per-contact instructions and approved facts](docs/contact-guidance.md) to vary behavior and shared information by profile and call direction.
 
 Calendar caption fixes, natural return-call recall and the extended prompt viewer

@@ -63,6 +63,8 @@ def create_app(settings: Settings | None = None, *, gateway=None) -> FastAPI:
     app.include_router(controls_router)
     from app.api.personalities import router as personalities_router
     app.include_router(personalities_router)
+    from app.api.character_biography import router as character_biography_router
+    app.include_router(character_biography_router)
     from app.api.outbound import router as outbound_router
     app.include_router(outbound_router)
     from app.api.control import router as control_router

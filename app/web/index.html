@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="csrf-token" content="{{csrf}}"><title>Phone Assistant · Call monitor</title>
-<link rel="stylesheet" href="/live/style.css"><script src="/live/app.js" defer></script><script src="/live/personalities.js" defer></script><script src="/live/outbound.js" defer></script><script src="/live/control.js" defer></script><script src="/live/browser-tests.js" defer></script><script src="/live/contact-guidance.js" defer></script><script src="/live/browser-audio.js" defer></script></head>
+<link rel="stylesheet" href="/live/style.css"><script src="/live/app.js" defer></script><script src="/live/personalities.js" defer></script><script src="/live/outbound.js" defer></script><script src="/live/control.js" defer></script><script src="/live/browser-tests.js" defer></script><script src="/live/contact-guidance.js" defer></script><script src="/live/character-biography.js" defer></script><script src="/live/browser-audio.js" defer></script></head>
 <body><main class="monitor">
 <header><div><p class="eyebrow">PHONE ASSISTANT</p><h1 id="pageTitle">Calls</h1></div></header>
 <section id="pairing" class="pairing" hidden><strong>Open this same site on your mobile, then enter the code below.</strong>
@@ -97,6 +97,7 @@
 <form id="personalityForm"><div class="settings-grid"><label for="personalityName">Name<input id="personalityName" maxlength="80" required></label></div>
 <div class="settings-grid"><label for="personalityPresentation">Speak as<select id="personalityPresentation"><option value="assistant">Assistant</option><option value="owner_first_person">Me · first person</option><option value="character">Character · fictional persona</option></select></label><label for="personalitySpokenName">Spoken name<input id="personalitySpokenName" maxlength="120" placeholder="Your configured name"></label></div>
 <p class="caption-note">“Me” uses your name and I/my for authorized requests. Character uses a separate fictional identity and biography. Direct identity questions are answered honestly. This does not change the voice, permissions or contact test mode.</p>
+<label id="personalityDevelopLifeLabel" class="follow" hidden><input id="personalityDevelopLife" type="checkbox"> Develop this character's life</label>
 <p id="personalityNameHint" class="caption-note"></p>
 <label class="editor-field" for="personalityRole">Role and work scope<textarea id="personalityRole" maxlength="1000" rows="3" placeholder="What this personality does; shared current facts belong in Shared context."></textarea></label>
 <label class="editor-field" for="personalityInstructions">Personality instructions<textarea id="personalityInstructions" maxlength="6000" rows="10"></textarea></label>
@@ -104,7 +105,8 @@
 <label class="editor-field" for="personalityOutboundGreeting">Outbound greeting guidance<textarea id="personalityOutboundGreeting" maxlength="1000" rows="3" placeholder="Optional. How to open a call you place; the call objective still applies."></textarea></label>
 <label class="editor-field" for="personalityContext">Background approved for callers<textarea id="personalityContext" maxlength="3000" rows="4" placeholder="Stable background for this personality. Put changing schedules and expected calls in Owner context."></textarea></label>
 <button class="quiet" id="savePersonality">Save personality</button></form>
-<p id="personalityState" class="caption-note" role="status"></p></details>
+<p id="personalityState" class="caption-note" role="status"></p>
+<details id="characterBiographyPanel" class="editor-card" hidden><summary>Established character biography</summary><p class="caption-note">With development enabled, missing personal details can be invented and saved during conversations. Established details are reused across calls. Edit them here, or uncheck a detail to withdraw it. These belong only to this fictional character.</p><div id="characterBiographyEntries"></div><div class="message-actions"><button id="addCharacterFact" type="button" class="quiet">Add personal detail</button><button id="saveCharacterBiography" type="button" class="quiet">Save biography</button><button id="reloadCharacterBiography" type="button" class="quiet">Reload saved details</button></div><p id="characterBiographyState" class="caption-note" role="status"></p></details></details>
 <details id="callerBookPanel" class="inbox"><summary>Phone book</summary>
 <p class="caption-note">Add a number, then choose its language, personality and information level. Expand a contact for voice and test settings.</p>
 <button id="newContact" class="quiet">Add contact</button>

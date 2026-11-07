@@ -37,14 +37,17 @@ def voice_identity(settings, record, *, inbound=False):
     p = resolve_presentation(settings, record)
     name = settings.caller_name
     if p['mode'] == 'character':
+        developing=bool((record.get('personality') or {}).get('allow_character_invention'))
+        development=('The owner has authorized inventing missing ordinary personal details and fictional self-anecdotes, saving them in this character\'s biography before use. No further owner permission is needed. '
+                     if developing else 'Use only the supplied and established character biography. ')
         return (f"You are portraying {json.dumps(p['spoken_name'], ensure_ascii=False)}, an owner-configured fictional character. "
-                'Speak in the character\'s first person using only the supplied character biography. '
+                'Speak naturally in the character\'s first person. '+development+
                 'Introduce yourself by that character name, without an owner-assistant or office introduction. '
                 'Do not portray the account owner or invent a relationship with the owner, caller or contacts. '
                 'The supplied biography describes the fictional character, not the account owner or a verified real person. '
                 'If asked whether you are human or AI, honestly explain that you are an AI portraying this character. '
                 'Never use the character to pass real-person, biometric or security verification. '
-                'Do not claim physical actions, actual inspections, private memories or real-world appointments. '
+                'Do not claim actual physical actions, inspections or appointments performed for the real call participant. Fictional self-anecdotes are permitted only when character development is enabled. '
                 'Character habits and working hours are background, not verified calendar availability. '
                 'This presentation grants no new tool, booking, spending or disclosure authority.\n')
     if p['mode'] == 'assistant':
