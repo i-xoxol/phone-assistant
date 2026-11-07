@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Make profile spoken names editable in assistant and first-person modes with mode-correct defaults and legacy-call compatibility. Add contact-scoped instructions, approved facts, profile/direction targeting, pinned guidance, and effective previews; filter withdrawn evidence and restricted historical recall. Add grouped recent forwarding/call numbers to browser tests without changing caller ID or manual input.
+
+- Add owner-authenticated browser test calls for direct incoming, forwarded incoming and outbound scenarios using the existing voice/media/tool flow, without telephone dialing. Include editable caller identity, forwarding metadata, voice/personality overrides, microphone mute, captions, duration limits and test-history labels; exclude tests from caller recall and real incoming admission.
+
 - Verify Mini calendar speech before playback using the pinned model and voice; block invented booking claims, skip occupied slots through the shared workflow, and retain a returning caller’s first name while asking only for the missing surname.
 
 - Route Mini new-booking turns through Luna and the verified proposal/consent workflow; bind manual ASR commits to captured audio, suppress speculative replies, and wait for instruction ACKs before speech. Recover earlier zero-time native transcript ordering without rewriting stored records.

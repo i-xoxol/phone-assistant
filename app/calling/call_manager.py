@@ -70,16 +70,25 @@ class CallManager:
         if settings.appointments_enabled or settings.owner_calendar_coaching_enabled:
             from app.appointments.gateway import AppointmentGateway
             self.appointments = AppointmentGateway(self)
+        from app.calling.browser_tests import BrowserTests
+        self.browser_tests = BrowserTests(self)
+        from app.calling.browser_audio import BrowserAudio
+        self.browser_audio = BrowserAudio(self)
+        from app.calling.contact_guidance import ContactGuidance
+        self.contact_guidance = ContactGuidance(self)
+        self.knowledge.contact_guidance = self.contact_guidance
 
     def result(self, call_id):
         from app.calling.presentation import resolve_presentation
         record = self.db.get(call_id)
         record['personality'] = self.personalities.for_call(call_id)
+        record['contact_guidance'] = self.contact_guidance.for_record(record)
         if record.get('direction') == 'inbound':
             record['incoming_context'] = self.incoming_context(record)
         presentation = resolve_presentation(self.settings, record)
-        return {**self.db.get(call_id),'lookup_requests':self.lookup.list_for_call(call_id),
-                'presentation':presentation,
+        return {**self.db.get(call_id),'browser_test':self.browser_tests.get(call_id),
+                'lookup_requests':self.lookup.list_for_call(call_id),
+                'presentation':presentation, 'contact_guidance':record['contact_guidance'],
                 'personality':self.personalities.for_call(call_id),
                 'test_mode':self.test_contacts.for_call(call_id),
                 'voice_backend':self.voice_backends.for_call(call_id),
@@ -92,9 +101,11 @@ class CallManager:
 
     def voice_record(self,call_id):
         record=self.db.get(call_id)
+        record['browser_test']=self.browser_tests.get(call_id)
         record['routing_rule']=self.rules.pin(record)
         self.disclosures.pin(record)
         record['personality']=self.personalities.pin(record)
+        record['contact_guidance']=self.contact_guidance.for_record(record)
         record['test_mode']=self.test_contacts.pin(record)
         record['voice_name']=self.voices.pin(record)
         record['owner_transfer']=self.transfer.for_call(call_id)
@@ -119,6 +130,7 @@ class CallManager:
 
     def incoming_context(self,record,question=''):
         context=self.context.for_call(record,question=question)
+        context['contact_guidance'] = record.get('contact_guidance') or self.contact_guidance.for_record(record)
         test_mode=record.get('test_mode') or self.test_contacts.for_call(record.get('call_id')) or self.test_contacts.resolve(record)
         if test_mode.get('enabled'):
             context['test_mode']=test_mode
@@ -241,6 +253,7 @@ class CallManager:
                 'note':'Reply injection is not proof the caller heard it. Verify transcript; never repeat a booking on a delivery retry.'}
 
     async def stop_supervision(self):
+        await self.browser_tests.stop()
         await self.warm_sockets.stop()
         if self.appointments:await self.appointments.close()
         await self.screening.stop()
@@ -297,6 +310,12 @@ class CallManager:
             raise ValueError('Keypad requires a connected voice stream')
         if call_id in self.navigation or bridge.end_requested.is_set():
             raise ValueError('Call is already changing streams or ending')
+        if self.browser_tests.get(call_id):
+            self.db.keypad(call_id, request.digits, request.reason, 'submitted')
+            self.db.emit(call_id, 'call.browser_keypad', {'digits':request.digits, 'simulated':True})
+            await bridge.ws.send_json({'event':'test_keypad', 'digits':request.digits})
+            return {**self.status(call_id), 'keypad_status':'simulated',
+                'instruction':'Keypad input was displayed in the browser test. No telephone tones were sent.'}
         ready = self.navigation[call_id] = asyncio.Event()
         # Set BEFORE redirect: intentional Stream closure must not trigger hangup.
         bridge.handoff = True
@@ -373,6 +392,7 @@ class CallManager:
         if record['started_at'] and record['status'] not in TERMINAL:
             duration = int((datetime.now(timezone.utc) - datetime.fromisoformat(record['started_at'])).total_seconds())
         return {'call_id': call_id, 'status': record['status'], 'duration_seconds': max(0, duration),
+                'browser_test':self.browser_tests.get(call_id),
                 'origination':self.outbound.for_call(call_id),
                 'direction':record['direction'], 'message_id':record['message_id'],
                 'inbound_mode':record['inbound_mode'], 'inbound_booking_allowed':bool(record['inbound_booking_allowed']),
@@ -407,6 +427,8 @@ class CallManager:
 
     async def refresh(self, call_id: str) -> dict:
         record = self.db.get(call_id)
+        if self.browser_tests.get(call_id):
+            return self.status(call_id)
         if record['twilio_call_sid']:
             call = await self.gateway.fetch(record['twilio_call_sid'])
             self.transition(call_id, normalize_status(call.status),
@@ -425,6 +447,12 @@ class CallManager:
                     await asyncio.wait_for(bridge.ws.send_json({'event': 'clear', 'streamSid': bridge.stream_sid}), 0.5)
                 except Exception:
                     pass
+        if self.browser_tests.get(call_id):
+            if bridge:
+                bridge.end_requested.set()
+                bridge.end_played.set()
+            self.browser_tests.finish(call_id)
+            return self.status(call_id)
         if record['status'] not in TERMINAL and record['twilio_call_sid']:
             transfer=self.transfer.for_call(call_id)
             native_room=self.observer.audio_bridge.rooms.get(transfer['transfer_id']) if transfer else None

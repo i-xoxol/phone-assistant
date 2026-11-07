@@ -167,6 +167,8 @@ class CallRecordings:
 
     async def stop(self,cid):
         record=self.m.db.get(cid)
+        if self.m.browser_tests.get(cid):
+            return {'status':'not_recording', 'instruction':'Browser tests do not create telephone recordings. Live captions remain enabled.'}
         with self.m.db.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             policy=db.execute('SELECT * FROM call_recording_policy WHERE call_id=?',(cid,)).fetchone()

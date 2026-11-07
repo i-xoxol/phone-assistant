@@ -580,10 +580,22 @@ class RealtimeMediaBridge(MediaBridge):
             await asyncio.gather(pump, conversation, return_exceptions=True)
 
 
+def calendar_voice_policy(settings, record):
+    from app.calling.presentation import voice_identity
+    from app.calling.identity import owner_identity_policy
+    from app.calling.contact_guidance import apply_contact_guidance
+    guidance = record.get('contact_guidance') or {}
+    style = {**guidance, 'facts':[], 'greeting':'',
+        'instructions':[{**entry, 'greeting':''} for entry in guidance.get('instructions',[])]}
+    config = {'instructions':voice_identity(settings,record,inbound=True)+'\n'+owner_identity_policy(settings,record)+
+        '\nPinned voice style: '+(record.get('personality') or {}).get('instructions','')}
+    return apply_contact_guidance(config, {**record,'contact_guidance':style})['instructions']+'\n'+CALENDAR_SPEECH_POLICY
+
+
 @asynccontextmanager
 async def started_elevenlabs_connection(settings, manager, record, selection):
     # No paid session during pre-answer ringing. The Twilio cap is a prerequisite.
-    if record.get('direction') == 'inbound':
+    if record.get('direction') == 'inbound' and not record.get('browser_test'):
         try:
             await asyncio.wait_for(manager.gateway.prepare_inbound(
                 record['twilio_call_sid'], record['max_duration_minutes']), 5)
@@ -601,10 +613,7 @@ async def started_elevenlabs_connection(settings, manager, record, selection):
     secret = result.json()
     async with connect(SOCKET_URL, additional_headers={'Authorization': 'Bearer ' + secret['value']},
                        open_timeout=10, close_timeout=2, max_size=2**20) as socket:
-        from app.calling.presentation import voice_identity
-        from app.calling.identity import owner_identity_policy
-        calendar_voice_instructions=(voice_identity(settings,record,inbound=True)+'\n'+owner_identity_policy(settings,record)+
-            '\nPinned voice style: '+record.get('personality',{}).get('instructions','')+'\n'+CALENDAR_SPEECH_POLICY)
+        calendar_voice_instructions=calendar_voice_policy(settings, record)
         from functools import partial
         from app.calling.verified_speech import render
         connection = RealtimeConnection(socket, config, record,

@@ -48,6 +48,7 @@ class CallMemory:
         with self.m.db.connect() as db:
             rows=db.execute('''SELECT call_id,created_at,completed_at,direction,status,objective,duration_seconds
                 FROM calls WHERE phone_number=? AND call_id!=? AND created_at>=? AND created_at<?
+                AND NOT EXISTS (SELECT 1 FROM browser_test_calls b WHERE b.call_id=calls.call_id)
                 AND COALESCE(completed_at,created_at)>=?
                 AND status IN ('completed','failed','busy','no_answer','cancelled')
                 ORDER BY created_at DESC,call_id DESC LIMIT ?''',(number,exclude,cutoff,before,recency,limit)).fetchall()

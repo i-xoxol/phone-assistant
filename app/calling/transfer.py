@@ -104,6 +104,13 @@ class OwnerTransfer:
     async def request(self,call_id,reason,source='supervisor'):
         m=self.manager
         r=m.db.get(call_id)
+        if m.browser_tests.get(call_id):
+            m.db.emit(call_id, 'call.browser_transfer', {'simulated':True, 'status':'unavailable'})
+            bridge = m.bridges.get(call_id)
+            if bridge:
+                await bridge.ws.send_json({'event':'test_transfer', 'status':'unavailable'})
+            return {'status':'unavailable', 'simulated':True,
+                'instruction':'Browser test: no owner phone was dialed. Simulate an unavailable owner and continue with the normal message-taking fallback.'}
         existing=self.for_call(call_id)
         if existing:
             return {**existing,'instruction':'An owner attempt already exists. Never dial again; inspect its status.'}

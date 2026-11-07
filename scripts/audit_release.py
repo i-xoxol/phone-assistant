@@ -56,12 +56,12 @@ def reviewed_doc_audio(path: Path, root: Path = ROOT) -> bool:
 
 
 def reviewed_doc_image(path: Path, root: Path = ROOT) -> bool:
-    """Accept only exact JPEG bytes recorded after a separate human/visual review.
+    """Accept only exact JPEG/PNG bytes recorded after a separate human/visual review.
 
     A hash records the reviewed version; it is not an automated privacy verdict.
     Other images still require review; audio has a separate exact-hash guard.
     """
-    if path.parent != Path('docs/assets') or path.suffix.lower() != '.jpg':
+    if path.parent != Path('docs/assets') or path.suffix.lower() not in ('.jpg', '.png'):
         return False
     try:
         manifest = json.loads((root/'docs/assets/media-review.json').read_text(encoding='utf-8'))
@@ -69,7 +69,8 @@ def reviewed_doc_image(path: Path, root: Path = ROOT) -> bool:
         data = (root/path).read_bytes()
         return (record['privacy_reviewed'] is True
                 and bool(record['source'])
-                and data.startswith(b'\xff\xd8\xff') and data.endswith(b'\xff\xd9')
+                and ((path.suffix.lower() == '.jpg' and data.startswith(b'\xff\xd8\xff') and data.endswith(b'\xff\xd9'))
+                     or (path.suffix.lower() == '.png' and data.startswith(b'\x89PNG\r\n\x1a\n') and data.endswith(b'IEND\xaeB`\x82')))
                 and hashlib.sha256(data).hexdigest() == record['sha256'])
     except (OSError, ValueError, KeyError, TypeError):
         return False

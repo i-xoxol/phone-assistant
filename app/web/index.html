@@ -2,13 +2,17 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="csrf-token" content="{{csrf}}"><title>Phone Assistant · Call monitor</title>
-<link rel="stylesheet" href="/live/style.css"><script src="/live/app.js" defer></script><script src="/live/personalities.js" defer></script><script src="/live/outbound.js" defer></script><script src="/live/control.js" defer></script></head>
+<link rel="stylesheet" href="/live/style.css"><script src="/live/app.js" defer></script><script src="/live/personalities.js" defer></script><script src="/live/outbound.js" defer></script><script src="/live/control.js" defer></script><script src="/live/browser-tests.js" defer></script><script src="/live/contact-guidance.js" defer></script><script src="/live/browser-audio.js" defer></script></head>
 <body><main class="monitor">
 <header><div><p class="eyebrow">PHONE ASSISTANT</p><h1 id="pageTitle">Calls</h1></div></header>
 <section id="pairing" class="pairing" hidden><strong>Open this same site on your mobile, then enter the code below.</strong>
 <p>Enter this code within 15 minutes. It works once.</p><code id="pairCode"></code>
 <p><button id="closePairing" class="quiet">Close</button></p></section>
 <div id="connection" class="connection" role="status"><span class="dot"></span><span id="connectionText">Connecting to event stream…</span></div>
+<section id="browserSession" class="browser-session" hidden aria-label="Browser test audio">
+<strong>Browser test · no phone call</strong><p id="browserSessionState" role="status"></p>
+<div class="message-actions"><button id="browserMute" type="button" class="quiet" aria-pressed="false">Mute microphone</button><button id="browserEnd" type="button" class="hangup">End test</button></div>
+<p id="browserActionState" class="caption-note" role="status"></p></section>
 <nav class="app-nav" aria-label="Phone assistant sections" role="tablist">
 <button type="button" role="tab" data-open-page="calls" aria-selected="true">Calls</button>
 <button type="button" role="tab" data-open-page="call" aria-selected="false">New call</button>
@@ -16,6 +20,28 @@
 <button type="button" role="tab" data-open-page="rules" aria-selected="false">Rules</button>
 <button type="button" role="tab" data-open-page="settings" aria-selected="false">Settings</button></nav>
 <div id="pageViews"></div>
+<details id="browserTestPanel" class="inbox" open><summary>Test in browser · no phone call</summary>
+<p class="caption-note">Talk to the assistant through your microphone and speakers. Use the same saved contacts, routing, personality, voice, context and tools as a real call. Voice-provider usage is billed normally. Messages, context changes and enabled calendar actions are real; telephone dialing, owner transfers, keypad tones and telephone recordings are simulated or unavailable.</p>
+<form id="browserTestForm"><div class="settings-grid">
+<label for="browserScenario">Call scenario<select id="browserScenario"><option value="direct">Incoming · direct to assistant</option><option value="forwarded">Incoming · forwarded from a number</option><option value="outbound">Outgoing · I play the recipient</option></select></label>
+<label for="browserContact">Use saved contact<select id="browserContact"><option value="">Enter a number or leave caller ID hidden</option></select></label>
+<label for="browserNumber"><span id="browserNumberLabel">Caller ID the assistant sees</span><input id="browserNumber" type="tel" placeholder="+12025550101 · blank for hidden caller ID" pattern="\+[1-9][0-9]{7,14}" maxlength="16"></label>
+<div id="browserForwardedField" hidden><label for="browserForwarded">Forwarded from<input id="browserForwarded" type="tel" placeholder="+12025550102" pattern="\+[1-9][0-9]{7,14}" maxlength="16"></label>
+<label for="browserRecentForwarded">Choose from recent history<select id="browserRecentForwarded"><option value="">Enter a number manually</option></select></label>
+<button id="browserRefreshRecent" type="button" class="quiet">Refresh recent numbers</button><p id="browserRecentState" class="caption-note" role="status"></p></div>
+<label for="browserMinutes">Maximum minutes<input id="browserMinutes" type="number" min="1" max="15" value="5" required></label></div>
+<section id="browserOutboundFields" hidden><p class="caption-note">The assistant behaves as if it called this recipient. You answer using this browser.</p>
+<label class="editor-field" for="browserObjective">Call objective<textarea id="browserObjective" maxlength="4000" rows="3"></textarea></label>
+<label class="editor-field" for="browserContext">Context<textarea id="browserContext" maxlength="8000" rows="4"></textarea></label>
+<label class="editor-field" for="browserConstraints">Additional limits · one per line<textarea id="browserConstraints" rows="3"></textarea></label>
+<label class="editor-field" for="browserCallerId">Simulated outgoing caller ID<select id="browserCallerId"><option value="default">Saved default / routing rule</option><option value="twilio">Office / Twilio number</option><option value="mobile">My mobile</option></select></label>
+<label class="check-setting"><input id="browserIvr" type="checkbox"> Expect a phone menu / hold music</label>
+<button id="browserCopyBrief" type="button" class="quiet">Copy brief from outbound form</button></section>
+<details class="editor-card"><summary>Override personality and voice for this test</summary><p class="caption-note">Leave these on automatic to test the contact and routing choices. Changes here apply only to this test.</p>
+<label class="editor-field" for="browserPersonality">Personality<select id="browserPersonality"><option value="">Contact / routing / default</option></select></label>
+<div class="settings-grid"><label for="browserProvider">Voice provider<select id="browserProvider"><option value="">Contact / routing / default</option></select></label><label for="browserModel">Model<select id="browserModel" disabled></select></label><label for="browserVoice">Voice<select id="browserVoice" disabled></select></label></div></details>
+<button id="browserStart" type="submit" class="primary">Start browser test</button><p id="browserTestState" class="caption-note" role="status">Allow microphone access when prompted. Headphones help prevent echo. Open this page over HTTPS or localhost.</p>
+</form></details>
 <details id="outboundPanel" class="inbox"><summary>Place a call</summary>
 <p class="caption-note">Give the assistant a destination and objective. It uses the contact’s saved personality, model and voice, or your current defaults. The call opens in this live monitor.</p>
 <form id="outboundForm">
@@ -69,8 +95,9 @@
 <div class="settings-grid"><label for="personalityPicker">Edit personality<select id="personalityPicker"></select></label></div>
 <div class="message-actions"><button id="newPersonality" class="quiet">New personality</button><button id="duplicatePersonality" class="quiet">Duplicate saved profile</button><button id="reloadPersonality" class="quiet">Reload saved profile</button></div>
 <form id="personalityForm"><div class="settings-grid"><label for="personalityName">Name<input id="personalityName" maxlength="80" required></label></div>
-<div class="settings-grid"><label for="personalityPresentation">Speak as<select id="personalityPresentation"><option value="assistant">Assistant</option><option value="owner_first_person">Me · first person</option></select></label><label for="personalitySpokenName">Spoken name<input id="personalitySpokenName" maxlength="120" placeholder="Your configured name"></label></div>
-<p class="caption-note">“Me” uses your name and I/my for authorized requests. Direct identity questions are answered honestly. This does not change the voice, permissions or contact test mode.</p>
+<div class="settings-grid"><label for="personalityPresentation">Speak as<select id="personalityPresentation"><option value="assistant">Assistant</option><option value="owner_first_person">Me · first person</option><option value="character">Character · fictional persona</option></select></label><label for="personalitySpokenName">Spoken name<input id="personalitySpokenName" maxlength="120" placeholder="Your configured name"></label></div>
+<p class="caption-note">“Me” uses your name and I/my for authorized requests. Character uses a separate fictional identity and biography. Direct identity questions are answered honestly. This does not change the voice, permissions or contact test mode.</p>
+<p id="personalityNameHint" class="caption-note"></p>
 <label class="editor-field" for="personalityRole">Role and work scope<textarea id="personalityRole" maxlength="1000" rows="3" placeholder="What this personality does; shared current facts belong in Shared context."></textarea></label>
 <label class="editor-field" for="personalityInstructions">Personality instructions<textarea id="personalityInstructions" maxlength="6000" rows="10"></textarea></label>
 <label class="editor-field" for="personalityGreeting">Incoming greeting guidance<textarea id="personalityGreeting" maxlength="1000" rows="3" placeholder="Optional. Describe how to greet; the caller language and forwarding rules still apply."></textarea></label>
@@ -111,8 +138,10 @@
 <div id="contextNotes"></div><details><summary>Current context snapshot</summary><pre id="ownerContextSnapshot" class="instruction-preview"></pre></details></details>
 <details id="instructionsPanel" class="inbox"><summary>Extended settings · All assistant prompts</summary>
 <p class="caption-note">Read the actual application prompt builders without placing a call. Edit personality, presentation and shared context above. Honesty, authorization and tool policies are shown here; calendar data remains managed by its source.</p>
-<div class="settings-grid"><label for="previewContact">New-call caller<select id="previewContact"></select></label><label for="previewPersonality">Preview personality<select id="previewPersonality"></select></label></div>
-<div class="message-actions"><button id="previewNewCall" class="quiet">Preview new incoming call</button><button id="previewSelectedCall" class="quiet">Inspect selected call</button></div>
+<div class="settings-grid"><label for="previewContact">New-call contact<select id="previewContact"></select></label><label for="previewPersonality">Preview personality<select id="previewPersonality"></select></label>
+<label for="previewDirection">Call direction<select id="previewDirection"><option value="inbound">Incoming</option><option value="outbound">Outgoing</option></select></label>
+<label for="previewForwarded">Forwarded from (incoming only, optional)<input id="previewForwarded" type="tel" placeholder="+12025550102"></label></div>
+<div class="message-actions"><button id="previewNewCall" class="quiet">Preview new call</button><button id="previewSelectedCall" class="quiet">Inspect selected call</button></div>
 <p><button id="showAllSystemPrompts" class="quiet">Show all system prompt templates</button></p><p id="systemPromptsState" class="caption-note" role="status"></p><div id="systemPromptsOutput"></div>
 <p id="instructionsState" class="caption-note" role="status"></p><div id="instructionsOutput"></div></details>
 <section id="rulesPanel" class="inbox"><h2>Call routing rules</h2>
@@ -133,6 +162,7 @@
 <button id="olderMessages" class="quiet" hidden>Load older messages</button></details>
 <section id="supervisorPanel" class="inbox" hidden><h2>Concierge requests</h2>
 <p id="supervisorState" class="caption-note"></p><p id="contextState" class="caption-note"></p><div id="requests"></div></section>
+<section id="liveAudioSession" class="browser-session live-audio-session" hidden aria-label="Active browser audio"><strong id="liveAudioCall"></strong><p id="liveAudioSessionState" role="status"></p><div class="message-actions"><button id="liveAudioMute" class="quiet" hidden aria-pressed="false">Mute microphone</button><button id="liveAudioLeave" class="quiet" hidden>Leave microphone</button><button id="stopLiveAudio" class="quiet">Stop listening</button></div></section>
 <section id="callSummary" class="call-card"><label for="calls">YOUR CALLS</label><select id="calls"><option value="">No calls yet</option></select>
 <div class="call-meta"><span id="status" class="badge">—</span><span id="duration">0:00</span></div>
 <p id="objective" class="objective">Select a call to view its conversation.</p><p id="testModeState" class="caption-note"></p><button id="saveCaller" class="quiet" disabled>Save caller to phone book</button></section>
@@ -143,6 +173,9 @@
 <details id="contextInjection" class="editor-card"><summary>Send new information</summary><form id="liveUpdateForm"><label class="editor-field" for="liveUpdateText">New information for this call<textarea id="liveUpdateText" maxlength="400" rows="3" placeholder="A correction, new availability, or information the assistant should know."></textarea></label>
 <div class="settings-grid"><label for="liveUpdateMode">How to use it<select id="liveUpdateMode"><option value="context">Context for the ongoing conversation</option><option value="say">Tell the caller now</option></select></label></div><button id="sendLiveUpdate" class="quiet">Send to live assistant</button><p id="liveUpdateState" class="caption-note" role="status"></p></form>
 </details></details>
+<section id="liveAudioPanel" class="inbox"><h2>Live audio</h2>
+<p id="liveAudioHint" class="caption-note"></p><div class="message-actions"><button id="listenLive" class="quiet" disabled>Listen live</button><button id="joinLive" class="quiet" disabled>Join with microphone</button></div>
+<p id="liveAudioState" class="caption-note" role="status"></p></section>
 <details id="audioPanel" class="inbox" aria-label="Call audio"><summary>Call recording and routing</summary>
 <p id="forwardingState" class="caption-note"></p><div id="recordings"></div>
 <button id="stopRecording" class="quiet" hidden>Stop audio recording</button>
