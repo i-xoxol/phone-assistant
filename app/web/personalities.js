@@ -13,7 +13,8 @@ function personalityBody() {return Object.fromEntries(Object.entries(personality
 function presentationFields() {
   $('personalitySpokenName').disabled=false;
   const ownerMode=$('personalityPresentation').value==='owner_first_person';
-  const inherited=(ownerMode?personalityCatalog?.owner_name:personalityCatalog?.assistant_name) || (ownerMode?'Owner name':'Assistant name');
+  const characterMode=$('personalityPresentation').value==='character';
+  const inherited=(characterMode?($('personalityName').value || 'Character name'):ownerMode?personalityCatalog?.owner_name:personalityCatalog?.assistant_name) || (ownerMode?'Owner name':'Assistant name');
   $('personalitySpokenName').placeholder=inherited;
   $('personalityNameHint').textContent='Leave blank to use '+inherited+'. This is the spoken identity; the profile label above is separate.';
 }

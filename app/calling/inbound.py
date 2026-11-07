@@ -93,6 +93,11 @@ def default_startup_greeting_content(settings,record):
     missed=bool(context.get('forwarding',{}).get('missed_call_context') and not owner)
     name=settings.caller_name;assistant=resolve_presentation(settings, record)['assistant_name']
     _,object_pronoun,possessive=owner_words(settings)
+    if resolve_presentation(settings, record)['mode']=='character':
+        spoken=resolve_presentation(settings, record)['spoken_name']
+        if language not in ('en','uk'):
+            return localized_greeting(language,assistant,name,representative_name=spoken)
+        return ('Привіт, це '+spoken+'. Чим можу допомогти?' if language=='uk' else 'Hi, '+spoken+' here. How can I help?')
     if language not in ('en','uk'):
         return localized_greeting(language,assistant,name,is_owner=owner,nickname=nickname if familiar or owner else '',
             representative_name=resolve_presentation(settings,record)['spoken_name'] if as_owner(settings,record) else '')
@@ -440,7 +445,7 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             'The selected personality supplies the work role and tone. Do not impose an office persona from shared reference facts. '
             'A relationship label such as Mama is about the owner, not proof of a human relationship of the automated voice. ')
         greeting=incoming_presentation_greeting(settings, record, familiar=familiar, nickname=spoken_name)
-    if owner_caller:
+    if owner_caller and resolve_presentation(settings, record)['mode']!='character':
         instructions=instructions.replace(
             f"Introduce yourself as {name}'s assistant, without an upfront digital/AI label; never claim to be human.",
             'You are speaking to the recognized owner. Skip self-introductions; never claim to be human.')
@@ -454,7 +459,8 @@ Current-call metadata: ''' + json.dumps({'caller': caller})
             'Skip all self-introduction and office announcements; then listen. ')
     caller_policy+='\n'+style+'\n'
     routing=record.get('incoming_context',{}).get('forwarding',{})
-    if routing.get('missed_call_context') and not owner_caller and not as_owner(settings, record):
+    if (routing.get('missed_call_context') and not owner_caller and not as_owner(settings, record)
+            and resolve_presentation(settings, record)['mode']!='character'):
         greeting+=(f'This is a missed mobile call: {name} could not take the call. '
             f'Work this into the same short greeting, for example "Sorry you couldn\'t reach {name}. '
             f"I'm {resolve_presentation(settings, record)['assistant_name']}, {possessive} assistant. How can I help?\" "
