@@ -58,7 +58,7 @@ function addContactGuidance(entry,row) {
         const profileBox=guidanceElement('div','','guidance-profile-options');profileBox.hidden=item.profile_scope!=='selected';
         for(const profile of personalityCatalog?.personalities || []) {
           const check=document.createElement('input');check.type='checkbox';check.value=profile.personality_id;check.checked=item.profile_ids.includes(profile.personality_id);
-          const name=profile.spoken_name || (profile.presentation_mode==='owner_first_person'?personalityCatalog.owner_name:personalityCatalog.assistant_name);
+          const name=profile.spoken_name || (profile.presentation_mode==='owner_first_person'?personalityCatalog.owner_name:profile.presentation_mode==='character'?profile.name:personalityCatalog.assistant_name);
           const label=guidanceElement('label',profile.name+' · '+name,'check-setting');label.prepend(check);
           check.onchange=()=>{item.profile_ids=check.checked?[...item.profile_ids,profile.personality_id]:item.profile_ids.filter(id=>id!==profile.personality_id);changed();};profileBox.append(label);
         }

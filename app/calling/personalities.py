@@ -17,7 +17,7 @@ class PersonalityUpdate(BaseModel):
     greeting: str = Field(default='', max_length=1000)
     revision: int | None = Field(default=None, ge=1)
     role: str | None = Field(default=None, max_length=1000)
-    presentation_mode: Literal['assistant', 'owner_first_person'] | None = None
+    presentation_mode: Literal['assistant', 'owner_first_person', 'character'] | None = None
     spoken_name: str | None = Field(default=None, max_length=120)
     outbound_greeting: str | None = Field(default=None, max_length=1000)
 
@@ -53,11 +53,13 @@ class Personalities:
             ''')
             columns = {r['name'] for r in c.execute('PRAGMA table_info(telephone_personalities)')}
             for name, definition in [('role', "TEXT NOT NULL DEFAULT ''"),
-                    ('presentation_mode', "TEXT NOT NULL DEFAULT 'assistant' CHECK(presentation_mode IN ('assistant','owner_first_person'))"),
+                    ('presentation_mode', "TEXT NOT NULL DEFAULT 'assistant' CHECK(presentation_mode IN ('assistant','owner_first_person','character'))"),
                     ('spoken_name', "TEXT NOT NULL DEFAULT ''"), ('outbound_greeting', "TEXT NOT NULL DEFAULT ''")]:
                 if name not in columns:
                     c.execute('ALTER TABLE telephone_personalities ADD COLUMN '+name+' '+definition)
             c.commit()
+            from app.storage.character_profiles import allow_character_profiles
+            allow_character_profiles(c)
             c.execute('BEGIN IMMEDIATE')
             if not c.execute('SELECT 1 FROM telephone_default_personality').fetchone():
                 stamp = utcnow().isoformat()
@@ -208,6 +210,8 @@ class Personalities:
                 profile['instructions']+='\nOwner routing-rule guidance within existing permissions:\n'+actions['instructions']
         fallback = (self.manager.settings.caller_name if profile['presentation_mode'] == 'owner_first_person'
                     else self.manager.settings.assistant_name)
+        if profile['presentation_mode'] == 'character':
+            fallback = profile['name']
         profile['spoken_name'] = profile['spoken_name'].strip() or fallback
         profile['identity_version'] = 2
         return profile
