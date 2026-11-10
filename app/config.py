@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=ROOT / '.env', extra='ignore')
+    model_config = SettingsConfigDict(env_file=ROOT / '.env', extra='ignore', hide_input_in_errors=True)
 
     openai_api_key: SecretStr = SecretStr('')
     twilio_account_sid: str = ''
@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     assistant_name: str = Field(default='Assistant',min_length=1,max_length=80)
     callback_number: str = ''
     database_path: Path = ROOT / 'data/calls.sqlite3'
+    database_url: SecretStr = SecretStr('')
+    database_schema_prefix: str = Field(default='phone', pattern=r'^[a-z][a-z0-9_]{0,29}$')
+    deployment_mode: Literal['local', 'managed'] = 'local'
     mcp_enabled: bool = False
     oauth_database_path: Path = ROOT / 'data/oauth.sqlite3'
     live_tools_enabled: bool = False
@@ -99,6 +102,15 @@ class Settings(BaseSettings):
     appointment_office_event_ids: list[str] = Field(default_factory=list)
     appointment_mirror_source_tenant: str = ''
     appointment_mirror_source_calendar: str = ''
+
+    @model_validator(mode='after')
+    def managed_storage_boundary(self):
+        url = self.database_url.get_secret_value()
+        if url and (urlsplit(url).scheme not in ('postgres', 'postgresql') or not urlsplit(url).hostname):
+            raise ValueError('DATABASE_URL must identify a PostgreSQL server')
+        if self.deployment_mode == 'managed' and not url:
+            raise ValueError('Managed deployment requires PostgreSQL; SQLite must remain on a local disk')
+        return self
 
     @model_validator(mode='after')
     def calendar_boundary(self):

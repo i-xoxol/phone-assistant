@@ -10,7 +10,7 @@ if __name__ == '__main__':
                         help='Host-only recovery: clear the password, revoke browser sessions/codes, then issue a new code.')
     args = parser.parse_args()
     settings = Settings()
-    auth = WebAuth(Database(settings.database_path))
+    auth = WebAuth(Database(settings.database_path, database_url=settings.database_url, schema=settings.database_schema_prefix+'_calls'))
     if args.reset_password:
         auth.reset_password()
     print(auth.create_code())

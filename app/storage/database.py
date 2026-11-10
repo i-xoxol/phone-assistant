@@ -1,11 +1,12 @@
 import sqlite3
 import json
 from contextlib import closing, contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from uuid import uuid4
 
 from app.storage.models import CallRequest, CallStatus, TERMINAL
+from app.storage.backend import connect
 
 
 def now() -> str:
@@ -13,10 +14,11 @@ def now() -> str:
 
 
 class Database:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, *, database_url='', schema='phone_calls'):
         self.path = path
+        self.database_url, self.schema = database_url, schema
         self.on_event = lambda: None
-        path.parent.mkdir(parents=True, exist_ok=True)
+        if not (database_url.get_secret_value() if hasattr(database_url, 'get_secret_value') else database_url): path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript('''
                 PRAGMA journal_mode=WAL;
@@ -221,9 +223,7 @@ class Database:
 
     @contextmanager
     def connect(self):
-        with closing(sqlite3.connect(self.path, timeout=10)) as db, db:
-            db.row_factory = sqlite3.Row
-            db.execute('PRAGMA foreign_keys=ON')
+        with closing(connect(self.path, database_url=self.database_url, schema=self.schema, timeout=10)) as db, db:
             yield db
 
     def create(self, request: CallRequest) -> str:
@@ -322,7 +322,8 @@ class Database:
                     raise ValueError('Call direction mismatch')
                 return old['call_id']
             active = db.execute("SELECT count(*) FROM calls WHERE direction='inbound' AND twilio_call_sid IS NOT NULL AND status NOT IN ('completed','failed','busy','no_answer','cancelled')").fetchone()[0]
-            recent = db.execute("SELECT count(*) FROM calls WHERE direction='inbound' AND twilio_call_sid IS NOT NULL AND julianday(created_at)>julianday('now','-1 hour')").fetchone()[0]
+            cutoff = (datetime.now(timezone.utc)-timedelta(hours=1)).isoformat()
+            recent = db.execute("SELECT count(*) FROM calls WHERE direction='inbound' AND twilio_call_sid IS NOT NULL AND created_at>?", (cutoff,)).fetchone()[0]
             if active or recent >= hourly_limit:
                 raise ValueError('Incoming admission limit reached')
             cid = str(uuid4())

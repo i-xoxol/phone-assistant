@@ -5,7 +5,7 @@ from app.storage.database import Database
 
 if __name__ == '__main__':
     settings = Settings()
-    database = Database(settings.database_path)
+    database = Database(settings.database_path, database_url=settings.database_url, schema=settings.database_schema_prefix+'_calls')
     with database.connect() as db:
         call = db.execute('SELECT call_id,created_at,status,objective,context,ivr_mode FROM calls ORDER BY created_at DESC LIMIT 1').fetchone()
         if not call:

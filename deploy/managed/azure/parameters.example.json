@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "prefix": {"value": "phone-sandbox"},
+    "image": {"value": "YOUR_REGISTRY/phone@sha256:REPLACE_WITH_RELEASE_DIGEST"},
+    "deploymentAcknowledgement": {"value": "I_ACKNOWLEDGE_CLOUD_UNVERIFIED"},
+    "enableApp": {"value": false},
+    "databasePassword": {"value": ""},
+    "appSettings": {
+      "value": {
+        "OPENAI_API_KEY": "",
+        "TWILIO_ACCOUNT_SID": "",
+        "TWILIO_AUTH_TOKEN": "",
+        "TWILIO_PHONE_NUMBER": "",
+        "LOCAL_API_TOKEN": "",
+        "CALLER_NAME": "Alex",
+        "ASSISTANT_NAME": "Assistant",
+        "INBOUND_ENABLED": "false",
+        "APPOINTMENTS_ENABLED": "false",
+        "SUBSCRIPTION_LOOKUP_ENABLED": "false"
+      }
+    }
+  }
+}

@@ -27,3 +27,4 @@ Thumbs.db
 .idea/
 .vscode/
 .python-version
+*.parameters.private.json

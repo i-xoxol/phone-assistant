@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
+from contextlib import closing
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse
 
 from app.config import Settings
 from app.api.calls import router as calls_router
@@ -42,7 +44,9 @@ def create_app(settings: Settings | None = None, *, gateway=None) -> FastAPI:
             await app.state.webhook.stop()
     app = FastAPI(title='Phone Assistant', lifespan=lifespan)
     app.state.settings = settings or Settings()
-    app.state.manager = CallManager(app.state.settings, Database(app.state.settings.database_path),
+    app.state.manager = CallManager(app.state.settings, Database(app.state.settings.database_path,
+                                    database_url=app.state.settings.database_url,
+                                    schema=app.state.settings.database_schema_prefix+'_calls'),
                                     gateway or TwilioGateway(app.state.settings))
     app.state.web_auth = WebAuth(app.state.manager.db)
     app.state.webhook = WebhookDispatcher(app.state.manager)
@@ -84,6 +88,23 @@ def create_app(settings: Settings | None = None, *, gateway=None) -> FastAPI:
     def health():
         missing = app.state.settings.missing()
         return {'status': 'ok', 'ready': not missing, 'missing_configuration': missing}
+
+    @app.get('/readyz', include_in_schema=False)
+    def readiness():
+        # Never return connection strings, credentials, transcripts or DB errors.
+        try:
+            with app.state.manager.db.connect() as connection:
+                connection.execute('SELECT 1 FROM calls LIMIT 1').fetchone()
+            if hasattr(app.state, 'oauth'):
+                with closing(app.state.oauth._connect()) as connection, connection:
+                    connection.execute('SELECT 1').fetchone()
+            if app.state.manager.appointments:
+                with app.state.manager.appointments.store.connect() as connection:
+                    connection.execute('SELECT 1').fetchone()
+            ready = not app.state.settings.missing()
+        except Exception:
+            ready = False
+        return JSONResponse({'ready': ready}, status_code=200 if ready else 503)
 
     if app.state.settings.mcp_enabled:
         from app.mcp.server import create_mcp

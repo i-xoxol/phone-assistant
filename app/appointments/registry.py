@@ -6,6 +6,7 @@ from datetime import datetime,timedelta,timezone
 from pathlib import Path
 from uuid import uuid4
 from app.appointments.contracts import Appointment,Interval,CalendarIdentity,EventIdentity
+from app.storage.backend import connect
 
 
 def stamp():return datetime.now(timezone.utc).isoformat()
@@ -24,8 +25,9 @@ def event_identity(row):
 
 
 class Registry:
-    def __init__(self,path):
-        self.path=Path(path);self.path.parent.mkdir(parents=True,exist_ok=True)
+    def __init__(self,path,*,database_url='',schema='phone_appointments'):
+        self.path=Path(path);self.database_url,self.schema=database_url,schema
+        if not (database_url.get_secret_value() if hasattr(database_url, 'get_secret_value') else database_url):self.path.parent.mkdir(parents=True,exist_ok=True)
         with self.connect() as db:
             db.executescript('''
             CREATE TABLE IF NOT EXISTS appointment_schema(version INTEGER PRIMARY KEY);
@@ -77,12 +79,11 @@ class Registry:
             ''')
             columns={r[1] for r in db.execute('PRAGMA table_info(private_appointments)')}
             if 'series_id' not in columns:db.execute("ALTER TABLE private_appointments ADD COLUMN series_id TEXT NOT NULL DEFAULT ''")
-        self.path.chmod(0o600)
+        if not (database_url.get_secret_value() if hasattr(database_url, 'get_secret_value') else database_url):self.path.chmod(0o600)
 
     @contextmanager
     def connect(self):
-        db=sqlite3.connect(self.path,timeout=5);db.row_factory=sqlite3.Row
-        db.execute('PRAGMA foreign_keys=ON')
+        db=connect(self.path,database_url=self.database_url,schema=self.schema,timeout=5)
         try:
             with db:yield db
         finally:db.close()
@@ -172,7 +173,7 @@ class Registry:
                 'source_revision,authoritative_provider,state,first_name,last_name,first_key,last_key,start,end,zone,location,disclosure,checked_at,expires_at) '
                 'VALUES(?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) '
                 'ON CONFLICT(provider,tenant,calendar_id,event_id,occurrence) DO UPDATE SET '
-                'source_revision=excluded.source_revision,state=excluded.state,checked_at=excluded.checked_at,expires_at=excluded.expires_at,revision=revision+1',
+                'source_revision=excluded.source_revision,state=excluded.state,checked_at=excluded.checked_at,expires_at=excluded.expires_at,revision=private_appointments.revision+1',
                 (str(uuid4()),operation['operation_id'],c.provider,c.tenant,c.calendar,eid.event,eid.occurrence,event.revision,c.provider,'current',
                  draft['first_name'],draft['last_name'],name_key(draft['first_name']),name_key(draft['last_name']),
                  instant(event.interval.start),instant(event.interval.end),event.interval.zone,event.location,'ordinary',instant(now),instant(expires)))

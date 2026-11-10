@@ -70,13 +70,13 @@ class CallKnowledge:
                     contact_id TEXT PRIMARY KEY REFERENCES concierge_contacts(contact_id),
                     level TEXT NOT NULL DEFAULT 'general' CHECK(level IN ('general','friends','family')),
                     score INTEGER CHECK(score BETWEEN 0 AND 100));
-                CREATE TABLE IF NOT EXISTS fact_audiences (
-                    fact_id TEXT PRIMARY KEY REFERENCES concierge_facts(fact_id),
-                    audience TEXT NOT NULL CHECK(audience IN ('general','friends','family','approval_required')));
                 CREATE TABLE IF NOT EXISTS concierge_facts (
                     fact_id TEXT PRIMARY KEY, contact_id TEXT REFERENCES concierge_contacts(contact_id),
                     topic TEXT NOT NULL, text TEXT NOT NULL, source TEXT NOT NULL,
                     expires_at TEXT NOT NULL, updated_at TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);
+                CREATE TABLE IF NOT EXISTS fact_audiences (
+                    fact_id TEXT PRIMARY KEY REFERENCES concierge_facts(fact_id),
+                    audience TEXT NOT NULL CHECK(audience IN ('general','friends','family','approval_required')));
                 CREATE INDEX IF NOT EXISTS concierge_facts_expiry ON concierge_facts(active,expires_at);
                 CREATE TABLE IF NOT EXISTS concierge_contact_preferences (
                     contact_id TEXT PRIMARY KEY REFERENCES concierge_contacts(contact_id),

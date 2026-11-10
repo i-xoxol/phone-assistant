@@ -8,7 +8,7 @@ import httpx
 
 async def check():
     settings=Settings()
-    auth=WebAuth(Database(settings.database_path))
+    auth=WebAuth(Database(settings.database_path, database_url=settings.database_url, schema=settings.database_schema_prefix+'_calls'))
     async with httpx.AsyncClient(base_url=settings.public_base_url,timeout=10,follow_redirects=False) as client:
         response=await client.post('/live/login',data={'code':auth.create_code()},headers={'Origin':settings.public_base_url})
         print(json.dumps({'login_status':response.status_code,'location':response.headers.get('location'),'cookie_set':bool(response.headers.get('set-cookie'))}))

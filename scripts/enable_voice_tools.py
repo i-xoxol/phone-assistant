@@ -6,7 +6,7 @@ from app.storage.models import TERMINAL
 
 if __name__=='__main__':
     settings=Settings()
-    db=Database(settings.database_path)
+    db=Database(settings.database_path, database_url=settings.database_url, schema=settings.database_schema_prefix+'_calls')
     if any(call['status'] not in TERMINAL for call in db.recent_calls()):
         raise SystemExit('Active call exists; defer the service restart.')
     set_key(ROOT/'.env','LIVE_TOOLS_ENABLED','true')

@@ -111,7 +111,8 @@ def create_mcp(manager):
         from app.appointments.mcp_auth import appointment_authorization
         appointment_scopes=SCOPES
         middleware.append(appointment_authorization(origin))
-    provider = PairingOAuthProvider(settings.oauth_database_path, origin, additional_scopes=tuple(appointment_scopes))
+    provider = PairingOAuthProvider(settings.oauth_database_path, origin, additional_scopes=tuple(appointment_scopes),
+        database_url=settings.database_url,schema=settings.database_schema_prefix+'_oauth')
     auth = AuthSettings(issuer_url=origin, resource_server_url=origin + '/mcp',
                         validate_token_resource=True,
                         client_registration_options=ClientRegistrationOptions(

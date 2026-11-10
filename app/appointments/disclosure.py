@@ -29,7 +29,7 @@ class PrivateNotices:
                 'AND kind=? AND notice_id!=? AND expires_at>?',
                 (now.isoformat(),audience_kind,audience_id,kind,nid,now.isoformat()))
             db.execute('INSERT INTO appointment_private_notices VALUES(?,1,?,?,?,?,?,?,?) '
-                'ON CONFLICT(notice_id) DO UPDATE SET revision=revision+1,value=excluded.value,effective_from=excluded.effective_from,'
+                'ON CONFLICT(notice_id) DO UPDATE SET revision=appointment_private_notices.revision+1,value=excluded.value,effective_from=excluded.effective_from,'
                 'expires_at=excluded.expires_at,source=excluded.source',
                 (nid,audience_kind,audience_id,kind,value,effective_from.isoformat(),expires_at.isoformat(),source))
         return nid

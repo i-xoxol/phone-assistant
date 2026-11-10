@@ -55,7 +55,9 @@ class AppointmentGateway:
         self.m=manager;self.clock=clock or (lambda:datetime.now(timezone.utc))
         self.name_resolver=partial(resolve_name,manager.settings)
         self.name_proofs={}
-        self.store=Registry(manager.settings.appointment_database_path);self.notices=PrivateNotices(self.store)
+        self.store=Registry(manager.settings.appointment_database_path,
+            database_url=manager.settings.database_url,
+            schema=manager.settings.database_schema_prefix+'_appointments');self.notices=PrivateNotices(self.store)
         self.http=None
         if provider is None:
             from app.appointments.google import GoogleCalendarAdapter,MirrorHealth,OwnerFileToken
