@@ -25,6 +25,12 @@ open the browser to read, **listen live, and join with your microphone**.
 SQLite, with optional calendar and supervisor integrations. External phone,
 voice and transcription providers still require your accounts and billing.
 
+> **Second deployment option: experimental managed Azure hosting — UNVERIFIED.**
+> An optional PostgreSQL runtime, local Docker simulation, and Azure Container
+> Apps template are available. No cloud deployment or real cloud call has been
+> verified. The working VPS path remains the default.
+> [Local tests, cloud setup, limitations and projected costs →](docs/managed-cloud.md)
+
 <p align="center">
   <a href="#watch-the-overviews">Watch the videos</a> ·
   <a href="#see-the-interface">See the interface</a> ·

@@ -17,7 +17,7 @@ from app.storage.database import Database
 
 async def check():
     settings = Settings()
-    provider = PairingOAuthProvider(settings.oauth_database_path, settings.public_base_url)
+    provider = PairingOAuthProvider(settings.oauth_database_path, settings.public_base_url, database_url=settings.database_url, schema=settings.database_schema_prefix+'_oauth')
     resource = settings.public_base_url + '/mcp'
     tokens = provider._issue_tokens('local-diagnostic', ['phone.calls'], resource)
     try:
@@ -45,7 +45,7 @@ async def check():
                         'subscribe_call_events','get_call_event_subscriptions','unsubscribe_call_events','send_call_update',
                         'list_messages','get_message','mark_message_read','list_call_requests','respond_to_call_request',
                         'get_inbound_context','set_inbound_context','set_inbound_availability','expect_incoming_call','retire_expected_call'})
-                    db = Database(settings.database_path)
+                    db = Database(settings.database_path, database_url=settings.database_url, schema=settings.database_schema_prefix+'_calls')
                     with db.connect() as conn:
                         row = conn.execute('SELECT call_id FROM calls ORDER BY created_at DESC LIMIT 1').fetchone()
                     if row:

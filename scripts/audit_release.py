@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIRS = {'app', 'scripts', 'tests', 'deploy', 'plugin', 'docs', 'examples', '.github'}
 ROOT_FILES = {'README.md', 'LICENSE', 'SECURITY.md', 'CONTRIBUTING.md', 'CHANGELOG.md',
-              'Dockerfile', '.dockerignore', 'compose.yaml',
+              'Dockerfile', '.dockerignore', 'compose.yaml', 'requirements-managed.txt',
               '.gitignore', '.gitattributes', '.editorconfig', '.env.example', 'requirements.txt', 'requirements-dev.txt', 'run.py'}
 FORBIDDEN_PARTS = {'data', '.venv', '__pycache__', '.pytest_cache', 'node_modules', '.git',
                    '.codex-remote-attachments', 'backups'}
@@ -32,6 +32,7 @@ SECRET_FIELDS = {'OPENAI_API_KEY', 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN',
                  'TWILIO_PHONE_NUMBER', 'PUBLIC_BASE_URL', 'LOCAL_API_TOKEN',
                  'CALLBACK_NUMBER', 'WEBHOOK_URL', 'WEBHOOK_SECRET'}
 SECRET_FIELDS.add('OWNER_TRANSFER_NUMBER')
+SECRET_FIELDS.add('DATABASE_URL')
 SECRET_FIELDS.add('OWNER_COACHING_APPLICATION_SID')
 SECRET_FIELDS.update({'ELEVENLABS_API_KEY','ELEVENLABS_VOICE_ID','GEMINI_API_KEY','GOOGLE_API_KEY','ELEVENLABS_PERMITTED_VOICES'})
 

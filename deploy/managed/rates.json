@@ -1,0 +1,41 @@
+{
+  "checked": "2026-11-09",
+  "currency": "USD",
+  "hours_per_month": 730,
+  "azure": {
+    "region": "eastus",
+    "vcpu_active_second": 0.000024,
+    "vcpu_idle_second": 0.000003,
+    "gib_second": 0.000003,
+    "postgres_b1ms_hour": 0.017,
+    "postgres_gb_month": 0.115,
+    "managed_lb_hour": 0.025,
+    "public_ipv4_hour": 0.005,
+    "sources": [
+      "https://prices.azure.com/api/retail/prices",
+      "https://azure.microsoft.com/en-us/pricing/details/container-apps/",
+      "https://azure.microsoft.com/en-us/pricing/details/postgresql/flexible-server/",
+      "https://learn.microsoft.com/en-us/azure/container-apps/billing",
+      "https://learn.microsoft.com/en-us/azure/container-apps/custom-virtual-networks",
+      "https://azure.microsoft.com/en-us/pricing/details/load-balancer/",
+      "https://azure.microsoft.com/en-us/pricing/details/ip-addresses/"
+    ]
+  },
+  "aws": {
+    "region": "us-east-1",
+    "fargate_vcpu_hour": 0.04048,
+    "fargate_gb_hour": 0.004445,
+    "rds_t4g_small_hour": 0.032,
+    "rds_storage_gb_month": 0.115,
+    "alb_hour": 0.0225,
+    "lcu_hour": 0.008,
+    "public_ipv4_hour": 0.005,
+    "sources": [
+      "https://aws.amazon.com/fargate/pricing/",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonRDS/current/us-east-1/index.json",
+      "https://aws.amazon.com/rds/postgresql/pricing/",
+      "https://aws.amazon.com/elasticloadbalancing/pricing/",
+      "https://aws.amazon.com/vpc/pricing/"
+    ]
+  }
+}

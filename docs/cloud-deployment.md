@@ -1,5 +1,9 @@
 # Portable single-server deployment
 
+For the separate **experimental, cloud-unverified** Container Apps/PostgreSQL
+option, see [managed cloud deployment](managed-cloud.md). The instructions below
+continue to describe the existing single-server SQLite package.
+
 The current Lenovo service remains a native systemd service. The Docker files
 are an additional deployment option, not an automatic migration or a cloud
 account setup. No AWS/Azure resources or paid subscriptions are created.

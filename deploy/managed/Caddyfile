@@ -1,0 +1,5 @@
+# Self-signed LOCAL-ONLY HTTPS for the authenticated demo portal.
+https://localhost:18767 {
+    tls internal
+    reverse_proxy phone:8766
+}

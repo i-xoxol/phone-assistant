@@ -28,6 +28,7 @@ from mcp.server.auth.provider import (
     construct_redirect_uri,
 )
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
+from app.storage.backend import connect
 
 
 ACCESS_TOKEN_SECONDS = 60 * 60
@@ -58,17 +59,16 @@ class PairingOAuthProvider(
 ):
     """SQLite-backed OAuth provider intended for one private MCP owner."""
 
-    def __init__(self, database: str | Path, public_base_url: str, *, additional_scopes: tuple[str, ...] = ()):
+    def __init__(self, database: str | Path, public_base_url: str, *, additional_scopes: tuple[str, ...] = (), database_url='', schema='phone_oauth'):
         self.database = Path(database).expanduser()
-        self.database.parent.mkdir(parents=True, exist_ok=True)
+        self.database_url, self.schema = database_url, schema
+        if not (database_url.get_secret_value() if hasattr(database_url, 'get_secret_value') else database_url): self.database.parent.mkdir(parents=True, exist_ok=True)
         self.public_base_url = public_base_url.rstrip("/")
         self.additional_scopes = additional_scopes
         self._init_schema()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database)
-        connection.row_factory = sqlite3.Row
-        return connection
+        return connect(self.database, database_url=self.database_url, schema=self.schema)
 
     def _init_schema(self) -> None:
         with closing(self._connect()) as db, db:

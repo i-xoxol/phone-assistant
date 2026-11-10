@@ -1,6 +1,15 @@
 **
 !requirements.txt
+!requirements-managed.txt
+!scripts/
+!scripts/*.py
+scripts/**/__pycache__/
+scripts/**/*.pyc
 !app/
-!app/**
+!app/**/
+!app/**/*.py
+!app/web/*.html
+!app/web/*.js
+!app/web/*.css
 app/**/__pycache__/
 app/**/*.pyc

@@ -21,6 +21,8 @@ def private_copy(source: Path, destination: Path):
 
 
 def backup(settings, directory, *, env_file=None, cli_auth=None, extra_files=()):
+    if settings.database_url.get_secret_value():
+        raise ValueError('SQLite backup is disabled for PostgreSQL; use managed backups/pg_dump and a file-share snapshot')
     directory = Path(directory).absolute()
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     if directory.is_symlink() or (os.name != 'nt' and directory.stat().st_mode & 0o077):

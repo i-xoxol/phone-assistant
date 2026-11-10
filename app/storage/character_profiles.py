@@ -7,6 +7,9 @@ LEGACY_MODE_CHECK = re.compile(
 
 
 def allow_character_profiles(connection):
+    # This rebuild is specific to pre-character SQLite installations. The new
+    # PostgreSQL option creates the current widened constraint directly.
+    if getattr(connection,'dialect',None)=='postgresql':return
     schema = connection.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='telephone_personalities'").fetchone()[0]
     if not LEGACY_MODE_CHECK.search(schema):
         return

@@ -1,0 +1,50 @@
+name: Experimental managed-cloud checks (not cloud verification)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-replay:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_DB: phone
+          POSTGRES_USER: phone
+          POSTGRES_PASSWORD: local-ci-only
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U phone -d phone" --health-interval 3s --health-timeout 3s --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgresql://phone:local-ci-only@127.0.0.1:5432/phone?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -r requirements-dev.txt -r requirements-managed.txt
+      - name: Replay critical mocked workflows on real PostgreSQL
+        run: >-
+          python -m pytest --postgres-tests -q
+          tests/test_calls.py tests/test_personalities.py tests/test_appointments_core.py
+          tests/test_web_password.py tests/test_rules_control.py tests/test_appointments_oauth.py
+          tests/test_managed_cloud.py tests/test_keypad_mcp.py tests/test_call_updates.py
+          tests/test_caller_languages.py tests/test_call_memory.py tests/test_voice_backends.py
+      - name: Compile Azure template without deploying resources
+        run: az bicep build --file deploy/managed/azure/main.bicep --outfile /tmp/phone-template.json
+      - name: Run local compose and check restart persistence
+        run: |
+          docker compose -f deploy/managed/compose.yaml up --build -d --wait --wait-timeout 180
+          python -m scripts.managed_smoke > /tmp/managed-smoke.json
+          docker compose -f deploy/managed/compose.yaml restart phone
+          for i in $(seq 1 30); do curl --fail --silent http://127.0.0.1:18766/readyz && break || sleep 2; done
+          python -m scripts.managed_smoke --call-id "$(python -c 'import json;print(json.load(open("/tmp/managed-smoke.json"))["call_id"])')"
+          python -m scripts.managed_portal_smoke
+      - name: Stop local containers
+        if: always()
+        run: docker compose -f deploy/managed/compose.yaml down --volumes
