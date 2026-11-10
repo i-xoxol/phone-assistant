@@ -142,8 +142,9 @@ separate [preview option](https://learn.microsoft.com/en-us/azure/container-apps
    docker push YOUR_REGISTRY/phone:YOUR_RELEASE
    ```
 
-3. Create a private ARM parameter JSON file, outside Git, using the standard
-   `$schema`, `contentVersion` and `parameters` wrapper. Supply:
+3. Copy `deploy/managed/azure/parameters.example.json` to a private location
+   outside Git (for example `phone.parameters.private.json`). Fill its empty
+   values; the example deliberately cannot deploy as supplied. Supply:
    `prefix`, `image` (`registry/name@sha256:...`), a random 24+ character
    `databasePassword`, `deploymentAcknowledgement` equal to
    `I_ACKNOWLEDGE_CLOUD_UNVERIFIED`, and `appSettings` as a string-valued object.
