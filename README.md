@@ -48,7 +48,7 @@ voice and transcription providers still require your accounts and billing.
 | Test without dialing | Browser calls model direct, forwarded and outbound scenarios, with recent forwarding-number choices |
 | Another agent can oversee | OAuth MCP tools, verified events and bounded supervisor replies; the owner retains approvals |
 | Your deployment and records | One VPS service, private SQLite state and backups, native or Docker deployment |
-| Choice of voice backend | OpenAI GPT-Live, ElevenLabs Realtime, and the verification-gated Gemini Live adapter |
+| Choice of voice backend | OpenAI GPT-Live or GPT-Realtime, ElevenLabs Realtime, and the verification-gated Gemini Live adapter |
 
 ### Listen, then jump in
 
@@ -78,8 +78,8 @@ client and verified, renewed event delivery.
 
 ## Watch the overviews
 
-Optional voice backend: keep GPT-Live or choose ElevenLabs Realtime with your
-own library voice. See [setup, selection and testing](docs/voice-backends.md).
+Choose GPT-Live, OpenAI GPT-Realtime, or ElevenLabs Realtime with your own
+library voice. See [setup, selection and testing](docs/voice-backends.md).
 
 The private control page can [place outbound calls with context, reusable brief defaults,
 and an office or verified mobile caller ID](docs/outbound-calls.md).

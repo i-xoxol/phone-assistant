@@ -8,6 +8,14 @@ from app.calling.context import utcnow
 from app.calling.voices import VOICES
 
 Provider = Literal['openai', 'elevenlabs', 'gemini']
+OPENAI_REALTIME_MODELS = {
+    'gpt-realtime-2.1': 'GPT-Realtime 2.1',
+    'gpt-realtime-2.1-mini': 'GPT-Realtime 2.1 Mini',
+}
+OPENAI_REALTIME_VOICES = [
+    {'id': voice, 'label': voice.capitalize()} for voice in ('cedar', 'marin', 'alloy', 'ash', 'ballad',
+        'coral', 'echo', 'sage', 'shimmer', 'verse')
+]
 GEMINI_VOICES = ['Zephyr','Puck','Charon','Kore','Fenrir','Leda','Orus','Aoede',
     'Callirrhoe','Autonoe','Enceladus','Iapetus','Umbriel','Algieba','Despina','Erinome',
     'Algenib','Rasalgethi','Laomedeia','Achernar','Alnilam','Schedar','Gacrux','Pulcherrima',
@@ -58,8 +66,10 @@ class VoiceBackends:
             if voice.get('id') and voice.get('label') and voice['id'] not in {v['id'] for v in eleven}:
                 eleven.append({'id':voice['id'],'label':voice['label']})
         return [
-            {'id':'openai','label':'OpenAI GPT-Live','configured':True,
-             'models':[{'id':'gpt-live-1','label':'GPT-Live 1','voices':VOICES}]},
+            {'id':'openai','label':'OpenAI','configured':True,
+             'models':[{'id':'gpt-live-1','label':'GPT-Live 1','voices':VOICES}, *[
+                {'id':model,'label':label,'voices':OPENAI_REALTIME_VOICES}
+                for model,label in OPENAI_REALTIME_MODELS.items()]]},
             {'id':'elevenlabs','label':'ElevenLabs Realtime','configured':self.available('elevenlabs'),
              'models':[{'id':m,'label':label,'voices':eleven} for m,label in
                        [('eleven_realtime_v1_mini','Realtime Mini'),('eleven_realtime_v1_max','Realtime Max')]]},
@@ -123,8 +133,20 @@ class VoiceBackends:
               'gemini':{'model':'gemini-3.8-live','voice':s.gemini_voice}}
         result=dict(saved) if saved else base[provider]
         # set_voice remains the authoritative backward-compatible OpenAI voice setter.
-        if provider=='openai': result['voice']=base[provider]['voice']
+        if provider=='openai' and result['model'] not in OPENAI_REALTIME_MODELS:
+            result['voice']=base[provider]['voice']
         return result
+
+    def default_voice(self, provider, model, defaults):
+        if provider=='openai' and model!=defaults['model']:
+            if model in OPENAI_REALTIME_MODELS:
+                if defaults['model'] in OPENAI_REALTIME_MODELS:
+                    return defaults['voice']
+                return 'cedar'
+            with self.db.connect() as c:
+                oldvoice=c.execute('SELECT voice FROM voice_preferences WHERE id=1').fetchone()
+            return oldvoice['voice'] if oldvoice else self.settings.openai_voice
+        return defaults['voice']
 
     def get(self):
         with self.db.connect() as c:
@@ -139,14 +161,14 @@ class VoiceBackends:
     def set(self, body: BackendChoice):
         defaults=self.defaults(body.provider)
         model=body.model or (body.elevenlabs_model if body.provider=='elevenlabs' else None) or defaults['model']
-        voice=body.voice or defaults['voice']
+        voice=body.voice or self.default_voice(body.provider,model,defaults)
         self.validate(body.provider,model,voice)
         stamp=utcnow().isoformat()
         with self.db.connect() as c:
             c.execute('BEGIN IMMEDIATE')
             c.execute('INSERT INTO telephone_provider_defaults VALUES (?,?,?,?) ON CONFLICT(provider) DO UPDATE SET '
                       'model=excluded.model,voice=excluded.voice,updated_at=excluded.updated_at',(body.provider,model,voice,stamp))
-            if body.provider=='openai':
+            if body.provider=='openai' and model not in OPENAI_REALTIME_MODELS:
                 c.execute('INSERT INTO voice_preferences VALUES (1,?,?) ON CONFLICT(id) DO UPDATE SET voice=excluded.voice,updated_at=excluded.updated_at',(voice,stamp))
             eleven=model if body.provider=='elevenlabs' else self.defaults('elevenlabs')['model']
             c.execute('INSERT INTO voice_backend_preferences VALUES (1,?,?,?) ON CONFLICT(id) DO UPDATE SET '
@@ -167,7 +189,8 @@ class VoiceBackends:
             raise ValueError('Select a provider before a contact model or voice; Default inherits all global settings')
         if body.provider:
             defaults=self.defaults(body.provider)
-            self.validate(body.provider,body.model or defaults['model'],body.voice or defaults['voice'])
+            model=body.model or defaults['model']
+            self.validate(body.provider,model,body.voice or self.default_voice(body.provider,model,defaults))
         with self.db.connect() as c:
             c.execute('INSERT INTO contact_voice_preferences VALUES (?,?,?,?,?) ON CONFLICT(contact_id) DO UPDATE SET '
                       'provider=excluded.provider,model=excluded.model,voice=excluded.voice,updated_at=excluded.updated_at',
@@ -183,8 +206,14 @@ class VoiceBackends:
         provider=override or contact.get('provider') or self.get()['provider']
         base=self.defaults(provider)
         same=contact.get('provider')==provider
-        result={'provider':provider,'model':model or (contact.get('model') if same else None) or base['model'],
-                'voice':voice or (contact.get('voice') if same else None) or base['voice']}
+        selected_model=model or (contact.get('model') if same else None) or base['model']
+        contact_voice=contact.get('voice') if same else None
+        if selected_model!=contact.get('model') and provider=='openai':
+            valid_voices=OPENAI_REALTIME_VOICES if selected_model in OPENAI_REALTIME_MODELS else VOICES
+            if contact_voice not in {v['id'] for v in valid_voices}:
+                contact_voice=None
+        result={'provider':provider,'model':selected_model,
+                'voice':voice or contact_voice or self.default_voice(provider,selected_model,base)}
         return result
 
     def for_record(self, record, override=None, model=None, voice=None):
@@ -240,5 +269,8 @@ def bridge_connection(settings, manager, record):
     if selection['provider']=='gemini':
         from app.calling.gemini_session import started_gemini_connection
         return started_gemini_connection(settings,manager,record,selection)
+    if selection['model'] in OPENAI_REALTIME_MODELS:
+        from app.calling.openai_realtime_session import started_openai_realtime_connection
+        return started_openai_realtime_connection(settings,manager,record,selection)
     from app.calling.live_session import started_connection
     return started_connection(settings,manager,record)

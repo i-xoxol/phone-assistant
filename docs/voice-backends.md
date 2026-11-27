@@ -1,9 +1,10 @@
-# Optional ElevenLabs voice backend
+# Telephone voice backends
 
 [← README](../README.md) · [Architecture](architecture.md)
 
-The telephone agent can use **OpenAI GPT-Live** (the unchanged default) or
-**ElevenLabs Realtime Mini/Max**, with a voice from your own ElevenLabs library.
+The telephone agent can use **OpenAI GPT-Live 1** (the default),
+**OpenAI GPT-Realtime 2.1 or 2.1 Mini**, **ElevenLabs Realtime Mini or Max**
+with a voice from your own ElevenLabs library, or a verified **Gemini Live** backend.
 Twilio still owns the telephone connection. SQLite, captions, the private
 portal, Rocky updates, message saving, keypad navigation, recording opt-out,
 owner transfer and calendar permission checks stay in this application.
@@ -12,18 +13,18 @@ owner transfer and calendar permission checks stay in this application.
 flowchart LR
     T[Twilio phone audio] <--> B[Authenticated media bridge]
     B <--> O[OpenAI GPT-Live]
+    B <--> A[OpenAI GPT-Realtime]
     B <--> E[ElevenLabs Realtime adapter]
     O --> P[Server tool and authorization checks]
+    A --> P
     E --> P
     P --> C[Calendar / messages / transfer / keypad]
     R[Rocky MCP / owner portal] --> B
     B --> D[SQLite events and live captions]
 ```
 
-Only one telephone voice provider runs for a call. ElevenLabs' Realtime API
-uses the OpenAI Realtime event protocol; GPT-Live has a different protocol.
-The adapter translates that small difference rather than replacing the working
-OpenAI implementation or creating a separate ElevenLabs-hosted phone agent.
+Each call uses one pinned answering model. The OpenAI and ElevenLabs Realtime
+connections share a media adapter. GPT-Live uses its own API protocol.
 
 ## Account setup
 
@@ -63,16 +64,18 @@ account's pricing and usage before enabling it for normal calls.
 
 ## Choose a provider
 
-In the signed-in call monitor, open **Voice and owner contact**, choose a
-provider/model and save it. The ElevenLabs voice is the separate server-configured
-library voice; **Save voice** still changes only OpenAI's documented voices.
+In the signed-in control page, open the answering settings and choose a
+provider, model, and voice. The **OpenAI** provider lists both GPT-Live and
+GPT-Realtime. GPT-Realtime uses the existing OpenAI API key and its own voice
+list. ElevenLabs uses voices from its configured library.
 
 Rocky and other authorized MCP clients can use:
 
 ```json
 get_voice_backend({})
 set_voice_backend({"provider":"elevenlabs","elevenlabs_model":"eleven_realtime_v1_mini"})
-set_voice_backend({"provider":"openai"})
+set_voice_backend({"provider":"openai","model":"gpt-realtime-2.1-mini","voice":"cedar"})
+set_voice_backend({"provider":"openai","model":"gpt-live-1"})
 ```
 
 For one explicitly authorized outgoing call, set `voice_provider` without
@@ -108,9 +111,11 @@ the pinned selection; the legacy `voice_name` field remains OpenAI's preference.
   or sent through an additional TTS request. ElevenLabs generates the speech as
   part of its Realtime session. The negotiated codec is checked before use.
 - The incoming Twilio duration limit must succeed before any paid session
-  starts. OpenAI retains its existing pre-answer socket warming. ElevenLabs
-  starts after answer, so this first adapter does not charge for pre-answer
-  ringing or promise identical pickup latency.
+  starts. GPT-Live retains its existing pre-answer socket warming. OpenAI and
+  ElevenLabs Realtime sessions start after answer.
+- The Realtime bridge waits for the provider to acknowledge the startup prompt
+  before requesting the greeting. It retries once if the opening turn ends
+  silently and the caller has stayed quiet.
 - Audio playback runs independently from provider event reading. On caller
   interruption the app clears queued Twilio audio and truncates the interrupted
   assistant turn conservatively; unheard speech is not treated as delivered.

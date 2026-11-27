@@ -33,7 +33,7 @@ class Playback:
             self.bridge.pending_marks.pop(data['mark']['name'],None)
             self.bridge.playback_progress.set()
 
-async def check(provider,env_file,model=None):
+async def check(provider,env_file,model=None,voice=None):
     source=Settings(_env_file=env_file)
     with tempfile.TemporaryDirectory(prefix='phone-provider-check-') as directory:
         folder=Path(directory)
@@ -48,7 +48,7 @@ async def check(provider,env_file,model=None):
         manager.db.update(cid,twilio_call_sid='CA_SYNTHETIC_CHECK')
         manager.transition(cid,'in_progress')
         record=manager.voice_record(cid)
-        selection=manager.voice_backends.pin(record,provider,model)
+        selection=manager.voice_backends.pin(record,provider,model,voice)
         playback=Playback()
         async with asyncio.timeout(110):
             async with bridge_connection(settings,manager,record) as (connection,record,started):
@@ -94,7 +94,7 @@ async def check(provider,env_file,model=None):
                     question=spoken_since(second)
                     assert 'prefer' in question or 'would you' in question
                     # Re-sending startup cannot start a second greeting for optional adapters.
-                    if provider in ('elevenlabs','gemini'):
+                    if provider in ('elevenlabs','gemini') or selection['model'].startswith('gpt-realtime-'):
                         await connection.session.commentary.append(content='Greet again.',event_id='startup_greeting_fallback',delegation_id=None)
                     return {'provider':provider,'model':selection['model'],'real_provider':True,
                         'synthetic_playback_audio':playback.audio_frames>0,'silent_caller_opening':True,
@@ -113,6 +113,7 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--provider',choices=['openai','elevenlabs','gemini'],required=True)
     parser.add_argument('--model');parser.add_argument('--env-file',type=Path,required=True)
+    parser.add_argument('--voice')
     args=parser.parse_args()
-    try: print(json.dumps(asyncio.run(check(args.provider,args.env_file,args.model))))
+    try: print(json.dumps(asyncio.run(check(args.provider,args.env_file,args.model,args.voice))))
     except Exception as exc: raise SystemExit('Synthetic provider check failed ('+type(exc).__name__+'); no telephone was dialed.') from None

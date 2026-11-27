@@ -210,6 +210,11 @@ def prompt_preview(manager, body):
     elif provider == 'gemini':
         from app.calling.gemini_session import gemini_config
         native = gemini_config(manager.settings, record, record['voice_backend'])['system_instruction']
+    else:
+        from app.calling.voice_backends import OPENAI_REALTIME_MODELS
+        if record['voice_backend']['model'] in OPENAI_REALTIME_MODELS:
+            from app.calling.openai_realtime_session import openai_realtime_config
+            native = openai_realtime_config(manager.settings, record, record['voice_backend'])['instructions']
     backend = config.get('delegation', {}).get('responses', {})
     return {'basis': basis, 'routing_rule':record['routing_rule'], 'personality': record['personality'], 'presentation': presentation,
             'contact_guidance':record['contact_guidance'], 'character_biography':record['character_biography'],

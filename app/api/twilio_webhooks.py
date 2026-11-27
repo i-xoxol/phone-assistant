@@ -72,7 +72,9 @@ async def incoming(request: Request):
             manager.transition(cid,'failed')
             return declined_incoming()
         manager.greetings.start(cid)
-        if settings.inbound_answer_delay_seconds and backend['provider']=='openai':
+        from app.calling.voice_backends import OPENAI_REALTIME_MODELS
+        if (settings.inbound_answer_delay_seconds and backend['provider']=='openai'
+                and backend['model'] not in OPENAI_REALTIME_MODELS):
             manager.warm_sockets.start(cid)
     if closed and hours.outside_hours=='closed':
         response=VoiceResponse()
