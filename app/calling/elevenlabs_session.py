@@ -166,6 +166,8 @@ class ResponseOutput:
 
 class RealtimeConnection:
     """Only the small bridge-facing Live surface; not a general SDK emulation."""
+    provider = 'elevenlabs'
+
     def __init__(self, socket, config, record, current_record=None, claim_opening=None,calendar_voice_instructions=None,render_speech=None):
         self.input_timeline=InputAudioTimeline()
         from app.calling.caption_verification import CaptionVerification
@@ -197,6 +199,12 @@ class RealtimeConnection:
         self.notes = []
         self.opening_sent=bool(record.get('transcript') or record.get('voice_opening_claimed'))
         self.claim_opening=claim_opening or (lambda:True)
+        self.opening_content = None
+        self.opening_item = None
+        self.opening_response = None
+        self.opening_attempts = 0
+        self.opening_interrupted = False
+        self.opening_requested_at = None
         self.active_response = None
         self.response_requested = False
         self.want_response = False
@@ -226,11 +234,18 @@ class RealtimeConnection:
         await self.append_note('instructions',content,event_id,respond=respond)
 
     async def append_note(self, channel, content, event_id,*,respond=False):
-        if channel=='commentary':self.owner_response_requested=True
         if event_id in ('initial_greeting','startup_greeting_fallback'):
             if self.opening_sent or not self.claim_opening(): return
             self.opening_sent=True
-            self.notes.append('The startup opening has been requested ONCE. Continue this call; do not greet or introduce yourself again.')
+            if event_id == 'startup_greeting_fallback' or not self.record.get('ivr_mode'):
+                self.opening_content = content
+                self.opening_item = 'item_' + uuid4().hex[:24]
+                await self.send({'type': 'conversation.item.create',
+                    'item': {'id': self.opening_item, 'type': 'message', 'role': 'user',
+                             'content': [{'type': 'input_text', 'text':
+                                 'APPLICATION STARTUP SIGNAL, not caller speech. ' + content}]}})
+            return
+        if channel=='commentary':self.owner_response_requested=True
         if channel != 'commentary' and event_id != 'initial_greeting':
             # ElevenLabs accepts session.update, but silently ignores system-role
             # conversation items. Put context in real session instructions so a
@@ -249,7 +264,7 @@ class RealtimeConnection:
             # Generation must start after the provider applies/ACKs these
             # instructions; sending response.create immediately races the update.
             return
-        item_id = 'item_' + uuid4().hex
+        item_id = 'item_' + uuid4().hex[:24]
         if event_id:
             self.pending_notes[item_id] = (event_id, channel)
         note = 'APPLICATION NOTE (' + channel + '; not caller speech):\n' + content
@@ -261,10 +276,27 @@ class RealtimeConnection:
         await self.send({'type': 'conversation.item.create', 'event_id': event_id or 'note_' + uuid4().hex,
                          'item': {'id': item_id, 'type': 'message', 'role': 'user',
                                   'content': [{'type': 'input_text', 'text': note}]}})
-        initial = event_id == 'initial_greeting'
-        if channel == 'commentary' or (initial and not self.record.get('ivr_mode')
-                                      and not self.record.get('transcript')):
+        if channel == 'commentary':
             await self.request_response()
+
+    async def request_opening(self):
+        # Send an explicit speaking turn. A text item followed by a generic
+        # response request can be treated as context and finish without audio.
+        if self.active_response or self.response_requested or self.opening_interrupted:
+            return
+        self.opening_attempts += 1
+        self.opening_requested_at = time.monotonic()
+        self.response_requested = True
+        await self.send({'type': 'response.create', 'response': {
+            'output_modalities': ['audio'], 'tools': [], 'tool_choice': 'none',
+            'metadata': {'telephone_turn': 'opening'},
+            'instructions': self.config['instructions'] + '\nCURRENT TURN — SPEAK NOW:\n'
+                + self.opening_content + '\nStart speaking now even if the caller is silent. '
+                'Say only the opening, then wait for their response.'}})
+
+    def finish_opening(self):
+        self.opening_content = None
+        self.notes.append('Continue the existing conversation. Do not repeat the startup greeting.')
 
     async def request_response(self,instructions=None):
         # Queue a spoken update until the current response finishes. Do not overlap
@@ -391,11 +423,17 @@ class RealtimeConnection:
             if self.manual_pending and data.get('item_id'):self.manual_items[data['item_id']]=self.manual_pending.popleft()
         elif kind in ('conversation.item.added', 'conversation.item.created', 'conversation.item.done'):
             item_id = data.get('item', {}).get('id')
+            if item_id and item_id == self.opening_item:
+                self.opening_item = None
+                await self.request_opening()
             if note := self.pending_notes.pop(item_id, None):
                 yield {'type': 'session.' + note[1] + '.appended', 'client_event_id': note[0]}
             if spoken:=self.spoken_items.pop(item_id,None):await self.request_response(instructions=spoken)
         elif kind == 'response.created':
             self.active_response = data['response']['id']
+            if (data['response'].get('metadata') or {}).get('telephone_turn') == 'opening':
+                self.opening_response = self.active_response
+                self.allowed_native_responses.add(self.active_response)
             if self.owner_response_requested:
                 self.allowed_native_responses.add(self.active_response);self.owner_response_requested=False
             self.response_requested = False
@@ -407,9 +445,16 @@ class RealtimeConnection:
         elif kind == 'response.output_audio.delta':
             if (data.get('response_id') not in self.cancelled and
                     (not self.calendar_controlled or data.get('response_id') in self.allowed_native_responses)):
-                self.output_bytes += len(base64.b64decode(data['delta'], validate=True))
+                audio_bytes = len(base64.b64decode(data['delta'], validate=True))
+                self.output_bytes += audio_bytes
+                if audio_bytes and data.get('response_id') == self.opening_response and self.opening_content:
+                    log_event('telephone_opening_audio', call_id=self.record['call_id'], provider=self.provider,
+                              attempt=self.opening_attempts,
+                              elapsed_ms=round(1000 * (time.monotonic() - self.opening_requested_at)))
+                    self.finish_opening()
                 yield {'type': 'session.output_audio.delta', 'delta': data['delta']}
         elif kind == 'input_audio_buffer.speech_started':
+            self.opening_interrupted = True
             self.speech_times[data['item_id']] = (data.get('audio_start_ms'),None)
             self.input_display_times[data['item_id']]=(round(self.input_timeline.stream_end),round(self.input_timeline.stream_end))
             if self.active_response:
@@ -474,6 +519,16 @@ class RealtimeConnection:
                    'event': {'type': 'response.completed' if status == 'completed' else 'response.failed',
                              'response': response}}
             functions = any(i.get('type') == 'function_call' for i in response.get('output', []))
+            if rid == self.opening_response and self.opening_content:
+                log_event('telephone_opening_no_audio', call_id=self.record['call_id'], provider=self.provider,
+                          attempt=self.opening_attempts,
+                          status=status if status in ('completed','failed','incomplete','cancelled') else 'unknown')
+                if (status in ('completed','failed','incomplete') and not self.opening_interrupted
+                        and not self.want_response and not functions and self.opening_attempts < 2
+                        and not self.closing and not self.current_record().get('completed_at')):
+                    await self.request_opening()
+                else:
+                    self.finish_opening()
             if self.voicing_controlled:
                 self.voicing_controlled=False
                 if not self.want_response and not self.pending_spoken and not self.pending_response_instruction:
@@ -493,15 +548,19 @@ class RealtimeConnection:
                 yield {'type': 'error', 'client_event_id': event_id, 'error': {'code': 'provider_rejected'}}
                 return
             # Provider text can contain caller data. Expose only bounded codes.
-            log_event('elevenlabs_session_error', code=code if re.fullmatch(r'[A-Za-z0-9_.-]{1,80}', str(code)) else 'unknown')
-            raise BridgeFailure('elevenlabs_session_error')
+            parameter = str(error.get('param', 'unknown'))
+            log_event(f'{self.provider}_session_error', call_id=self.record['call_id'],
+                      code=code if re.fullmatch(r'[A-Za-z0-9_.-]{1,80}', str(code)) else 'unknown',
+                      parameter=parameter if re.fullmatch(r'(item|event_id|response|session)[A-Za-z0-9_.\[\]-]{0,120}', parameter)
+                      else 'unknown')
+            raise BridgeFailure(f'{self.provider}_session_error')
 
     async def events(self):
         async def read():
             try:
                 async for raw in self.socket:
                     async for data in self.translate(json.loads(raw)):await self.local_events.put(Event(data))
-                await self.local_events.put(Event({'type':'session.closed'}) if self.closing else BridgeFailure('elevenlabs_transport_closed'))
+                await self.local_events.put(Event({'type':'session.closed'}) if self.closing else BridgeFailure(f'{self.provider}_transport_closed'))
             except Exception as exc:
                 if not self.closing:await self.local_events.put(exc)
         reader=asyncio.create_task(read())
@@ -530,7 +589,7 @@ class RealtimeMediaBridge(MediaBridge):
 
     async def send_live_audio(self, payload):
         if self.queued_bytes + len(payload) > 480000:  # At most one minute of PCMU.
-            raise BridgeFailure('elevenlabs_playback_overflow')
+            raise BridgeFailure('realtime_playback_overflow')
         self.queued_bytes += len(payload)
         self.audio_queue.put_nowait((self.audio_generation, payload))
 

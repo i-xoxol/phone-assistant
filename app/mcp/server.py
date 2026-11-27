@@ -121,7 +121,7 @@ def create_mcp(manager):
     manager.mcp_events = events
     instructions=INSTRUCTIONS
     instructions+='''\nVOICE BACKENDS: get_voice_backend reads the selected telephone provider. At the owner's request,
-set_voice_backend selects OpenAI GPT-Live, configured ElevenLabs Realtime, or verified Gemini Live for new calls.
+set_voice_backend selects OpenAI GPT-Live or GPT-Realtime, configured ElevenLabs Realtime, or verified Gemini Live for new calls.
 place_call.voice_provider overrides one call without changing that default. Active/queued calls retain
 their pinned provider/model/voice. OpenAI delegates to its Responses backend; ElevenLabs calls the
 same server-checked functions directly. Neither mode requires this chat to poll before voice tools act.

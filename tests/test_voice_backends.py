@@ -164,6 +164,59 @@ def test_spoken_update_waits_until_current_response_ends_once():
     asyncio.run(run())
 
 
+@pytest.mark.parametrize('model', ['gpt-realtime-2.1', 'gpt-realtime-2.1-mini'])
+def test_openai_realtime_selection_has_own_voices_and_call_policy(service, model):
+    from app.calling.openai_realtime_session import openai_realtime_config
+
+    client, manager, _ = service
+    manager.voice_backends.set(BackendChoice(provider='openai', voice='meridian'))
+    updated = client.put('/voice/backend', json={'provider': 'openai', 'model': model})
+    assert updated.status_code == 200
+    assert updated.json()['voice'] == 'cedar'
+    assert client.put('/voice/backend', json={'provider': 'openai', 'model': model,
+                                              'voice': 'meridian'}).status_code == 409
+    cid = inbound(manager)
+    record = manager.voice_record(cid)
+    selection = manager.voice_backends.pin(record)
+    assert (selection['model'], selection['voice']) == (model, 'cedar')
+    config = openai_realtime_config(manager.settings, manager.voice_record(cid), selection)
+    assert config['audio']['input']['format']['type'] == config['audio']['output']['format']['type'] == 'audio/pcmu'
+    assert config['audio']['output']['voice'] == 'cedar'
+    assert 'save_message' in {tool['name'] for tool in config['tools']}
+    assert all('strict' not in tool for tool in config['tools'])
+    assert manager.voice_backends.resolve(contact={'provider':'openai', 'voice':'meridian'})['voice'] == 'cedar'
+    saved = manager.voice_backends.set(BackendChoice(provider='openai', model='gpt-live-1'))
+    assert saved['voice'] == 'meridian'
+    assert manager.voice_backends.for_call(cid)['model'] == model
+
+
+@pytest.mark.parametrize('interrupted', [False, True])
+def test_opening_waits_for_context_ack_and_retries_only_when_safe(interrupted):
+    async def run():
+        conn = connection({'call_id': 'test'})
+        await conn.session.commentary.append(content='Say hello.', event_id='startup_greeting_fallback')
+        item, = conn.socket.sent
+        assert item['type'] == 'conversation.item.create'
+        await translated(conn, {'type': 'conversation.item.added', 'item': item['item']})
+        await translated(conn, {'type': 'conversation.item.done', 'item': item['item']})
+        opening = conn.socket.sent[-1]['response']
+        assert 'Say hello.' in opening['instructions']
+        assert opening['tool_choice'] == 'none'
+        await translated(conn, {'type': 'response.created', 'response': {'id':'r1', 'metadata':opening['metadata']}})
+        if interrupted:
+            await translated(conn, {'type':'input_audio_buffer.speech_started','item_id':'caller'})
+        await translated(conn, {'type': 'response.done', 'response': {'id':'r1', 'status':'completed', 'output':[]}})
+        assert conn.opening_attempts == (1 if interrupted else 2)
+        if not interrupted:
+            await translated(conn, {'type':'response.created', 'response':{'id':'r2', 'metadata':opening['metadata']}})
+            assert await translated(conn, {'type':'response.output_audio.delta','response_id':'r2','delta':'/w=='})
+            await translated(conn, {'type':'response.done','response':{'id':'r2','status':'completed','output':[]}})
+        assert conn.opening_content is None
+        await conn.session.commentary.append(content='Greet again.', event_id='startup_greeting_fallback')
+        assert len([event for event in conn.socket.sent if event['type'] == 'conversation.item.create']) == 1
+    asyncio.run(run())
+
+
 def test_barge_in_clears_twilio_and_truncates_unheard_audio(service):
     client, manager, _ = service
     cid = create(client).json()['call_id']
